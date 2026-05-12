@@ -7,9 +7,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"omnirelay/internal/crypto"
 	"omnirelay/internal/config"
+	"omnirelay/internal/crypto"
 	"omnirelay/internal/models"
+	"strings"
 	"time"
 )
 
@@ -161,22 +162,38 @@ func (s *ProviderService) FetchModelsFromProvider(provider *models.Provider) ([]
 		return nil, err
 	}
 
+	baseURL := strings.TrimRight(provider.APiBaseURL, "/")
 	var url string
 	switch provider.ProviderType {
-	case "openai", "lmstudio", "ollama", "gemini":
-		url = provider.APiBaseURL + "/models"
 	case "anthropic":
-		url = provider.APiBaseURL + "/v1/models?limit=1000"
+		if strings.HasSuffix(baseURL, "/v1") {
+			url = baseURL + "/models?limit=1000"
+		} else {
+			url = baseURL + "/v1/models?limit=1000"
+		}
+	case "gemini":
+		url = baseURL + "/models"
+	case "ollama":
+		url = strings.TrimSuffix(baseURL, "/v1") + "/api/tags"
 	default:
-		url = provider.APiBaseURL + "/models"
+		url = baseURL + "/models"
 	}
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", "Bearer "+apiKey)
 	req.Header.Set("Content-Type", "application/json")
+	switch provider.ProviderType {
+	case "anthropic":
+		req.Header.Set("x-api-key", apiKey)
+		req.Header.Set("anthropic-version", "2023-06-01")
+	case "gemini":
+		req.Header.Set("x-goog-api-key", apiKey)
+	case "ollama":
+	default:
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+	}
 
 	client := &http.Client{Timeout: 15 * time.Second}
 	resp, err := client.Do(req)
@@ -185,7 +202,7 @@ func (s *ProviderService) FetchModelsFromProvider(provider *models.Provider) ([]
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		body, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("provider returned %d: %s", resp.StatusCode, string(body))
 	}
@@ -195,14 +212,50 @@ func (s *ProviderService) FetchModelsFromProvider(provider *models.Provider) ([]
 		return nil, err
 	}
 
-	var listResp openaiModelListResponse
-	if err := json.Unmarshal(body, &listResp); err != nil {
-		return nil, err
-	}
-
 	var modelIDs []string
-	for _, m := range listResp.Data {
-		modelIDs = append(modelIDs, m.ID)
+	switch provider.ProviderType {
+	case "gemini":
+		var result struct {
+			Models []struct {
+				Name string `json:"name"`
+			} `json:"models"`
+		}
+		if err := json.Unmarshal(body, &result); err != nil {
+			return nil, err
+		}
+		for _, m := range result.Models {
+			name := m.Name
+			if idx := strings.LastIndex(name, "/"); idx >= 0 {
+				name = name[idx+1:]
+			}
+			if name != "" {
+				modelIDs = append(modelIDs, name)
+			}
+		}
+	case "ollama":
+		var result struct {
+			Models []struct {
+				Name string `json:"name"`
+			} `json:"models"`
+		}
+		if err := json.Unmarshal(body, &result); err != nil {
+			return nil, err
+		}
+		for _, m := range result.Models {
+			if m.Name != "" {
+				modelIDs = append(modelIDs, m.Name)
+			}
+		}
+	default:
+		var listResp openaiModelListResponse
+		if err := json.Unmarshal(body, &listResp); err != nil {
+			return nil, err
+		}
+		for _, m := range listResp.Data {
+			if m.ID != "" {
+				modelIDs = append(modelIDs, m.ID)
+			}
+		}
 	}
 
 	return modelIDs, nil

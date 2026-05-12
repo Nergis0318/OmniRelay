@@ -154,8 +154,8 @@ func (a *AnthropicAdapter) ParseChatResponse(body map[string]interface{}) (map[s
 		response["model"] = model
 	}
 
-	if sr, ok := body["stop_reason"]; ok {
-		stopReason = sr.(string)
+	if sr, ok := body["stop_reason"].(string); ok {
+		stopReason = sr
 	}
 
 	if usage, ok := body["usage"].(map[string]interface{}); ok {

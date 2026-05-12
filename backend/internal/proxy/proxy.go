@@ -71,7 +71,16 @@ func (e *Engine) HandleChatCompletions(c *gin.Context) {
 
 	adaptedJSON, _ := json.Marshal(adaptedBody)
 
-	upstreamURL := strings.TrimRight(provider.APiBaseURL, "/") + endpoint
+	if provider.ProviderType == "gemini" && isStream {
+		endpoint = strings.Replace(endpoint, ":generateContent", ":streamGenerateContent", 1)
+		if strings.Contains(endpoint, "?") {
+			endpoint += "&alt=sse"
+		} else {
+			endpoint += "?alt=sse"
+		}
+	}
+
+	upstreamURL := joinUpstreamURL(provider.APiBaseURL, endpoint)
 
 	req, err := http.NewRequest("POST", upstreamURL, bytes.NewReader(adaptedJSON))
 	if err != nil {
@@ -80,34 +89,37 @@ func (e *Engine) HandleChatCompletions(c *gin.Context) {
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	if provider.ProviderType == "gemini" {
-		req.Header.Set("x-goog-api-key", apiKey)
-	} else {
-		req.Header.Set("Authorization", "Bearer "+apiKey)
-	}
-	if provider.ProviderType == "anthropic" {
-		req.Header.Set("anthropic-version", "2023-06-01")
-	}
-
-	if provider.ProviderType == "gemini" && isStream {
-		upstreamURL = strings.Replace(upstreamURL, ":generateContent", ":streamGenerateContent?alt=sse", 1)
-	}
+	copyForwardableRequestHeaders(c, req)
+	setProviderAuthHeaders(req, provider.ProviderType, apiKey)
 
 	client := &http.Client{Timeout: 5 * time.Minute}
 	startTime := time.Now()
 	resp, err := client.Do(req)
 	if err != nil {
 		e.usageService.Log(models.UsageLog{
-			APIKeyID:    &apiKeyID,
-			ProviderID:  &provider.ID,
-			Model:       fullModelID,
-			IsError:     true,
+			APIKeyID:     &apiKeyID,
+			ProviderID:   &provider.ID,
+			Model:        fullModelID,
+			IsError:      true,
 			ErrorMessage: err.Error(),
 		})
 		c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("upstream request failed: %v", err)})
 		return
 	}
 	defer resp.Body.Close()
+
+	if !isSuccessStatus(resp.StatusCode) {
+		respBody, _ := io.ReadAll(resp.Body)
+		e.usageService.Log(models.UsageLog{
+			APIKeyID:     &apiKeyID,
+			ProviderID:   &provider.ID,
+			Model:        fullModelID,
+			IsError:      true,
+			ErrorMessage: fmt.Sprintf("upstream returned %d", resp.StatusCode),
+		})
+		c.Data(resp.StatusCode, contentTypeOrDefault(resp.Header), respBody)
+		return
+	}
 
 	if isStream {
 		e.handleStreamResponse(c, resp, adapter, apiKeyID, provider.ID, fullModelID, dbModel)
@@ -127,48 +139,36 @@ func (e *Engine) HandleChatCompletions(c *gin.Context) {
 		return
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		e.usageService.Log(models.UsageLog{
-			APIKeyID:     &apiKeyID,
-			ProviderID:   &provider.ID,
-			Model:        fullModelID,
-			IsError:      true,
-			ErrorMessage: fmt.Sprintf("upstream returned %d", resp.StatusCode),
-		})
-		c.Data(resp.StatusCode, "application/json", respBody)
-		return
-	}
-
 	var upstreamResponse map[string]interface{}
 	if err := json.Unmarshal(respBody, &upstreamResponse); err != nil {
-		c.Data(resp.StatusCode, "application/json", respBody)
+		c.Data(resp.StatusCode, contentTypeOrDefault(resp.Header), respBody)
 		return
 	}
 
 	finalResponse, err := adapter.ParseChatResponse(upstreamResponse)
 	if err != nil {
-		c.Data(resp.StatusCode, "application/json", respBody)
+		c.Data(resp.StatusCode, contentTypeOrDefault(resp.Header), respBody)
 		return
 	}
 
 	finalResponse["model"] = fullModelID
 
 	if usage, ok := finalResponse["usage"].(map[string]interface{}); ok {
-		requestTokens, _ := usage["prompt_tokens"].(int64)
-		responseTokens, _ := usage["completion_tokens"].(int64)
-		totalTokens, _ := usage["total_tokens"].(int64)
+		requestTokens := numberToInt64(usage["prompt_tokens"])
+		responseTokens := numberToInt64(usage["completion_tokens"])
+		totalTokens := numberToInt64(usage["total_tokens"])
 		cacheWriteTokens, cacheHitTokens := extractCacheTokens(usage)
 
-		cost := calculateCost(dbModel, int64(requestTokens), int64(responseTokens), cacheWriteTokens, cacheHitTokens)
+		cost := calculateCost(dbModel, requestTokens, responseTokens, cacheWriteTokens, cacheHitTokens)
 		latencyMs := time.Since(startTime).Milliseconds()
 
 		e.usageService.Log(models.UsageLog{
 			APIKeyID:       &apiKeyID,
 			ProviderID:     &provider.ID,
 			Model:          fullModelID,
-			RequestTokens:  int64(requestTokens),
-			ResponseTokens: int64(responseTokens),
-			TotalTokens:    int64(totalTokens),
+			RequestTokens:  requestTokens,
+			ResponseTokens: responseTokens,
+			TotalTokens:    totalTokens,
 			LatencyMs:      latencyMs,
 			Cost:           cost,
 		})
@@ -179,6 +179,7 @@ func (e *Engine) HandleChatCompletions(c *gin.Context) {
 
 func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapter Adapter, apiKeyID, providerID int64, fullModelID string, dbModel *models.Model) {
 	c.Status(http.StatusOK)
+	copyResponseHeaders(c, resp.Header)
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")
@@ -192,14 +193,21 @@ func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapt
 	buf := make([]byte, 4096)
 
 	var totalInputTokens, totalOutputTokens int64
+	sentDone := false
 
 	for {
 		n, err := resp.Body.Read(buf)
 		if n > 0 {
 			chunk := buf[:n]
+			if strings.Contains(string(chunk), "data: [DONE]") {
+				sentDone = true
+			}
 
 			transformed, _ := adapter.ParseStreamChunk(chunk)
 			if transformed != nil {
+				if strings.Contains(string(transformed), "data: [DONE]") {
+					sentDone = true
+				}
 				c.Writer.Write(transformed)
 				flusher.Flush()
 			} else {
@@ -212,8 +220,10 @@ func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapt
 		}
 	}
 
-	c.Writer.Write([]byte("data: [DONE]\n\n"))
-	flusher.Flush()
+	if !sentDone {
+		c.Writer.Write([]byte("data: [DONE]\n\n"))
+		flusher.Flush()
+	}
 
 	latencyMs := time.Since(start).Milliseconds()
 
@@ -228,6 +238,40 @@ func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapt
 		TotalTokens:    totalInputTokens + totalOutputTokens,
 		LatencyMs:      latencyMs,
 		Cost:           cost,
+	})
+}
+
+func (e *Engine) handleRawStreamResponse(c *gin.Context, resp *http.Response, apiKeyID, providerID int64, fullModelID string, start time.Time) {
+	c.Status(http.StatusOK)
+	copyResponseHeaders(c, resp.Header)
+	if resp.Header.Get("Content-Type") == "" {
+		c.Header("Content-Type", "text/event-stream")
+	}
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+
+	flusher, ok := c.Writer.(http.Flusher)
+	if !ok {
+		return
+	}
+
+	buf := make([]byte, 4096)
+	for {
+		n, err := resp.Body.Read(buf)
+		if n > 0 {
+			c.Writer.Write(buf[:n])
+			flusher.Flush()
+		}
+		if err != nil {
+			break
+		}
+	}
+
+	e.usageService.Log(models.UsageLog{
+		APIKeyID:   &apiKeyID,
+		ProviderID: &providerID,
+		Model:      fullModelID,
+		LatencyMs:  time.Since(start).Milliseconds(),
 	})
 }
 
@@ -249,6 +293,22 @@ func (e *Engine) HandleListModels(c *gin.Context) {
 	})
 }
 
+func (e *Engine) HandleGetModel(c *gin.Context) {
+	fullModelID := strings.TrimPrefix(c.Param("model"), "/")
+	if fullModelID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "model path parameter is required"})
+		return
+	}
+
+	dbModel, err := e.resolveModel(fullModelID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("unknown model: %s", fullModelID)})
+		return
+	}
+
+	c.JSON(http.StatusOK, dbModel.ToPublicModel())
+}
+
 func (e *Engine) HandleMessages(c *gin.Context) {
 	apiKeyID := c.GetInt64("api_key_id")
 
@@ -262,6 +322,11 @@ func (e *Engine) HandleMessages(c *gin.Context) {
 	if err := json.Unmarshal(bodyBytes, &body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON"})
 		return
+	}
+
+	isStream := false
+	if stream, ok := body["stream"].(bool); ok {
+		isStream = stream
 	}
 
 	fullModelID, ok := body["model"].(string)
@@ -288,6 +353,11 @@ func (e *Engine) HandleMessages(c *gin.Context) {
 		return
 	}
 
+	if isStream && provider.ProviderType != "anthropic" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "streaming /v1/messages is currently supported only for Anthropic providers"})
+		return
+	}
+
 	apiKey, err := e.providerService.DecryptAPIKey(provider.APIKeyEncrypted)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to decrypt provider key"})
@@ -301,7 +371,7 @@ func (e *Engine) HandleMessages(c *gin.Context) {
 	}
 
 	adaptedJSON, _ := json.Marshal(adaptedBody)
-	upstreamURL := strings.TrimRight(provider.APiBaseURL, "/") + endpoint
+	upstreamURL := joinUpstreamURL(provider.APiBaseURL, endpoint)
 
 	req, err := http.NewRequest("POST", upstreamURL, bytes.NewReader(adaptedJSON))
 	if err != nil {
@@ -310,14 +380,8 @@ func (e *Engine) HandleMessages(c *gin.Context) {
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	if provider.ProviderType == "gemini" {
-		req.Header.Set("x-goog-api-key", apiKey)
-	} else if provider.ProviderType == "anthropic" {
-		req.Header.Set("x-api-key", apiKey)
-		req.Header.Set("anthropic-version", "2023-06-01")
-	} else {
-		req.Header.Set("Authorization", "Bearer "+apiKey)
-	}
+	copyForwardableRequestHeaders(c, req)
+	setProviderAuthHeaders(req, provider.ProviderType, apiKey)
 
 	client := &http.Client{Timeout: 5 * time.Minute}
 	startTime := time.Now()
@@ -335,10 +399,9 @@ func (e *Engine) HandleMessages(c *gin.Context) {
 	}
 	defer resp.Body.Close()
 
-	respBody, _ := io.ReadAll(resp.Body)
-	latencyMs := time.Since(startTime).Milliseconds()
-
-	if resp.StatusCode != http.StatusOK {
+	if !isSuccessStatus(resp.StatusCode) {
+		respBody, _ := io.ReadAll(resp.Body)
+		latencyMs := time.Since(startTime).Milliseconds()
 		e.usageService.Log(models.UsageLog{
 			APIKeyID:     &apiKeyID,
 			ProviderID:   &provider.ID,
@@ -347,41 +410,49 @@ func (e *Engine) HandleMessages(c *gin.Context) {
 			ErrorMessage: fmt.Sprintf("upstream returned %d", resp.StatusCode),
 			LatencyMs:    latencyMs,
 		})
-		c.Data(resp.StatusCode, "application/json", respBody)
+		c.Data(resp.StatusCode, contentTypeOrDefault(resp.Header), respBody)
 		return
 	}
+
+	if isStream {
+		e.handleRawStreamResponse(c, resp, apiKeyID, provider.ID, fullModelID, startTime)
+		return
+	}
+
+	respBody, _ := io.ReadAll(resp.Body)
+	latencyMs := time.Since(startTime).Milliseconds()
 
 	var upstreamResponse map[string]interface{}
 	if err := json.Unmarshal(respBody, &upstreamResponse); err != nil {
 		e.usageService.Log(models.UsageLog{
-			APIKeyID:  &apiKeyID,
+			APIKeyID:   &apiKeyID,
 			ProviderID: &provider.ID,
-			Model:     fullModelID,
-			LatencyMs: latencyMs,
+			Model:      fullModelID,
+			LatencyMs:  latencyMs,
 		})
-		c.Data(resp.StatusCode, "application/json", respBody)
+		c.Data(resp.StatusCode, contentTypeOrDefault(resp.Header), respBody)
 		return
 	}
 
 	finalResponse, err := adapter.ParseMessagesResponse(upstreamResponse)
 	if err != nil {
 		e.usageService.Log(models.UsageLog{
-			APIKeyID:  &apiKeyID,
+			APIKeyID:   &apiKeyID,
 			ProviderID: &provider.ID,
-			Model:     fullModelID,
-			LatencyMs: latencyMs,
+			Model:      fullModelID,
+			LatencyMs:  latencyMs,
 		})
-		c.Data(resp.StatusCode, "application/json", respBody)
+		c.Data(resp.StatusCode, contentTypeOrDefault(resp.Header), respBody)
 		return
 	}
 
 	finalResponse["model"] = fullModelID
 
 	e.usageService.Log(models.UsageLog{
-		APIKeyID:  &apiKeyID,
+		APIKeyID:   &apiKeyID,
 		ProviderID: &provider.ID,
-		Model:     fullModelID,
-		LatencyMs: latencyMs,
+		Model:      fullModelID,
+		LatencyMs:  latencyMs,
 	})
 
 	c.JSON(http.StatusOK, finalResponse)
@@ -390,6 +461,7 @@ func (e *Engine) HandleMessages(c *gin.Context) {
 func (e *Engine) HandlePathRouted(c *gin.Context) {
 	providerKey := c.Param("provider_key")
 	endpoint := c.Param("endpoint")
+	apiPrefix := routeAPIPrefix(c.Request.URL.Path)
 
 	provider, err := e.providerService.GetByKey(providerKey)
 	if err != nil {
@@ -407,9 +479,10 @@ func (e *Engine) HandlePathRouted(c *gin.Context) {
 
 	var body map[string]interface{}
 	var adaptedJSON []byte
-	isGet := c.Request.Method == "GET"
+	hasRequestBody := c.Request.Method != http.MethodGet && c.Request.Method != http.MethodHead
+	contentType := c.GetHeader("Content-Type")
 
-	if !isGet && len(bodyBytes) > 0 {
+	if hasRequestBody && len(bodyBytes) > 0 && isJSONContentType(contentType) {
 		if err := json.Unmarshal(bodyBytes, &body); err != nil {
 			c.Data(http.StatusBadRequest, "application/json", bodyBytes)
 			return
@@ -421,12 +494,7 @@ func (e *Engine) HandlePathRouted(c *gin.Context) {
 	}
 
 	if modelID, ok := body["model"].(string); ok {
-		for i := 0; i < len(modelID); i++ {
-			if modelID[i] == '/' {
-				body["model"] = modelID[i+1:]
-				break
-			}
-		}
+		body["model"] = stripProviderPrefix(modelID)
 	}
 
 	fullModelID := providerKey + "/"
@@ -442,47 +510,51 @@ func (e *Engine) HandlePathRouted(c *gin.Context) {
 		return
 	}
 
-	adaptedJSON, _ = json.Marshal(body)
-	upstreamURL := strings.TrimRight(provider.APiBaseURL, "/") + endpoint
-
 	var reqBody io.Reader
-	if !isGet {
-		reqBody = bytes.NewReader(adaptedJSON)
+	if hasRequestBody {
+		if len(body) > 0 && isJSONContentType(contentType) {
+			adaptedJSON, _ = json.Marshal(body)
+			reqBody = bytes.NewReader(adaptedJSON)
+		} else if len(bodyBytes) > 0 {
+			reqBody = bytes.NewReader(bodyBytes)
+		}
 	}
+
+	upstreamBaseURL := routedBaseURL(provider.ProviderType, apiPrefix, provider.APiBaseURL)
+	upstreamEndpoint := routedEndpoint(apiPrefix, upstreamBaseURL, endpoint)
+	upstreamURL := appendRawQuery(joinUpstreamURL(upstreamBaseURL, upstreamEndpoint), c.Request.URL.RawQuery)
+
 	req, err := http.NewRequest(c.Request.Method, upstreamURL, reqBody)
 	if err != nil {
 		e.usageService.Log(models.UsageLog{
-			APIKeyID:  &apiKeyID,
-			ProviderID: &provider.ID,
-		Model:     fullModelID,
-		IsError:   true,
-		ErrorMessage: err.Error(),
-	})
-	c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create upstream request"})
-	return
-}
+			APIKeyID:     &apiKeyID,
+			ProviderID:   &provider.ID,
+			Model:        fullModelID,
+			IsError:      true,
+			ErrorMessage: err.Error(),
+		})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create upstream request"})
+		return
+	}
 
-if !isGet {
-	req.Header.Set("Content-Type", "application/json")
-}
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-	if provider.ProviderType == "gemini" {
-		req.Header.Set("x-goog-api-key", apiKey)
+	if hasRequestBody {
+		if contentType == "" {
+			contentType = "application/json"
+		}
+		req.Header.Set("Content-Type", contentType)
 	}
-	if provider.ProviderType == "anthropic" {
-		req.Header.Set("x-api-key", apiKey)
-		req.Header.Set("anthropic-version", "2023-06-01")
-	}
+	copyForwardableRequestHeaders(c, req)
+	setProviderAuthHeaders(req, provider.ProviderType, apiKey)
 
 	client := &http.Client{Timeout: 5 * time.Minute}
 	startTime := time.Now()
 	resp, err := client.Do(req)
 	if err != nil {
 		e.usageService.Log(models.UsageLog{
-			APIKeyID:  &apiKeyID,
-			ProviderID: &provider.ID,
-			Model:     fullModelID,
-			IsError:   true,
+			APIKeyID:     &apiKeyID,
+			ProviderID:   &provider.ID,
+			Model:        fullModelID,
+			IsError:      true,
 			ErrorMessage: err.Error(),
 		})
 		c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("upstream request failed: %v", err)})
@@ -490,33 +562,36 @@ if !isGet {
 	}
 	defer resp.Body.Close()
 
+	bodyStream, _ := body["stream"].(bool)
+	responseContentType := strings.ToLower(resp.Header.Get("Content-Type"))
+	if isSuccessStatus(resp.StatusCode) && (bodyStream || strings.Contains(responseContentType, "text/event-stream") || strings.Contains(responseContentType, "x-ndjson")) {
+		e.handleRawStreamResponse(c, resp, apiKeyID, provider.ID, fullModelID, startTime)
+		return
+	}
+
 	respBody, _ := io.ReadAll(resp.Body)
 	latencyMs := time.Since(startTime).Milliseconds()
 
-	if resp.StatusCode != http.StatusOK {
+	if !isSuccessStatus(resp.StatusCode) {
 		e.usageService.Log(models.UsageLog{
-			APIKeyID:  &apiKeyID,
-			ProviderID: &provider.ID,
-			Model:     fullModelID,
-			IsError:   true,
+			APIKeyID:     &apiKeyID,
+			ProviderID:   &provider.ID,
+			Model:        fullModelID,
+			IsError:      true,
 			ErrorMessage: fmt.Sprintf("upstream returned %d", resp.StatusCode),
-			LatencyMs: latencyMs,
+			LatencyMs:    latencyMs,
 		})
 	} else {
 		e.usageService.Log(models.UsageLog{
-			APIKeyID:  &apiKeyID,
+			APIKeyID:   &apiKeyID,
 			ProviderID: &provider.ID,
-			Model:     fullModelID,
-			LatencyMs: latencyMs,
+			Model:      fullModelID,
+			LatencyMs:  latencyMs,
 		})
 	}
 
-	for k, values := range resp.Header {
-		for _, v := range values {
-			c.Header(k, v)
-		}
-	}
-	c.Data(resp.StatusCode, resp.Header.Get("Content-Type"), respBody)
+	copyResponseHeaders(c, resp.Header)
+	c.Data(resp.StatusCode, contentTypeOrDefault(resp.Header), respBody)
 }
 
 func calculateCost(m *models.Model, inputTokens int64, outputTokens int64, cacheWriteTokens int64, cacheHitTokens int64) float64 {
@@ -528,18 +603,5 @@ func calculateCost(m *models.Model, inputTokens int64, outputTokens int64, cache
 }
 
 func extractCacheTokens(usage map[string]interface{}) (int64, int64) {
-	var cacheWrite, cacheHit int64
-	if cw, ok := usage["cache_creation_input_tokens"].(float64); ok {
-		cacheWrite = int64(cw)
-	}
-	if cw, ok := usage["cache_read_input_tokens"].(float64); ok {
-		cacheHit = int64(cw)
-	}
-	if cw, ok := usage["cache_creation_input_tokens"].(int64); ok {
-		cacheWrite = cw
-	}
-	if cw, ok := usage["cache_read_input_tokens"].(int64); ok {
-		cacheHit = cw
-	}
-	return cacheWrite, cacheHit
+	return numberToInt64(usage["cache_creation_input_tokens"]), numberToInt64(usage["cache_read_input_tokens"])
 }

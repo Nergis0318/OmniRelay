@@ -75,6 +75,7 @@ func main() {
 	{
 		v1.POST("/chat/completions", proxyEngine.HandleChatCompletions)
 		v1.GET("/models", proxyEngine.HandleListModels)
+		v1.GET("/models/*model", proxyEngine.HandleGetModel)
 		v1.POST("/messages", proxyEngine.HandleMessages)
 	}
 
@@ -83,6 +84,8 @@ func main() {
 	pbr := r.Group("/")
 	pbr.Use(middleware.APIKeyAuth(apiKeyService), middleware.UsageLogging(usageService))
 	pbr.Any("/:provider_key/v1/*endpoint", proxyEngine.HandlePathRouted)
+	pbr.Any("/:provider_key/v1beta/*endpoint", proxyEngine.HandlePathRouted)
+	pbr.Any("/:provider_key/api/*endpoint", proxyEngine.HandlePathRouted)
 
 	log.Printf("OmniRelay starting on %s", cfg.ListenAddr)
 	if err := r.Run(cfg.ListenAddr); err != nil {

@@ -86,6 +86,15 @@ func (a *GeminiAdapter) BuildChatRequest(body map[string]interface{}) (string, m
 			}
 		}
 	}
+	if maxTokens, ok := body["max_completion_tokens"]; ok {
+		if gc, ok := geminiBody["generationConfig"].(map[string]interface{}); ok {
+			gc["maxOutputTokens"] = maxTokens
+		} else {
+			geminiBody["generationConfig"] = map[string]interface{}{
+				"maxOutputTokens": maxTokens,
+			}
+		}
+	}
 	if topP, ok := body["top_p"]; ok {
 		if gc, ok := geminiBody["generationConfig"].(map[string]interface{}); ok {
 			gc["topP"] = topP
@@ -95,12 +104,32 @@ func (a *GeminiAdapter) BuildChatRequest(body map[string]interface{}) (string, m
 			}
 		}
 	}
+	if n, ok := body["n"]; ok {
+		if gc, ok := geminiBody["generationConfig"].(map[string]interface{}); ok {
+			gc["candidateCount"] = n
+		} else {
+			geminiBody["generationConfig"] = map[string]interface{}{
+				"candidateCount": n,
+			}
+		}
+	}
 	if stop, ok := body["stop"]; ok {
 		if gc, ok := geminiBody["generationConfig"].(map[string]interface{}); ok {
 			gc["stopSequences"] = stop
 		} else {
 			geminiBody["generationConfig"] = map[string]interface{}{
 				"stopSequences": stop,
+			}
+		}
+	}
+	if responseFormat, ok := body["response_format"].(map[string]interface{}); ok {
+		if formatType, _ := responseFormat["type"].(string); formatType == "json_object" || formatType == "json_schema" {
+			if gc, ok := geminiBody["generationConfig"].(map[string]interface{}); ok {
+				gc["responseMimeType"] = "application/json"
+			} else {
+				geminiBody["generationConfig"] = map[string]interface{}{
+					"responseMimeType": "application/json",
+				}
 			}
 		}
 	}
@@ -137,6 +166,12 @@ func convertOpenAIContentToGeminiParts(content interface{}) []map[string]interfa
 						"inlineData": map[string]interface{}{
 							"mimeType": extractMimeType(url),
 							"data":     extractBase64Data(url),
+						},
+					})
+				} else if url != "" {
+					parts = append(parts, map[string]interface{}{
+						"fileData": map[string]interface{}{
+							"fileUri": url,
 						},
 					})
 				}
@@ -425,11 +460,25 @@ func (a *GeminiAdapter) BuildMessagesRequest(body map[string]interface{}) (strin
 	if maxTokens, ok := body["max_tokens"]; ok {
 		geminiBody["generationConfig"] = map[string]interface{}{"maxOutputTokens": maxTokens}
 	}
+	if stop, ok := body["stop_sequences"]; ok {
+		if gc, ok := geminiBody["generationConfig"].(map[string]interface{}); ok {
+			gc["stopSequences"] = stop
+		} else {
+			geminiBody["generationConfig"] = map[string]interface{}{"stopSequences": stop}
+		}
+	}
 	if temp, ok := body["temperature"]; ok {
 		if gc, ok := geminiBody["generationConfig"].(map[string]interface{}); ok {
 			gc["temperature"] = temp
 		} else {
 			geminiBody["generationConfig"] = map[string]interface{}{"temperature": temp}
+		}
+	}
+	if topP, ok := body["top_p"]; ok {
+		if gc, ok := geminiBody["generationConfig"].(map[string]interface{}); ok {
+			gc["topP"] = topP
+		} else {
+			geminiBody["generationConfig"] = map[string]interface{}{"topP": topP}
 		}
 	}
 
