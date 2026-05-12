@@ -1,0 +1,27 @@
+- generic [ref=e8]:
+  - generic [ref=e9]: Create Account
+  - generic [ref=e11]:
+    - generic [ref=e12]:
+      - generic [ref=e14]: 󰀄
+      - generic [ref=e17]:
+        - generic: Username
+        - textbox "Username" [ref=e18]
+      - alert [ref=e19]
+    - generic [ref=e21]:
+      - generic [ref=e23]: 󰌾
+      - generic [ref=e26]:
+        - generic: Password
+        - textbox "Password" [ref=e27]
+      - alert [ref=e28]
+    - generic [ref=e30]:
+      - generic [ref=e32]: 󱎚
+      - generic [ref=e35]:
+        - generic: Confirm Password
+        - textbox "Confirm Password" [ref=e36]
+      - alert [ref=e37]
+    - button "Register" [ref=e39] [cursor=pointer]:
+      - generic [ref=e40]: Register
+  - generic [ref=e42]:
+    - text: Already have an account?
+    - link "Sign In" [ref=e43] [cursor=pointer]:
+      - /url: /login

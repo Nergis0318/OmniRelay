@@ -1,0 +1,85 @@
+- generic [ref=e4]:
+  - navigation [ref=e44]:
+    - generic [ref=e45]:
+      - generic [ref=e46]:
+        - generic [ref=e50]:
+          - generic [ref=e51]: admin
+          - generic [ref=e52]: OmniRelay Gateway
+        - button [ref=e54] [cursor=pointer]:
+          - generic [ref=e56]: 󰅁
+      - separator [ref=e57]
+      - list [ref=e58]:
+        - link "Dashboard" [ref=e59] [cursor=pointer]:
+          - /url: /
+          - generic [ref=e61]: 󰕮
+          - generic [ref=e63]: Dashboard
+        - link "Providers" [ref=e64] [cursor=pointer]:
+          - /url: /providers
+          - generic [ref=e66]: 󰒋
+          - generic [ref=e68]: Providers
+        - link "Models" [ref=e69] [cursor=pointer]:
+          - /url: /models
+          - generic [ref=e71]: 󰆧
+          - generic [ref=e73]: Models
+        - link "API Keys" [ref=e74] [cursor=pointer]:
+          - /url: /api-keys
+          - generic [ref=e76]: 󰌋
+          - generic [ref=e78]: API Keys
+        - link "Usage" [ref=e79] [cursor=pointer]:
+          - /url: /usage
+          - generic [ref=e81]: 󰄪
+          - generic [ref=e83]: Usage
+    - button "Logout" [ref=e86] [cursor=pointer]:
+      - generic [ref=e88]: 󰍃
+      - generic [ref=e89]: Logout
+  - main [ref=e90]:
+    - generic [ref=e92]:
+      - heading "Dashboard" [level=1] [ref=e93]
+      - generic [ref=e94]:
+        - generic [ref=e97]:
+          - generic [ref=e99]: 󰅴
+          - generic [ref=e100]:
+            - generic [ref=e101]: Total Tokens
+            - generic [ref=e102]: "0"
+        - generic [ref=e105]:
+          - generic [ref=e107]: 󰇁
+          - generic [ref=e108]:
+            - generic [ref=e109]: Total Cost
+            - generic [ref=e110]: $0.0000
+        - generic [ref=e113]:
+          - generic [ref=e115]: 󰓅
+          - generic [ref=e116]:
+            - generic [ref=e117]: Avg Latency
+            - generic [ref=e118]: 0 ms
+        - generic [ref=e121]:
+          - generic [ref=e123]: 󰒊
+          - generic [ref=e124]:
+            - generic [ref=e125]: Total Requests
+            - generic [ref=e126]: "0"
+      - generic [ref=e127]:
+        - generic [ref=e129]:
+          - generic [ref=e130]: Usage Over Time (30 Days)
+          - paragraph [ref=e132]: No usage data yet
+        - generic [ref=e134]:
+          - generic [ref=e135]: Quick Info
+          - list [ref=e137]:
+            - listitem [ref=e138]:
+              - generic [ref=e140]: 󰒋
+              - generic [ref=e141]:
+                - generic [ref=e142]: Active Providers
+                - generic [ref=e143]: "0"
+            - listitem [ref=e144]:
+              - generic [ref=e146]: 󰆧
+              - generic [ref=e147]:
+                - generic [ref=e148]: Registered Models
+                - generic [ref=e149]: "0"
+            - listitem [ref=e150]:
+              - generic [ref=e152]: 󰌋
+              - generic [ref=e153]:
+                - generic [ref=e154]: Active API Keys
+                - generic [ref=e155]: "0"
+            - listitem [ref=e156]:
+              - generic [ref=e158]: 󰒊
+              - generic [ref=e159]:
+                - generic [ref=e160]: Total Requests
+                - generic [ref=e161]: "0"
