@@ -1,29 +1,29 @@
-import axios from 'axios'
-import { useAuthStore } from '../stores/auth'
-import router from '../plugins/router'
+import axios from "axios";
+import { useAuthStore } from "../stores/auth";
+import router from "../plugins/router";
 
 const api = axios.create({
-  baseURL: '/admin',
-})
+  baseURL: "/admin",
+});
 
 api.interceptors.request.use((config) => {
-  const auth = useAuthStore()
+  const auth = useAuthStore();
   if (auth.token) {
-    config.headers.Authorization = `Bearer ${auth.token}`
+    config.headers.Authorization = `Bearer ${auth.token}`;
   }
-  return config
-})
+  return config;
+});
 
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      const auth = useAuthStore()
-      auth.logout()
-      router.push('/login')
+      const auth = useAuthStore();
+      auth.logout();
+      router.push("/login");
     }
-    return Promise.reject(error)
-  }
-)
+    return Promise.reject(error);
+  },
+);
 
-export default api
+export default api;

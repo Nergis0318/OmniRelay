@@ -271,10 +271,12 @@ func (a *GeminiAdapter) ParseChatResponse(body map[string]interface{}) (map[stri
 	return response, nil
 }
 
-func (a *GeminiAdapter) ParseStreamChunk(data []byte) ([]byte, error) {
+func (a *GeminiAdapter) ParseStreamChunk(data []byte) ([]byte, int64, int64, error) {
 	text := strings.TrimSpace(string(data))
 
 	var result bytes.Buffer
+	var totalInput, totalOutput int64
+
 	scanner := bufio.NewScanner(strings.NewReader(text))
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -300,8 +302,8 @@ func (a *GeminiAdapter) ParseStreamChunk(data []byte) ([]byte, error) {
 			parts, _ := content["parts"].([]interface{})
 			for _, rawPart := range parts {
 				part, _ := rawPart.(map[string]interface{})
-				if text, ok := part["text"].(string); ok {
-					deltaText += text
+				if t, ok := part["text"].(string); ok {
+					deltaText += t
 				}
 			}
 		}
@@ -311,21 +313,25 @@ func (a *GeminiAdapter) ParseStreamChunk(data []byte) ([]byte, error) {
 			"object":  "chat.completion.chunk",
 			"created": time.Now().Unix(),
 			"choices": []map[string]interface{}{
-				{
-					"index": 0,
-					"delta": map[string]interface{}{
-						"content": deltaText,
-					},
-				},
+				{"index": 0, "delta": map[string]interface{}{"content": deltaText}},
 			},
 		}
 
 		if usage, ok := event["usageMetadata"].(map[string]interface{}); ok {
+			input := int64(0)
+			output := int64(0)
+			if v, ok := usage["promptTokenCount"].(float64); ok {
+				input = int64(v)
+			}
+			if v, ok := usage["candidatesTokenCount"].(float64); ok {
+				output = int64(v)
+			}
+			totalInput = input
+			totalOutput = output
 			chunk["usage"] = map[string]interface{}{
-				"prompt_tokens":     int64(0),
-				"completion_tokens": int64(0),
-				"total_tokens":      int64(0),
-				"_gemini_usage":     usage,
+				"prompt_tokens":     input,
+				"completion_tokens": output,
+				"total_tokens":      input + output,
 			}
 		}
 
@@ -341,10 +347,7 @@ func (a *GeminiAdapter) ParseStreamChunk(data []byte) ([]byte, error) {
 			"object":  "chat.completion.chunk",
 			"created": time.Now().Unix(),
 			"choices": []map[string]interface{}{
-				{
-					"index": 0,
-					"delta": map[string]interface{}{},
-				},
+				{"index": 0, "delta": map[string]interface{}{}},
 			},
 		})
 		result.WriteString("data: ")
@@ -352,7 +355,7 @@ func (a *GeminiAdapter) ParseStreamChunk(data []byte) ([]byte, error) {
 		result.WriteString("\n\n")
 	}
 
-	return result.Bytes(), nil
+	return result.Bytes(), totalInput, totalOutput, nil
 }
 
 func (a *GeminiAdapter) FetchModels(apiBaseURL string, apiKey string) ([]string, error) {

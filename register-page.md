@@ -1,7 +1,0 @@
-- generic [ref=e7]:
-  - text: Create Account
-  - generic [ref=e10] [cursor=pointer]: Register
-  - generic [ref=e12]:
-    - text: Already have an account?
-    - link "Sign In" [ref=e13] [cursor=pointer]:
-      - /url: /login

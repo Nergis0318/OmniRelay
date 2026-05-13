@@ -10,7 +10,8 @@ type Adapter interface {
 	ParseChatResponse(body map[string]interface{}) (map[string]interface{}, error)
 	BuildMessagesRequest(body map[string]interface{}) (string, map[string]interface{}, error)
 	ParseMessagesResponse(body map[string]interface{}) (map[string]interface{}, error)
-	ParseStreamChunk(data []byte) ([]byte, error)
+	// ParseStreamChunk transforms a raw SSE chunk and returns (transformed, inputTokens, outputTokens, err).
+	ParseStreamChunk(data []byte) ([]byte, int64, int64, error)
 	FetchModels(apiBaseURL string, apiKey string) ([]string, error)
 	SupportsEndpoint(path string) bool
 	IsSameFormat() bool
@@ -32,7 +33,7 @@ func NewEngine(ps *service.ProviderService, ms *service.ModelService, us *servic
 	}
 	e.adapters["openai"] = &OpenAIAdapter{}
 	e.adapters["lmstudio"] = &OpenAIAdapter{}
-	e.adapters["ollama"] = &OpenAIAdapter{}
+	e.adapters["ollama"] = &OllamaAdapter{}
 	e.adapters["gemini"] = &GeminiAdapter{}
 	e.adapters["anthropic"] = &AnthropicAdapter{}
 	return e

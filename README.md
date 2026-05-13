@@ -12,6 +12,7 @@ Unified AI Inference Gateway — OpenAI/Anthropic-compatible API with multi-prov
 - **Unified model list** — auto-fetch from providers or manually add models
 - **Model ID format** — `provider-key/model-id` (e.g., `openai/gpt-4o`, `gemini/gemini-2.5-flash`)
 - **Tiered pricing** — per-model pricing: Input, Output, 5m Cache Write, 1h Cache Write, Cache Read (all $/1M tokens)
+- **Cache token tracking** — `cache_creation_input_tokens` / `cache_read_input_tokens` preserved in usage
 - **Dashboard** — token usage, cost, latency charts, provider management, API key issuance
 
 ## Architecture
@@ -28,6 +29,7 @@ Client (SDK/App)
 │  /v1/models              │◄── Unified model list
 │  /v1/messages            │◄── Anthropic-compatible
 │  /:provider/v1/*endpoint │◄── Path-based routing
+│  /:provider/api/*endpoint│◄── Ollama native routing
 │                          │
 │  /admin/*                │◄── Dashboard API (JWT)
 └──────┬───────────────────┘
@@ -39,7 +41,7 @@ Client (SDK/App)
 │  OpenAI    → Passthrough │
 │  Anthropic → Translate   │
 │  LM Studio → Passthrough │
-│  Ollama    → Passthrough │
+│  Ollama    → /api/tags   │
 │  Gemini    → Translate   │
 └──────────────────────────┘
 ```
@@ -62,12 +64,32 @@ go run ./cmd/server/
 
 # Terminal 2 — Frontend
 cd frontend
-npm install
-npm run dev
+bun install
+bun run dev
 ```
 
 Dashboard: `http://localhost:5173` — first registered user becomes admin.  
 Proxy: `http://localhost:8080/v1/chat/completions`
+
+## Docker
+
+Build and run the full stack with Compose:
+
+```bash
+docker compose up --build
+```
+
+Dashboard: `http://localhost:5173`  
+Proxy: `http://localhost:8080/v1/chat/completions`
+
+The backend SQLite database is stored in the `omnirelay-data` named volume. For production deployments, set strong values for `JWT_SECRET` and `ENCRYPT_KEY` before starting Compose.
+
+Build images separately:
+
+```bash
+docker build -t omnirelay-backend ./backend
+docker build -t omnirelay-frontend ./frontend
+```
 
 ## Environment Variables
 
@@ -112,8 +134,8 @@ Works with any provider key: `/gemini/v1/chat/completions`, `/ollama/v1/chat/com
 Gemini requests are automatically translated to Google's native format:
 
 ```
-POST gemini/v1/chat/completions  →  POST generative.googleapis.com/v1beta/models/{model}:generateContent
-                                 (streaming → :streamGenerateContent?alt=sse)
+POST /gemini/v1/chat/completions  →  POST generativelanguage.googleapis.com/v1beta/models/{model}:generateContent
+                                     (streaming → :streamGenerateContent?alt=sse)
 
 Auth:  x-goog-api-key instead of Bearer
 Body:  OpenAI messages → Gemini contents + system_instruction
@@ -136,6 +158,18 @@ Authorization: Bearer om-ni-xxxx
 POST /anthropic/v1/messages
 ```
 
+### 5. Ollama native routing
+
+Ollama supports both OpenAI-compat (`/v1/*`) and native (`/api/*`) paths:
+
+```bash
+POST /ollama/api/chat
+POST /ollama/v1/chat/completions
+GET  /ollama/api/tags
+```
+
+Model sync uses `/api/tags` (Ollama native spec).
+
 ## Provider Setup
 
 | Provider | Base URL | Default Port | Type |
@@ -146,7 +180,7 @@ POST /anthropic/v1/messages
 | Ollama | `http://localhost:11434/v1` | 11434 | `ollama` |
 | Gemini | `https://generativelanguage.googleapis.com/v1beta` | — | `gemini` |
 
-All providers can use the **Auto-fetch** checkbox when adding — it pulls available models from the provider's API.
+All providers support the **Auto-fetch** checkbox when adding — it pulls available models from the provider's API.
 
 ## Model Pricing
 
@@ -160,7 +194,15 @@ Per-model pricing in dollars per 1M tokens:
 | 1h Cache Write | 1-hour cache creation |
 | Cache Read | Cache hits and refreshes |
 
-Cost = `(tokens / 1,000,000) × price`. Cache tokens parsed from `cache_creation_input_tokens` / `cache_read_input_tokens` in API response.
+Cost = `(tokens / 1,000,000) × price`. Cache tokens are parsed from `cache_creation_input_tokens` / `cache_read_input_tokens` in the API response and preserved in the OpenAI-format usage object.
+
+## Streaming
+
+All providers support streaming via SSE (`"stream": true`). Token usage is extracted from stream events:
+
+- **Anthropic** — from `message_start` (input) and `message_delta` (output) events
+- **Gemini** — from `usageMetadata` in the final stream chunk
+- **OpenAI / LM Studio / Ollama** — passed through as-is
 
 ## API Key Management
 
@@ -179,8 +221,8 @@ go build -o omnirelay ./cmd/server/  # Build
 
 # Frontend
 cd frontend
-npm run dev                   # Dev server (port 5173)
-npm run build                 # Production build
+bun run dev                   # Dev server (port 5173)
+bun run build                 # Production build
 npx vue-tsc --noEmit          # Type check
 ```
 

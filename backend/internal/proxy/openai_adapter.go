@@ -31,8 +31,8 @@ func (a *OpenAIAdapter) ParseChatResponse(body map[string]interface{}) (map[stri
 	return body, nil
 }
 
-func (a *OpenAIAdapter) ParseStreamChunk(data []byte) ([]byte, error) {
-	return data, nil
+func (a *OpenAIAdapter) ParseStreamChunk(data []byte) ([]byte, int64, int64, error) {
+	return data, 0, 0, nil
 }
 
 func (a *OpenAIAdapter) FetchModels(apiBaseURL string, apiKey string) ([]string, error) {

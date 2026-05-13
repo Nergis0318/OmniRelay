@@ -34,6 +34,8 @@ func (a *AnthropicAdapter) BuildChatRequest(body map[string]interface{}) (string
 		anthropicBody["max_tokens"] = maxTokens
 	} else if maxCompletion, ok := body["max_completion_tokens"]; ok {
 		anthropicBody["max_tokens"] = maxCompletion
+	} else if contextWindow, ok := body["_context_window"].(int64); ok && contextWindow > 0 {
+		anthropicBody["max_tokens"] = contextWindow
 	} else {
 		anthropicBody["max_tokens"] = 4096
 	}
@@ -165,11 +167,18 @@ func (a *AnthropicAdapter) ParseChatResponse(body map[string]interface{}) (map[s
 		if ot, ok := usage["output_tokens"].(float64); ok {
 			outputTokens = ot
 		}
-		response["usage"] = map[string]interface{}{
+		openaiUsage := map[string]interface{}{
 			"prompt_tokens":     int64(inputTokens),
 			"completion_tokens": int64(outputTokens),
 			"total_tokens":      int64(inputTokens + outputTokens),
 		}
+		if v, ok := usage["cache_creation_input_tokens"]; ok {
+			openaiUsage["cache_creation_input_tokens"] = v
+		}
+		if v, ok := usage["cache_read_input_tokens"]; ok {
+			openaiUsage["cache_read_input_tokens"] = v
+		}
+		response["usage"] = openaiUsage
 	}
 
 	if content, ok := body["content"].([]interface{}); ok {
@@ -219,10 +228,12 @@ func (a *AnthropicAdapter) ParseChatResponse(body map[string]interface{}) (map[s
 	return response, nil
 }
 
-func (a *AnthropicAdapter) ParseStreamChunk(data []byte) ([]byte, error) {
+func (a *AnthropicAdapter) ParseStreamChunk(data []byte) ([]byte, int64, int64, error) {
 	text := strings.TrimSpace(string(data))
 
 	var events []map[string]interface{}
+	var inputTokens, outputTokens int64
+
 	scanner := bufio.NewScanner(strings.NewReader(text))
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -244,64 +255,48 @@ func (a *AnthropicAdapter) ParseStreamChunk(data []byte) ([]byte, error) {
 		switch eventType {
 		case "content_block_delta":
 			delta, _ := event["delta"].(map[string]interface{})
-			deltaType, _ := delta["type"].(string)
-			if deltaType == "text_delta" {
+			if deltaType, _ := delta["type"].(string); deltaType == "text_delta" {
 				textDelta, _ := delta["text"].(string)
 				events = append(events, map[string]interface{}{
 					"choices": []map[string]interface{}{
-						{
-							"index": 0,
-							"delta": map[string]interface{}{
-								"content": textDelta,
-							},
-						},
-					},
-				})
-			}
-		case "message_delta":
-			if usage, ok := event["usage"].(map[string]interface{}); ok {
-				events = append(events, map[string]interface{}{
-					"choices": []map[string]interface{}{
-						{
-							"index":         0,
-							"delta":         map[string]interface{}{},
-							"finish_reason": "stop",
-						},
-					},
-					"usage": map[string]interface{}{
-						"prompt_tokens":     int64(0),
-						"completion_tokens": int64(0),
-						"total_tokens":      int64(0),
-						"_partial_usage":    usage,
+						{"index": 0, "delta": map[string]interface{}{"content": textDelta}},
 					},
 				})
 			}
 		case "message_start":
 			if msg, ok := event["message"].(map[string]interface{}); ok {
 				if usage, ok := msg["usage"].(map[string]interface{}); ok {
+					if v, ok := usage["input_tokens"].(float64); ok {
+						inputTokens = int64(v)
+					}
 					events = append(events, map[string]interface{}{
 						"choices": []map[string]interface{}{
-							{
-								"index": 0,
-								"delta": map[string]interface{}{
-									"role": "assistant",
-								},
-							},
-						},
-						"usage": map[string]interface{}{
-							"prompt_tokens":     int64(0),
-							"completion_tokens": int64(0),
-							"total_tokens":      int64(0),
-							"_input_usage":      usage,
+							{"index": 0, "delta": map[string]interface{}{"role": "assistant"}},
 						},
 					})
 				}
+			}
+		case "message_delta":
+			if usage, ok := event["usage"].(map[string]interface{}); ok {
+				if v, ok := usage["output_tokens"].(float64); ok {
+					outputTokens = int64(v)
+				}
+				events = append(events, map[string]interface{}{
+					"choices": []map[string]interface{}{
+						{"index": 0, "delta": map[string]interface{}{}, "finish_reason": "stop"},
+					},
+					"usage": map[string]interface{}{
+						"prompt_tokens":     inputTokens,
+						"completion_tokens": outputTokens,
+						"total_tokens":      inputTokens + outputTokens,
+					},
+				})
 			}
 		}
 	}
 
 	var result bytes.Buffer
-	for i, ev := range events {
+	for _, ev := range events {
 		chunk := map[string]interface{}{
 			"id":      fmt.Sprintf("chatcmpl-%d", time.Now().UnixNano()),
 			"object":  "chat.completion.chunk",
@@ -310,17 +305,14 @@ func (a *AnthropicAdapter) ParseStreamChunk(data []byte) ([]byte, error) {
 		for k, v := range ev {
 			chunk[k] = v
 		}
-
 		jsonChunk, _ := json.Marshal(chunk)
 		result.WriteString("data: ")
 		result.Write(jsonChunk)
 		result.WriteString("\n\n")
-
-		_ = i
 	}
 
 	if result.Len() > 0 {
-		return result.Bytes(), nil
+		return result.Bytes(), inputTokens, outputTokens, nil
 	}
 
 	jsonChunk, _ := json.Marshal(map[string]interface{}{
@@ -328,17 +320,14 @@ func (a *AnthropicAdapter) ParseStreamChunk(data []byte) ([]byte, error) {
 		"object":  "chat.completion.chunk",
 		"created": time.Now().Unix(),
 		"choices": []map[string]interface{}{
-			{
-				"index": 0,
-				"delta": map[string]interface{}{},
-			},
+			{"index": 0, "delta": map[string]interface{}{}},
 		},
 	})
 	var buf bytes.Buffer
 	buf.WriteString("data: ")
 	buf.Write(jsonChunk)
 	buf.WriteString("\n\n")
-	return buf.Bytes(), nil
+	return buf.Bytes(), inputTokens, outputTokens, nil
 }
 
 func (a *AnthropicAdapter) FetchModels(apiBaseURL string, apiKey string) ([]string, error) {

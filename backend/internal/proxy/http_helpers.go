@@ -42,7 +42,6 @@ func setProviderAuthHeaders(req *http.Request, providerType, apiKey string) {
 func copyForwardableRequestHeaders(c *gin.Context, req *http.Request) {
 	for _, name := range []string{
 		"Accept",
-		"Accept-Encoding",
 		"Anthropic-Beta",
 		"Anthropic-Version",
 		"OpenAI-Beta",
@@ -60,7 +59,7 @@ func copyForwardableRequestHeaders(c *gin.Context, req *http.Request) {
 
 func copyResponseHeaders(c *gin.Context, header http.Header) {
 	for k, values := range header {
-		if strings.EqualFold(k, "Content-Length") || strings.EqualFold(k, "Transfer-Encoding") {
+		if strings.EqualFold(k, "Content-Length") || strings.EqualFold(k, "Content-Encoding") || strings.EqualFold(k, "Transfer-Encoding") {
 			continue
 		}
 		for _, v := range values {
@@ -138,6 +137,33 @@ func stripProviderPrefix(modelID string) string {
 		return modelID[idx+1:]
 	}
 	return modelID
+}
+
+func extractUsageFromRawResponse(providerType string, body map[string]interface{}) (requestTokens, responseTokens, totalTokens, cacheWriteTokens, cacheHitTokens int64) {
+	switch providerType {
+	case "anthropic":
+		if usage, ok := body["usage"].(map[string]interface{}); ok {
+			requestTokens = numberToInt64(usage["input_tokens"])
+			responseTokens = numberToInt64(usage["output_tokens"])
+		}
+	case "gemini":
+		if usage, ok := body["usageMetadata"].(map[string]interface{}); ok {
+			requestTokens = numberToInt64(usage["promptTokenCount"])
+			responseTokens = numberToInt64(usage["candidatesTokenCount"])
+			totalTokens = numberToInt64(usage["totalTokenCount"])
+		}
+	default:
+		if usage, ok := body["usage"].(map[string]interface{}); ok {
+			requestTokens = numberToInt64(usage["prompt_tokens"])
+			responseTokens = numberToInt64(usage["completion_tokens"])
+			totalTokens = numberToInt64(usage["total_tokens"])
+			cacheWriteTokens, cacheHitTokens = extractCacheTokens(usage)
+		}
+	}
+	if totalTokens == 0 && (requestTokens > 0 || responseTokens > 0) {
+		totalTokens = requestTokens + responseTokens
+	}
+	return
 }
 
 func numberToInt64(v interface{}) int64 {

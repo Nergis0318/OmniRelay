@@ -1,0 +1,10 @@
+data/
+.gocache/
+omnirelay
+*.db
+*.db-*
+*.exe
+*.test
+*.out
+coverage.*
+Dockerfile
