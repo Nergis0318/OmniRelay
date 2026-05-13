@@ -11,7 +11,7 @@ from anthropic import Anthropic
 def test_basic_message():
     """기본 메시지 테스트"""
     client = Anthropic(
-        api_key="om-ni-f2ad646b7961b44bd002edda6812eb84a295291c4cb095486e825d4dc215d848",
+        api_key="om-ni-88660f931bcd275d259b44eb0354249f14dbb129f2fb6f9fe8b030136e187f34",
         base_url="http://localhost:8080/opencode-go",
     )
     message = client.messages.create(

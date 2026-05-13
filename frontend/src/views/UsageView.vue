@@ -1,163 +1,234 @@
 <template>
-    <div class="page">
-        <div class="page-header">
-            <div>
-                <h1 class="page-title">Usage Logs</h1>
-                <p class="page-sub">Request history and token accounting</p>
-            </div>
-            <button class="btn-tonal" @click="loadLogs">
-                <v-icon size="15">mdi-refresh</v-icon>
-                Refresh
-            </button>
-        </div>
-
-        <!-- Filter bar -->
-        <div class="filter-bar">
-            <div class="filter-col">
-                <label class="field-label">Model</label>
-                <input v-model="filters.model" class="field-input" placeholder="Filter by model..." />
-            </div>
-            <div class="filter-col">
-                <label class="field-label">From</label>
-                <input v-model="filters.from" type="date" class="field-input field-input--date" />
-            </div>
-            <div class="filter-col">
-                <label class="field-label">To</label>
-                <input v-model="filters.to" type="date" class="field-input field-input--date" />
-            </div>
-            <button class="btn-primary filter-submit" @click="loadLogs" :disabled="store.loading">
-                <span v-if="!store.loading">Apply</span>
-                <span v-else class="btn-spinner" />
-            </button>
-        </div>
-
-        <div class="table-card">
-            <v-data-table
-                :headers="headers"
-                :items="store.logs"
-                :loading="store.loading"
-                density="comfortable"
-                hide-default-footer
-                :items-per-page="-1"
-            >
-                <template #item.created_at="{ item }">
-                    <span class="dim-text">{{ new Date(item.created_at).toLocaleString() }}</span>
-                </template>
-                <template #item.model="{ item }">
-                    <code class="mono-tag">{{ item.model }}</code>
-                </template>
-                <template #item.cost="{ item }">
-                    <span class="cost-val">${{ item.cost.toFixed(6) }}</span>
-                </template>
-                <template #item.is_error="{ item }">
-                    <span class="status-chip" :class="item.is_error ? 'status-chip--off' : 'status-chip--on'">
-                        {{ item.is_error ? "Error" : "OK" }}
-                    </span>
-                </template>
-                <template #item.latency_ms="{ item }">
-                    <span class="latency-val" :class="item.latency_ms > 3000 ? 'latency-val--slow' : ''">
-                        {{ item.latency_ms }}ms
-                    </span>
-                </template>
-                <template #item.request_tokens="{ item }">
-                    <span class="mono-val">{{ item.request_tokens.toLocaleString() }}</span>
-                </template>
-                <template #item.response_tokens="{ item }">
-                    <span class="mono-val">{{ item.response_tokens.toLocaleString() }}</span>
-                </template>
-                <template #item.total_tokens="{ item }">
-                    <span class="mono-val mono-val--accent">{{ item.total_tokens.toLocaleString() }}</span>
-                </template>
-                <template #no-data>
-                    <div class="empty-state">
-                        <v-icon size="32" color="#4a4844">mdi-chart-line-variant</v-icon>
-                        <p>No usage records found.</p>
-                    </div>
-                </template>
-            </v-data-table>
-
-            <div class="table-footer">
-                <span class="mono-val">{{ store.logs.length }}</span>
-                <span class="dim-text"> of </span>
-                <span class="mono-val">{{ store.total }}</span>
-                <span class="dim-text"> records</span>
-            </div>
-        </div>
+  <div class="page">
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">{{ $t("usage.title") }}</h1>
+        <p class="page-sub">{{ $t("usage.subtitle") }}</p>
+      </div>
+      <button class="btn-tonal" @click="store.fetchStats()">
+        <v-icon size="15">mdi-refresh</v-icon>
+        {{ $t("common.refresh") }}
+      </button>
     </div>
+
+    <!-- Stats Cards -->
+    <div class="stats-grid">
+      <div class="stat-card">
+        <p class="stat-label">{{ $t("dashboard.totalRequests") }}</p>
+        <p class="stat-value">{{ stats?.total_requests?.toLocaleString() ?? '-' }}</p>
+      </div>
+      <div class="stat-card">
+        <p class="stat-label">{{ $t("dashboard.totalTokens") }}</p>
+        <p class="stat-value stat-value--accent">{{ stats?.total_tokens?.toLocaleString() ?? '-' }}</p>
+      </div>
+      <div class="stat-card">
+        <p class="stat-label">{{ $t("dashboard.totalCost") }}</p>
+        <p class="stat-value stat-value--cost">${{ stats?.total_cost?.toFixed(4) ?? '-' }}</p>
+      </div>
+      <div class="stat-card">
+        <p class="stat-label">{{ $t("dashboard.avgLatency") }}</p>
+        <p class="stat-value">{{ stats ? (stats.avg_latency_ms / 1000).toFixed(2) + 's' : '-' }}</p>
+      </div>
+      <div class="stat-card">
+        <p class="stat-label">{{ $t("usage.cacheWrite5m") }}</p>
+        <p class="stat-value">{{ stats?.total_cache_write_5m?.toLocaleString() ?? '-' }}</p>
+      </div>
+      <div class="stat-card">
+        <p class="stat-label">{{ $t("usage.cacheWrite1h") }}</p>
+        <p class="stat-value">{{ stats?.total_cache_write_1h?.toLocaleString() ?? '-' }}</p>
+      </div>
+      <div class="stat-card">
+        <p class="stat-label">{{ $t("usage.cacheRead") }}</p>
+        <p class="stat-value stat-value--cache-read">{{ stats?.total_cache_read?.toLocaleString() ?? '-' }}</p>
+      </div>
+    </div>
+
+    <!-- 30-day Chart -->
+    <div class="table-card chart-section">
+      <h2 class="chart-heading">{{ $t("dashboard.usage30Days") }}</h2>
+      <div class="chart-area">
+        <template v-if="stats?.daily_usage?.length">
+          <Bar :data="chartData" :options="chartOptions" />
+        </template>
+        <div v-else class="empty-state">
+          <v-icon size="32" color="#4a4844">mdi-chart-bar</v-icon>
+          <p>{{ $t("dashboard.noUsageData") }}</p>
+        </div>
+      </div>
+    </div>
+  </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { computed, onMounted } from "vue";
+import { useI18n } from "vue-i18n";
+import { Bar } from "vue-chartjs";
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  Tooltip,
+  Legend,
+} from "chart.js";
 import { useUsageStore } from "../stores/usage";
 
+ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend);
+
+const { t } = useI18n();
 const store = useUsageStore();
+const stats = computed(() => store.stats);
 
-const filters = ref({ model: "", from: "", to: "" });
+const chartData = computed(() => ({
+  labels: stats.value?.daily_usage.map((d) => d.date.slice(5)) ?? [],
+  datasets: [
+    {
+      label: t("dashboard.tokens"),
+      data: stats.value?.daily_usage.map((d) => d.total_tokens) ?? [],
+      backgroundColor: "rgba(232, 160, 32, 0.3)",
+      borderColor: "#e8a020",
+      borderWidth: 1,
+      borderRadius: 4,
+      yAxisID: "y",
+    },
+    {
+      label: t("dashboard.cost"),
+      data: stats.value?.daily_usage.map((d) => d.total_cost) ?? [],
+      backgroundColor: "rgba(46, 196, 182, 0.2)",
+      borderColor: "#2ec4b6",
+      borderWidth: 1,
+      borderRadius: 4,
+      yAxisID: "y1",
+    },
+  ],
+}));
 
-const headers = [
-    { title: "Time", key: "created_at", minWidth: "150" },
-    { title: "Model", key: "model" },
-    { title: "Req", key: "request_tokens" },
-    { title: "Resp", key: "response_tokens" },
-    { title: "Total", key: "total_tokens" },
-    { title: "Latency", key: "latency_ms" },
-    { title: "Cost", key: "cost" },
-    { title: "Status", key: "is_error" },
-];
+const chartOptions = computed(() => ({
+  responsive: true,
+  maintainAspectRatio: false,
+  interaction: { mode: "index" as const, intersect: false },
+  plugins: {
+    legend: {
+      labels: {
+        color: "#7c7a75",
+        font: { family: '"DM Sans", sans-serif', size: 12 },
+        usePointStyle: true,
+        pointStyleWidth: 8,
+      },
+    },
+    tooltip: {
+      backgroundColor: "#131316",
+      titleColor: "#e8e6e1",
+      bodyColor: "#e8e6e1",
+      borderColor: "rgba(232,160,32,0.2)",
+      borderWidth: 1,
+      padding: 12,
+    },
+  },
+  scales: {
+    x: {
+      ticks: { color: "#4a4844", font: { size: 10 } },
+      grid: { color: "rgba(255,255,255,0.04)" },
+    },
+    y: {
+      type: "linear" as const,
+      display: true,
+      position: "left" as const,
+      title: { display: true, text: t("dashboard.tokens"), color: "#e8a020" },
+      ticks: { color: "#e8a020", font: { size: 10 } },
+      grid: { color: "rgba(255,255,255,0.04)" },
+    },
+    y1: {
+      type: "linear" as const,
+      display: true,
+      position: "right" as const,
+      title: { display: true, text: t("dashboard.costAxis"), color: "#2ec4b6" },
+      ticks: { color: "#2ec4b6", font: { size: 10 } },
+      grid: { drawOnChartArea: false },
+    },
+  },
+}));
 
-async function loadLogs() {
-    const params: Record<string, any> = { limit: 50 };
-    if (filters.value.model) params.model = filters.value.model;
-    if (filters.value.from) params.from = filters.value.from;
-    if (filters.value.to) params.to = filters.value.to;
-    await store.fetchLogs(params);
-}
-
-onMounted(() => loadLogs());
+onMounted(() => store.fetchStats());
 </script>
 
 <style scoped>
-@import '../styles/page-shared.css';
+@import "../styles/page-shared.css";
 
-.dim-text {
-    font-family: 'DM Sans', sans-serif;
-    font-size: 0.82rem;
-    color: #7c7a75;
-}
-.mono-val {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.82rem;
-    color: #e8e6e1;
-}
-.mono-val--accent { color: #e8a020; }
-
-.cost-val {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.78rem;
-    color: #2ec4b6;
-}
-.latency-val {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.78rem;
-    color: #7c7a75;
-}
-.latency-val--slow { color: #ff5757; }
-
-.filter-submit { align-self: flex-end; }
-
-.field-input--date {
-    color-scheme: dark;
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
 }
 
-.table-footer {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 4px;
-    padding: 10px 16px;
-    border-top: 1px solid rgba(255,255,255,0.05);
-    font-family: 'DM Sans', sans-serif;
-    font-size: 0.8rem;
-    color: #4a4844;
+.stat-card {
+  background: #131316;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  padding: 16px 18px;
+}
+
+.stat-label {
+  font-family: "DM Sans", sans-serif;
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: #4a4844;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  margin: 0 0 6px;
+}
+
+.stat-value {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: #e8e6e1;
+  margin: 0;
+}
+
+.stat-value--accent {
+  color: #e8a020;
+}
+
+.stat-value--cost {
+  color: #2ec4b6;
+}
+
+.stat-value--cache-read {
+  color: #2ec4b6;
+}
+
+.chart-section {
+  padding: 20px;
+}
+
+.chart-heading {
+  font-family: "Fraunces", Georgia, serif;
+  font-size: 1.05rem;
+  font-weight: 600;
+  font-style: italic;
+  color: #e8e6e1;
+  letter-spacing: -0.015em;
+  margin: 0 0 16px;
+}
+
+.chart-area {
+  width: 100%;
+  height: 320px;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 48px 24px;
+  font-family: "DM Sans", sans-serif;
+  font-size: 0.875rem;
+  color: #4a4844;
+}
+
+.empty-state p {
+  margin: 0;
 }
 </style>

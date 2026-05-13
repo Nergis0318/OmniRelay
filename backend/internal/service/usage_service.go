@@ -18,9 +18,11 @@ func NewUsageService(db *sql.DB) *UsageService {
 
 func (s *UsageService) Log(log models.UsageLog) error {
 	_, err := s.db.Exec(
-		`INSERT INTO usage_logs (api_key_id, provider_id, model, request_tokens, response_tokens, total_tokens, latency_ms, cost, is_error, error_message, user_id)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		log.APIKeyID, log.ProviderID, log.Model, log.RequestTokens, log.ResponseTokens, log.TotalTokens, log.LatencyMs, log.Cost, log.IsError, log.ErrorMessage, log.UserID,
+		`INSERT INTO usage_logs (api_key_id, provider_id, model, request_tokens, response_tokens, total_tokens, cache_write_5m_tokens, cache_write_1h_tokens, cache_read_tokens, latency_ms, cost, is_error, error_message, user_id, started_at, completed_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		log.APIKeyID, log.ProviderID, log.Model, log.RequestTokens, log.ResponseTokens, log.TotalTokens,
+		log.CacheWrite5MTokens, log.CacheWrite1HTokens, log.CacheReadTokens,
+		log.LatencyMs, log.Cost, log.IsError, log.ErrorMessage, log.UserID, log.StartedAt, log.CompletedAt,
 	)
 	return err
 }
@@ -65,7 +67,7 @@ func (s *UsageService) Query(params models.UsageQueryParams, userID int64) ([]mo
 	countQuery := "SELECT COUNT(*) FROM usage_logs WHERE " + whereClause
 	s.db.QueryRow(countQuery, args...).Scan(&total)
 
-	query := fmt.Sprintf("SELECT id, api_key_id, provider_id, model, request_tokens, response_tokens, total_tokens, latency_ms, cost, is_error, COALESCE(error_message,''), COALESCE(user_id, 0), created_at FROM usage_logs WHERE %s ORDER BY created_at DESC LIMIT ? OFFSET ?", whereClause)
+	query := fmt.Sprintf("SELECT u.id, u.api_key_id, u.provider_id, u.model, u.request_tokens, u.response_tokens, u.total_tokens, COALESCE(u.cache_write_5m_tokens,0), COALESCE(u.cache_write_1h_tokens,0), COALESCE(u.cache_read_tokens,0), u.latency_ms, u.cost, u.is_error, COALESCE(u.error_message,''), COALESCE(u.user_id, 0), u.started_at, u.completed_at, u.created_at, COALESCE(p.name,'') FROM usage_logs u LEFT JOIN providers p ON u.provider_id = p.id WHERE %s ORDER BY u.created_at DESC LIMIT ? OFFSET ?", whereClause)
 	queryArgs := append(args, limit, offset)
 
 	rows, err := s.db.Query(query, queryArgs...)
@@ -77,7 +79,7 @@ func (s *UsageService) Query(params models.UsageQueryParams, userID int64) ([]mo
 	var logs []models.UsageLog
 	for rows.Next() {
 		var l models.UsageLog
-		if err := rows.Scan(&l.ID, &l.APIKeyID, &l.ProviderID, &l.Model, &l.RequestTokens, &l.ResponseTokens, &l.TotalTokens, &l.LatencyMs, &l.Cost, &l.IsError, &l.ErrorMessage, &l.UserID, &l.CreatedAt); err != nil {
+		if err := rows.Scan(&l.ID, &l.APIKeyID, &l.ProviderID, &l.Model, &l.RequestTokens, &l.ResponseTokens, &l.TotalTokens, &l.CacheWrite5MTokens, &l.CacheWrite1HTokens, &l.CacheReadTokens, &l.LatencyMs, &l.Cost, &l.IsError, &l.ErrorMessage, &l.UserID, &l.StartedAt, &l.CompletedAt, &l.CreatedAt, &l.ProviderName); err != nil {
 			return nil, 0, err
 		}
 		logs = append(logs, l)
@@ -92,6 +94,9 @@ func (s *UsageService) GetStats(userID int64) (*models.DashboardStats, error) {
 	s.db.QueryRow("SELECT COALESCE(SUM(total_tokens), 0) FROM usage_logs WHERE user_id = ?", userID).Scan(&stats.TotalTokens)
 	s.db.QueryRow("SELECT COALESCE(SUM(cost), 0) FROM usage_logs WHERE user_id = ?", userID).Scan(&stats.TotalCost)
 	s.db.QueryRow("SELECT COALESCE(AVG(latency_ms), 0) FROM usage_logs WHERE is_error = 0 AND user_id = ?", userID).Scan(&stats.AvgLatencyMs)
+	s.db.QueryRow("SELECT COALESCE(SUM(cache_write_5m_tokens), 0) FROM usage_logs WHERE user_id = ?", userID).Scan(&stats.TotalCacheWrite5M)
+	s.db.QueryRow("SELECT COALESCE(SUM(cache_write_1h_tokens), 0) FROM usage_logs WHERE user_id = ?", userID).Scan(&stats.TotalCacheWrite1H)
+	s.db.QueryRow("SELECT COALESCE(SUM(cache_read_tokens), 0) FROM usage_logs WHERE user_id = ?", userID).Scan(&stats.TotalCacheRead)
 	s.db.QueryRow("SELECT COUNT(*) FROM api_keys WHERE is_active = 1 AND created_by = ?", userID).Scan(&stats.ActiveKeys)
 	s.db.QueryRow("SELECT COUNT(*) FROM providers WHERE is_active = 1 AND (user_id = ? OR user_id IS NULL)", userID).Scan(&stats.ProvidersCount)
 	s.db.QueryRow("SELECT COUNT(*) FROM models m JOIN providers p ON m.provider_id = p.id WHERE p.is_active = 1 AND (m.user_id = ? OR m.user_id IS NULL)", userID).Scan(&stats.ModelsCount)

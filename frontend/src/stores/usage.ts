@@ -10,11 +10,17 @@ interface UsageLog {
   request_tokens: number;
   response_tokens: number;
   total_tokens: number;
+  cache_write_5m_tokens: number;
+  cache_write_1h_tokens: number;
+  cache_read_tokens: number;
   latency_ms: number;
   cost: number;
   is_error: boolean;
   error_message: string;
+  started_at: string | null;
+  completed_at: string | null;
   created_at: string;
+  provider_name: string;
 }
 
 interface DashboardStats {
@@ -25,6 +31,9 @@ interface DashboardStats {
   active_keys: number;
   providers_count: number;
   models_count: number;
+  total_cache_write_5m: number;
+  total_cache_write_1h: number;
+  total_cache_read: number;
   daily_usage: {
     date: string;
     total_tokens: number;

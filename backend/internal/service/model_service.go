@@ -53,15 +53,42 @@ func (s *ModelService) SyncFromProvider(providerID int64, providerKey string, mo
 	}
 	defer tx.Rollback()
 
+	type savedPrice struct {
+		InputPrice             float64
+		OutputPrice            float64
+		CacheWrite5mPrice      float64
+		CacheWrite1hPrice      float64
+		CacheReadPrice         float64
+	}
+	existingPrices := make(map[string]savedPrice)
+	rows, err := tx.Query(
+		"SELECT model_id, input_price_per_1mtok, output_price_per_1mtok, cache_write_5m_price_per_1mtok, cache_write_1h_price_per_1mtok, cache_read_price_per_1mtok FROM models WHERE provider_id = ? AND is_manual = 0 AND user_id = ?",
+		providerID, userID,
+	)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var modelID string
+		var sp savedPrice
+		if err2 := rows.Scan(&modelID, &sp.InputPrice, &sp.OutputPrice, &sp.CacheWrite5mPrice, &sp.CacheWrite1hPrice, &sp.CacheReadPrice); err2 != nil {
+			rows.Close()
+			return err2
+		}
+		existingPrices[modelID] = sp
+	}
+	rows.Close()
+
 	_, err = tx.Exec("DELETE FROM models WHERE provider_id = ? AND is_manual = 0 AND user_id = ?", providerID, userID)
 	if err != nil {
 		return err
 	}
 
 	for _, modelID := range modelIDs {
+		sp := existingPrices[modelID]
 		_, err := tx.Exec(
-			"INSERT OR IGNORE INTO models (provider_id, model_id, display_name, provider_key, is_manual, user_id) VALUES (?, ?, ?, ?, 0, ?)",
-			providerID, modelID, modelID, providerKey, userID,
+			"INSERT OR IGNORE INTO models (provider_id, model_id, display_name, provider_key, is_manual, input_price_per_1mtok, output_price_per_1mtok, cache_write_5m_price_per_1mtok, cache_write_1h_price_per_1mtok, cache_read_price_per_1mtok, user_id) VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)",
+			providerID, modelID, modelID, providerKey, sp.InputPrice, sp.OutputPrice, sp.CacheWrite5mPrice, sp.CacheWrite1hPrice, sp.CacheReadPrice, userID,
 		)
 		if err != nil {
 			return err

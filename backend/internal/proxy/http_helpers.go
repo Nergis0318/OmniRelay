@@ -139,7 +139,7 @@ func stripProviderPrefix(modelID string) string {
 	return modelID
 }
 
-func extractUsageFromRawResponse(providerType string, body map[string]interface{}) (requestTokens, responseTokens, totalTokens, cacheWriteTokens, cacheHitTokens int64) {
+func extractUsageFromRawResponse(providerType string, body map[string]interface{}) (requestTokens, responseTokens, totalTokens, cacheWrite5m, cacheWrite1h, cacheRead int64) {
 	switch providerType {
 	case "anthropic":
 		if usage, ok := body["usage"].(map[string]interface{}); ok {
@@ -157,7 +157,7 @@ func extractUsageFromRawResponse(providerType string, body map[string]interface{
 			requestTokens = numberToInt64(usage["prompt_tokens"])
 			responseTokens = numberToInt64(usage["completion_tokens"])
 			totalTokens = numberToInt64(usage["total_tokens"])
-			cacheWriteTokens, cacheHitTokens = extractCacheTokens(usage)
+			cacheWrite5m, cacheWrite1h, cacheRead = extractCacheTokens(usage)
 		}
 	}
 	if totalTokens == 0 && (requestTokens > 0 || responseTokens > 0) {

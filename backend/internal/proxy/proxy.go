@@ -165,20 +165,27 @@ func (e *Engine) HandleChatCompletions(c *gin.Context) {
 		requestTokens := numberToInt64(usage["prompt_tokens"])
 		responseTokens := numberToInt64(usage["completion_tokens"])
 		totalTokens := numberToInt64(usage["total_tokens"])
-		cacheWriteTokens, cacheHitTokens := extractCacheTokens(usage)
+		cacheWrite5m, cacheWrite1h, cacheReadTokens := extractCacheTokens(usage)
 
-		cost := calculateCost(dbModel, requestTokens, responseTokens, cacheWriteTokens, cacheHitTokens)
+		cost := calculateCost(dbModel, requestTokens, responseTokens, cacheWrite5m, cacheWrite1h, cacheReadTokens)
 		latencyMs := time.Since(startTime).Milliseconds()
+		completedAt := time.Now()
 
 		e.usageService.Log(models.UsageLog{
-			APIKeyID:       &apiKeyID,
-			ProviderID:     &provider.ID,
-			Model:          fullModelID,
-			RequestTokens:  requestTokens,
-			ResponseTokens: responseTokens,
-			TotalTokens:    totalTokens,
-			LatencyMs:      latencyMs,
-			Cost:           cost,
+			APIKeyID:           &apiKeyID,
+			ProviderID:         &provider.ID,
+			Model:              fullModelID,
+			RequestTokens:      requestTokens,
+			ResponseTokens:     responseTokens,
+			TotalTokens:        totalTokens,
+			CacheWrite5MTokens: cacheWrite5m,
+			CacheWrite1HTokens: cacheWrite1h,
+			CacheReadTokens:    cacheReadTokens,
+			LatencyMs:          latencyMs,
+			Cost:               cost,
+			StartedAt:          &startTime,
+			CompletedAt:        &completedAt,
+			UserID:             &userID,
 		})
 	}
 
@@ -240,8 +247,9 @@ func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapt
 	}
 
 	latencyMs := time.Since(start).Milliseconds()
+	completedAt := time.Now()
 
-	cost := calculateCost(dbModel, totalInputTokens, totalOutputTokens, 0, 0)
+	cost := calculateCost(dbModel, totalInputTokens, totalOutputTokens, 0, 0, 0)
 
 	e.usageService.Log(models.UsageLog{
 		APIKeyID:       &apiKeyID,
@@ -252,6 +260,8 @@ func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapt
 		TotalTokens:    totalInputTokens + totalOutputTokens,
 		LatencyMs:      latencyMs,
 		Cost:           cost,
+		StartedAt:      &start,
+		CompletedAt:    &completedAt,
 		UserID:         &userID,
 	})
 }
@@ -668,21 +678,27 @@ func (e *Engine) handlePathRoutedChat(c *gin.Context, provider *models.Provider,
 		requestTokens := numberToInt64(usage["prompt_tokens"])
 		responseTokens := numberToInt64(usage["completion_tokens"])
 		totalTokens := numberToInt64(usage["total_tokens"])
-		cacheWriteTokens, cacheHitTokens := extractCacheTokens(usage)
+		cacheWrite5m, cacheWrite1h, cacheReadTokens := extractCacheTokens(usage)
 
-		cost := calculateCost(dbModel, requestTokens, responseTokens, cacheWriteTokens, cacheHitTokens)
+		cost := calculateCost(dbModel, requestTokens, responseTokens, cacheWrite5m, cacheWrite1h, cacheReadTokens)
 		latencyMs := time.Since(startTime).Milliseconds()
+		completedAt := time.Now()
 
 		e.usageService.Log(models.UsageLog{
-			APIKeyID:       &apiKeyID,
-			ProviderID:     &provider.ID,
-			Model:          fullModelID,
-			RequestTokens:  requestTokens,
-			ResponseTokens: responseTokens,
-			TotalTokens:    totalTokens,
-			LatencyMs:      latencyMs,
-			Cost:           cost,
-			UserID:         &userID,
+			APIKeyID:           &apiKeyID,
+			ProviderID:         &provider.ID,
+			Model:              fullModelID,
+			RequestTokens:      requestTokens,
+			ResponseTokens:     responseTokens,
+			TotalTokens:        totalTokens,
+			CacheWrite5MTokens: cacheWrite5m,
+			CacheWrite1HTokens: cacheWrite1h,
+			CacheReadTokens:    cacheReadTokens,
+			LatencyMs:          latencyMs,
+			Cost:               cost,
+			StartedAt:          &startTime,
+			CompletedAt:        &completedAt,
+			UserID:             &userID,
 		})
 	}
 
@@ -795,17 +811,24 @@ func (e *Engine) handlePathRoutedMessages(c *gin.Context, provider *models.Provi
 	finalResponse["model"] = fullModelID
 
 	logUsageWithTokens := func(requestTokens, responseTokens int64) {
-		cost := calculateCost(dbModel, requestTokens, responseTokens, 0, 0)
+		completedAt := time.Now()
+		cacheWrite5m, cacheWrite1h, cacheReadTokens := extractCacheTokens(finalResponse["usage"].(map[string]interface{}))
+		cost := calculateCost(dbModel, requestTokens, responseTokens, cacheWrite5m, cacheWrite1h, cacheReadTokens)
 		e.usageService.Log(models.UsageLog{
-			APIKeyID:       &apiKeyID,
-			ProviderID:     &provider.ID,
-			Model:          fullModelID,
-			RequestTokens:  requestTokens,
-			ResponseTokens: responseTokens,
-			TotalTokens:    requestTokens + responseTokens,
-			LatencyMs:      latencyMs,
-			Cost:           cost,
-			UserID:         &userID,
+			APIKeyID:           &apiKeyID,
+			ProviderID:         &provider.ID,
+			Model:              fullModelID,
+			RequestTokens:      requestTokens,
+			ResponseTokens:     responseTokens,
+			TotalTokens:        requestTokens + responseTokens,
+			CacheWrite5MTokens: cacheWrite5m,
+			CacheWrite1HTokens: cacheWrite1h,
+			CacheReadTokens:    cacheReadTokens,
+			LatencyMs:          latencyMs,
+			Cost:               cost,
+			StartedAt:          &startTime,
+			CompletedAt:        &completedAt,
+			UserID:             &userID,
 		})
 	}
 
@@ -926,19 +949,25 @@ func (e *Engine) handlePathRoutedProxy(c *gin.Context, provider *models.Provider
 	} else if dbModel != nil {
 		var respJSON map[string]interface{}
 		if json.Unmarshal(respBody, &respJSON) == nil {
-			requestTokens, responseTokens, totalTokens, cacheWriteTokens, cacheHitTokens := extractUsageFromRawResponse(provider.ProviderType, respJSON)
+			requestTokens, responseTokens, totalTokens, cacheWrite5m, cacheWrite1h, cacheReadTokens := extractUsageFromRawResponse(provider.ProviderType, respJSON)
 			if requestTokens > 0 || responseTokens > 0 {
-				cost := calculateCost(dbModel, requestTokens, responseTokens, cacheWriteTokens, cacheHitTokens)
+				completedAt := time.Now()
+				cost := calculateCost(dbModel, requestTokens, responseTokens, cacheWrite5m, cacheWrite1h, cacheReadTokens)
 				e.usageService.Log(models.UsageLog{
-					APIKeyID:       &apiKeyID,
-					ProviderID:     &provider.ID,
-					Model:          fullModelID,
-					RequestTokens:  requestTokens,
-					ResponseTokens: responseTokens,
-					TotalTokens:    totalTokens,
-					LatencyMs:      latencyMs,
-					Cost:           cost,
-					UserID:         &userID,
+					APIKeyID:           &apiKeyID,
+					ProviderID:         &provider.ID,
+					Model:              fullModelID,
+					RequestTokens:      requestTokens,
+					ResponseTokens:     responseTokens,
+					TotalTokens:        totalTokens,
+					CacheWrite5MTokens: cacheWrite5m,
+					CacheWrite1HTokens: cacheWrite1h,
+					CacheReadTokens:    cacheReadTokens,
+					LatencyMs:          latencyMs,
+					Cost:               cost,
+					StartedAt:          &startTime,
+					CompletedAt:        &completedAt,
+					UserID:             &userID,
 				})
 			} else {
 				e.usageService.Log(models.UsageLog{
@@ -972,14 +1001,17 @@ func (e *Engine) handlePathRoutedProxy(c *gin.Context, provider *models.Provider
 	c.Data(resp.StatusCode, contentTypeOrDefault(resp.Header), respBody)
 }
 
-func calculateCost(m *models.Model, inputTokens int64, outputTokens int64, cacheWriteTokens int64, cacheHitTokens int64) float64 {
+func calculateCost(m *models.Model, inputTokens, outputTokens, cacheWrite5mTokens, cacheWrite1hTokens, cacheReadTokens int64) float64 {
 	inputCost := (float64(inputTokens) / 1000000.0) * m.InputPricePer1MTok
 	outputCost := (float64(outputTokens) / 1000000.0) * m.OutputPricePer1MTok
-	cacheWrite5mCost := (float64(cacheWriteTokens) / 1000000.0) * m.CacheWrite5mPricePer1MTok
-	cacheReadCost := (float64(cacheHitTokens) / 1000000.0) * m.CacheReadPricePer1MTok
-	return inputCost + outputCost + cacheWrite5mCost + cacheReadCost
+	cacheWrite5mCost := (float64(cacheWrite5mTokens) / 1000000.0) * m.CacheWrite5mPricePer1MTok
+	cacheWrite1hCost := (float64(cacheWrite1hTokens) / 1000000.0) * m.CacheWrite1hPricePer1MTok
+	cacheReadCost := (float64(cacheReadTokens) / 1000000.0) * m.CacheReadPricePer1MTok
+	return inputCost + outputCost + cacheWrite5mCost + cacheWrite1hCost + cacheReadCost
 }
 
-func extractCacheTokens(usage map[string]interface{}) (int64, int64) {
-	return numberToInt64(usage["cache_creation_input_tokens"]), numberToInt64(usage["cache_read_input_tokens"])
+func extractCacheTokens(usage map[string]interface{}) (cacheWrite5m, cacheWrite1h, cacheRead int64) {
+	cacheWrite5m = numberToInt64(usage["cache_creation_input_tokens"])
+	cacheRead = numberToInt64(usage["cache_read_input_tokens"])
+	return
 }
