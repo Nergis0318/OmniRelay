@@ -18,16 +18,16 @@ func NewUsageService(db *sql.DB) *UsageService {
 
 func (s *UsageService) Log(log models.UsageLog) error {
 	_, err := s.db.Exec(
-		`INSERT INTO usage_logs (api_key_id, provider_id, model, request_tokens, response_tokens, total_tokens, latency_ms, cost, is_error, error_message)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		log.APIKeyID, log.ProviderID, log.Model, log.RequestTokens, log.ResponseTokens, log.TotalTokens, log.LatencyMs, log.Cost, log.IsError, log.ErrorMessage,
+		`INSERT INTO usage_logs (api_key_id, provider_id, model, request_tokens, response_tokens, total_tokens, latency_ms, cost, is_error, error_message, user_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		log.APIKeyID, log.ProviderID, log.Model, log.RequestTokens, log.ResponseTokens, log.TotalTokens, log.LatencyMs, log.Cost, log.IsError, log.ErrorMessage, log.UserID,
 	)
 	return err
 }
 
-func (s *UsageService) Query(params models.UsageQueryParams) ([]models.UsageLog, int64, error) {
-	where := []string{"1=1"}
-	args := []interface{}{}
+func (s *UsageService) Query(params models.UsageQueryParams, userID int64) ([]models.UsageLog, int64, error) {
+	where := []string{"(user_id = ? OR user_id IS NULL)"}
+	args := []interface{}{userID}
 
 	if params.APIKeyID != nil {
 		where = append(where, "api_key_id = ?")
@@ -65,7 +65,7 @@ func (s *UsageService) Query(params models.UsageQueryParams) ([]models.UsageLog,
 	countQuery := "SELECT COUNT(*) FROM usage_logs WHERE " + whereClause
 	s.db.QueryRow(countQuery, args...).Scan(&total)
 
-	query := fmt.Sprintf("SELECT id, api_key_id, provider_id, model, request_tokens, response_tokens, total_tokens, latency_ms, cost, is_error, COALESCE(error_message,''), created_at FROM usage_logs WHERE %s ORDER BY created_at DESC LIMIT ? OFFSET ?", whereClause)
+	query := fmt.Sprintf("SELECT id, api_key_id, provider_id, model, request_tokens, response_tokens, total_tokens, latency_ms, cost, is_error, COALESCE(error_message,''), COALESCE(user_id, 0), created_at FROM usage_logs WHERE %s ORDER BY created_at DESC LIMIT ? OFFSET ?", whereClause)
 	queryArgs := append(args, limit, offset)
 
 	rows, err := s.db.Query(query, queryArgs...)
@@ -77,7 +77,7 @@ func (s *UsageService) Query(params models.UsageQueryParams) ([]models.UsageLog,
 	var logs []models.UsageLog
 	for rows.Next() {
 		var l models.UsageLog
-		if err := rows.Scan(&l.ID, &l.APIKeyID, &l.ProviderID, &l.Model, &l.RequestTokens, &l.ResponseTokens, &l.TotalTokens, &l.LatencyMs, &l.Cost, &l.IsError, &l.ErrorMessage, &l.CreatedAt); err != nil {
+		if err := rows.Scan(&l.ID, &l.APIKeyID, &l.ProviderID, &l.Model, &l.RequestTokens, &l.ResponseTokens, &l.TotalTokens, &l.LatencyMs, &l.Cost, &l.IsError, &l.ErrorMessage, &l.UserID, &l.CreatedAt); err != nil {
 			return nil, 0, err
 		}
 		logs = append(logs, l)
@@ -85,24 +85,24 @@ func (s *UsageService) Query(params models.UsageQueryParams) ([]models.UsageLog,
 	return logs, total, nil
 }
 
-func (s *UsageService) GetStats() (*models.DashboardStats, error) {
+func (s *UsageService) GetStats(userID int64) (*models.DashboardStats, error) {
 	stats := &models.DashboardStats{}
 
-	s.db.QueryRow("SELECT COUNT(*) FROM usage_logs").Scan(&stats.TotalRequests)
-	s.db.QueryRow("SELECT COALESCE(SUM(total_tokens), 0) FROM usage_logs").Scan(&stats.TotalTokens)
-	s.db.QueryRow("SELECT COALESCE(SUM(cost), 0) FROM usage_logs").Scan(&stats.TotalCost)
-	s.db.QueryRow("SELECT COALESCE(AVG(latency_ms), 0) FROM usage_logs WHERE is_error = 0").Scan(&stats.AvgLatencyMs)
-	s.db.QueryRow("SELECT COUNT(*) FROM api_keys WHERE is_active = 1").Scan(&stats.ActiveKeys)
-	s.db.QueryRow("SELECT COUNT(*) FROM providers WHERE is_active = 1").Scan(&stats.ProvidersCount)
-	s.db.QueryRow("SELECT COUNT(*) FROM models m JOIN providers p ON m.provider_id = p.id WHERE p.is_active = 1").Scan(&stats.ModelsCount)
+	s.db.QueryRow("SELECT COUNT(*) FROM usage_logs WHERE user_id = ?", userID).Scan(&stats.TotalRequests)
+	s.db.QueryRow("SELECT COALESCE(SUM(total_tokens), 0) FROM usage_logs WHERE user_id = ?", userID).Scan(&stats.TotalTokens)
+	s.db.QueryRow("SELECT COALESCE(SUM(cost), 0) FROM usage_logs WHERE user_id = ?", userID).Scan(&stats.TotalCost)
+	s.db.QueryRow("SELECT COALESCE(AVG(latency_ms), 0) FROM usage_logs WHERE is_error = 0 AND user_id = ?", userID).Scan(&stats.AvgLatencyMs)
+	s.db.QueryRow("SELECT COUNT(*) FROM api_keys WHERE is_active = 1 AND created_by = ?", userID).Scan(&stats.ActiveKeys)
+	s.db.QueryRow("SELECT COUNT(*) FROM providers WHERE is_active = 1 AND (user_id = ? OR user_id IS NULL)", userID).Scan(&stats.ProvidersCount)
+	s.db.QueryRow("SELECT COUNT(*) FROM models m JOIN providers p ON m.provider_id = p.id WHERE p.is_active = 1 AND (m.user_id = ? OR m.user_id IS NULL)", userID).Scan(&stats.ModelsCount)
 
 	rows, err := s.db.Query(`
 		SELECT DATE(created_at) as date, COALESCE(SUM(total_tokens),0), COALESCE(SUM(cost),0), COUNT(*)
 		FROM usage_logs
-		WHERE created_at >= DATE('now', '-30 days')
+		WHERE created_at >= DATE('now', '-30 days') AND (user_id = ? OR user_id IS NULL)
 		GROUP BY DATE(created_at)
 		ORDER BY date ASC
-	`)
+	`, userID)
 	if err != nil {
 		return nil, err
 	}

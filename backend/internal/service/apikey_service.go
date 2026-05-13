@@ -18,9 +18,10 @@ func NewAPIKeyService(db *sql.DB) *APIKeyService {
 	return &APIKeyService{db: db}
 }
 
-func (s *APIKeyService) List() ([]models.APIKey, error) {
+func (s *APIKeyService) List(userID int64) ([]models.APIKey, error) {
 	rows, err := s.db.Query(
-		"SELECT id, key_prefix, name, created_by, is_active, rate_limit_rpm, created_at, last_used_at FROM api_keys ORDER BY created_at DESC",
+		"SELECT id, key_prefix, name, created_by, is_active, rate_limit_rpm, created_at, last_used_at FROM api_keys WHERE created_by = ? ORDER BY created_at DESC",
+		userID,
 	)
 	if err != nil {
 		return nil, err
@@ -88,8 +89,8 @@ func (s *APIKeyService) Validate(plainKey string) (*models.APIKey, error) {
 	return &k, nil
 }
 
-func (s *APIKeyService) Delete(id int64) error {
-	_, err := s.db.Exec("UPDATE api_keys SET is_active = 0 WHERE id = ?", id)
+func (s *APIKeyService) Delete(id int64, userID int64) error {
+	_, err := s.db.Exec("UPDATE api_keys SET is_active = 0 WHERE id = ? AND created_by = ?", id, userID)
 	return err
 }
 

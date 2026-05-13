@@ -11,7 +11,8 @@ import (
 
 func ListAPIKeys(svc *service.APIKeyService) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		keys, err := svc.List()
+		userID := c.GetInt64("user_id")
+		keys, err := svc.List(userID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -45,13 +46,14 @@ func CreateAPIKey(svc *service.APIKeyService) gin.HandlerFunc {
 
 func DeleteAPIKey(svc *service.APIKeyService) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		userID := c.GetInt64("user_id")
 		id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid API key ID"})
 			return
 		}
 
-		if err := svc.Delete(id); err != nil {
+		if err := svc.Delete(id, userID); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}

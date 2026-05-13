@@ -22,9 +22,10 @@ func NewProviderService(db *sql.DB) *ProviderService {
 	return &ProviderService{db: db}
 }
 
-func (s *ProviderService) List() ([]models.Provider, error) {
+func (s *ProviderService) List(userID int64) ([]models.Provider, error) {
 	rows, err := s.db.Query(
-		"SELECT id, provider_key, name, api_base_url, provider_type, is_active, created_at, updated_at FROM providers ORDER BY created_at",
+		"SELECT id, provider_key, name, api_base_url, provider_type, is_active, COALESCE(user_id, 0), created_at, updated_at FROM providers WHERE (user_id = ? OR user_id IS NULL) ORDER BY created_at",
+		userID,
 	)
 	if err != nil {
 		return nil, err
@@ -34,7 +35,7 @@ func (s *ProviderService) List() ([]models.Provider, error) {
 	var providers []models.Provider
 	for rows.Next() {
 		var p models.Provider
-		if err := rows.Scan(&p.ID, &p.ProviderKey, &p.Name, &p.APiBaseURL, &p.ProviderType, &p.IsActive, &p.CreatedAt, &p.UpdatedAt); err != nil {
+		if err := rows.Scan(&p.ID, &p.ProviderKey, &p.Name, &p.APiBaseURL, &p.ProviderType, &p.IsActive, &p.UserID, &p.CreatedAt, &p.UpdatedAt); err != nil {
 			return nil, err
 		}
 		providers = append(providers, p)
@@ -42,31 +43,31 @@ func (s *ProviderService) List() ([]models.Provider, error) {
 	return providers, nil
 }
 
-func (s *ProviderService) GetByKey(providerKey string) (*models.Provider, error) {
+func (s *ProviderService) GetByKey(providerKey string, userID int64) (*models.Provider, error) {
 	var p models.Provider
 	err := s.db.QueryRow(
-		"SELECT id, provider_key, name, api_base_url, api_key_encrypted, provider_type, is_active, created_at, updated_at FROM providers WHERE provider_key = ? AND is_active = 1",
-		providerKey,
-	).Scan(&p.ID, &p.ProviderKey, &p.Name, &p.APiBaseURL, &p.APIKeyEncrypted, &p.ProviderType, &p.IsActive, &p.CreatedAt, &p.UpdatedAt)
+		"SELECT id, provider_key, name, api_base_url, api_key_encrypted, provider_type, is_active, COALESCE(user_id, 0), created_at, updated_at FROM providers WHERE provider_key = ? AND is_active = 1 AND (user_id = ? OR user_id IS NULL)",
+		providerKey, userID,
+	).Scan(&p.ID, &p.ProviderKey, &p.Name, &p.APiBaseURL, &p.APIKeyEncrypted, &p.ProviderType, &p.IsActive, &p.UserID, &p.CreatedAt, &p.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
 	return &p, nil
 }
 
-func (s *ProviderService) GetByID(id int64) (*models.Provider, error) {
+func (s *ProviderService) GetByID(id int64, userID int64) (*models.Provider, error) {
 	var p models.Provider
 	err := s.db.QueryRow(
-		"SELECT id, provider_key, name, api_base_url, api_key_encrypted, provider_type, is_active, created_at, updated_at FROM providers WHERE id = ?",
-		id,
-	).Scan(&p.ID, &p.ProviderKey, &p.Name, &p.APiBaseURL, &p.APIKeyEncrypted, &p.ProviderType, &p.IsActive, &p.CreatedAt, &p.UpdatedAt)
+		"SELECT id, provider_key, name, api_base_url, api_key_encrypted, provider_type, is_active, COALESCE(user_id, 0), created_at, updated_at FROM providers WHERE id = ? AND (user_id = ? OR user_id IS NULL)",
+		id, userID,
+	).Scan(&p.ID, &p.ProviderKey, &p.Name, &p.APiBaseURL, &p.APIKeyEncrypted, &p.ProviderType, &p.IsActive, &p.UserID, &p.CreatedAt, &p.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
 	return &p, nil
 }
 
-func (s *ProviderService) Create(req models.CreateProviderRequest) (*models.Provider, error) {
+func (s *ProviderService) Create(req models.CreateProviderRequest, userID int64) (*models.Provider, error) {
 	cfg := config.Load()
 
 	encrypted, err := crypto.Encrypt(req.APIKey, cfg.EncryptKey)
@@ -75,19 +76,19 @@ func (s *ProviderService) Create(req models.CreateProviderRequest) (*models.Prov
 	}
 
 	result, err := s.db.Exec(
-		"INSERT INTO providers (provider_key, name, api_base_url, api_key_encrypted, provider_type) VALUES (?, ?, ?, ?, ?)",
-		req.ProviderKey, req.Name, req.APiBaseURL, encrypted, req.ProviderType,
+		"INSERT INTO providers (provider_key, name, api_base_url, api_key_encrypted, provider_type, user_id) VALUES (?, ?, ?, ?, ?, ?)",
+		req.ProviderKey, req.Name, req.APiBaseURL, encrypted, req.ProviderType, userID,
 	)
 	if err != nil {
 		return nil, errors.New("provider_key already exists")
 	}
 
 	id, _ := result.LastInsertId()
-	return s.GetByID(id)
+	return s.GetByID(id, userID)
 }
 
-func (s *ProviderService) Update(id int64, req models.UpdateProviderRequest) (*models.Provider, error) {
-	existing, err := s.GetByID(id)
+func (s *ProviderService) Update(id int64, userID int64, req models.UpdateProviderRequest) (*models.Provider, error) {
+	existing, err := s.GetByID(id, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -117,31 +118,31 @@ func (s *ProviderService) Update(id int64, req models.UpdateProviderRequest) (*m
 			return nil, err
 		}
 		_, err = s.db.Exec(
-			"UPDATE providers SET name=?, api_base_url=?, api_key_encrypted=?, provider_type=?, is_active=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
-			name, apiBaseURL, encrypted, providerType, isActive, id,
+			"UPDATE providers SET name=?, api_base_url=?, api_key_encrypted=?, provider_type=?, is_active=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=?",
+			name, apiBaseURL, encrypted, providerType, isActive, id, userID,
 		)
 		if err != nil {
 			return nil, err
 		}
 	} else {
 		_, err = s.db.Exec(
-			"UPDATE providers SET name=?, api_base_url=?, provider_type=?, is_active=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
-			name, apiBaseURL, providerType, isActive, id,
+			"UPDATE providers SET name=?, api_base_url=?, provider_type=?, is_active=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=?",
+			name, apiBaseURL, providerType, isActive, id, userID,
 		)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	return s.GetByID(id)
+	return s.GetByID(id, userID)
 }
 
-func (s *ProviderService) Delete(id int64) error {
-	_, err := s.db.Exec("DELETE FROM models WHERE provider_id = ?", id)
+func (s *ProviderService) Delete(id int64, userID int64) error {
+	_, err := s.db.Exec("DELETE FROM models WHERE provider_id = ? AND user_id = ?", id, userID)
 	if err != nil {
 		return err
 	}
-	_, err = s.db.Exec("DELETE FROM providers WHERE id = ?", id)
+	_, err = s.db.Exec("DELETE FROM providers WHERE id = ? AND user_id = ?", id, userID)
 	return err
 }
 

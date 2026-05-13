@@ -11,9 +11,10 @@ import (
 
 func ListModels(svc *service.ModelService) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		userID := c.GetInt64("user_id")
 		providerKey := c.Query("provider_key")
 
-		modelList, err := svc.List(providerKey)
+		modelList, err := svc.List(providerKey, userID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -27,13 +28,14 @@ func ListModels(svc *service.ModelService) gin.HandlerFunc {
 
 func CreateModel(svc *service.ModelService) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		userID := c.GetInt64("user_id")
 		var req models.CreateModelRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 
-		model, err := svc.Create(req)
+		model, err := svc.Create(req, userID)
 		if err != nil {
 			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 			return
@@ -45,6 +47,7 @@ func CreateModel(svc *service.ModelService) gin.HandlerFunc {
 
 func UpdateModel(svc *service.ModelService) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		userID := c.GetInt64("user_id")
 		id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid model ID"})
@@ -57,7 +60,7 @@ func UpdateModel(svc *service.ModelService) gin.HandlerFunc {
 			return
 		}
 
-		model, err := svc.Update(id, req)
+		model, err := svc.Update(id, userID, req)
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 			return
@@ -69,13 +72,14 @@ func UpdateModel(svc *service.ModelService) gin.HandlerFunc {
 
 func DeleteModel(svc *service.ModelService) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		userID := c.GetInt64("user_id")
 		id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid model ID"})
 			return
 		}
 
-		if err := svc.Delete(id); err != nil {
+		if err := svc.Delete(id, userID); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}

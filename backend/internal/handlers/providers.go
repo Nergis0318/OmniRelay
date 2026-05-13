@@ -11,7 +11,8 @@ import (
 
 func ListProviders(svc *service.ProviderService) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		providers, err := svc.List()
+		userID := c.GetInt64("user_id")
+		providers, err := svc.List(userID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -25,13 +26,14 @@ func ListProviders(svc *service.ProviderService) gin.HandlerFunc {
 
 func CreateProvider(svc *service.ProviderService) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		userID := c.GetInt64("user_id")
 		var req models.CreateProviderRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 
-		provider, err := svc.Create(req)
+		provider, err := svc.Create(req, userID)
 		if err != nil {
 			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 			return
@@ -43,6 +45,7 @@ func CreateProvider(svc *service.ProviderService) gin.HandlerFunc {
 
 func UpdateProvider(svc *service.ProviderService) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		userID := c.GetInt64("user_id")
 		id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid provider ID"})
@@ -55,7 +58,7 @@ func UpdateProvider(svc *service.ProviderService) gin.HandlerFunc {
 			return
 		}
 
-		provider, err := svc.Update(id, req)
+		provider, err := svc.Update(id, userID, req)
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 			return
@@ -67,13 +70,14 @@ func UpdateProvider(svc *service.ProviderService) gin.HandlerFunc {
 
 func DeleteProvider(svc *service.ProviderService) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		userID := c.GetInt64("user_id")
 		id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid provider ID"})
 			return
 		}
 
-		if err := svc.Delete(id); err != nil {
+		if err := svc.Delete(id, userID); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
@@ -84,13 +88,14 @@ func DeleteProvider(svc *service.ProviderService) gin.HandlerFunc {
 
 func SyncProviderModels(ps *service.ProviderService, ms *service.ModelService) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		userID := c.GetInt64("user_id")
 		id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid provider ID"})
 			return
 		}
 
-		provider, err := ps.GetByID(id)
+		provider, err := ps.GetByID(id, userID)
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "provider not found"})
 			return
@@ -102,14 +107,15 @@ func SyncProviderModels(ps *service.ProviderService, ms *service.ModelService) g
 			return
 		}
 
-		if err := ms.SyncFromProvider(provider.ID, provider.ProviderKey, modelIDs); err != nil {
+		if err := ms.SyncFromProvider(provider.ID, provider.ProviderKey, modelIDs, userID); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to sync models: " + err.Error()})
 			return
 		}
 
 		c.JSON(http.StatusOK, gin.H{
-			"message":   "models synced",
+			"message":     "models synced",
 			"model_count": len(modelIDs),
 		})
 	}
 }
+

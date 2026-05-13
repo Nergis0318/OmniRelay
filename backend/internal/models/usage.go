@@ -6,6 +6,7 @@ type UsageLog struct {
 	ID              int64     `json:"id"`
 	APIKeyID        *int64    `json:"api_key_id"`
 	ProviderID      *int64    `json:"provider_id"`
+	UserID          *int64    `json:"user_id"`
 	Model           string    `json:"model"`
 	RequestTokens   int64     `json:"request_tokens"`
 	ResponseTokens  int64     `json:"response_tokens"`

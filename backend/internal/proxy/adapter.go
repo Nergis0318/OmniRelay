@@ -43,6 +43,6 @@ func (e *Engine) getAdapter(providerType string) Adapter {
 	return e.adapters[providerType]
 }
 
-func (e *Engine) resolveModel(fullModelID string) (*models.Model, error) {
-	return e.modelService.FindByFullID(fullModelID)
+func (e *Engine) resolveModel(fullModelID string, userID int64) (*models.Model, error) {
+	return e.modelService.FindByFullID(fullModelID, userID)
 }

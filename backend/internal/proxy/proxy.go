@@ -15,6 +15,7 @@ import (
 
 func (e *Engine) HandleChatCompletions(c *gin.Context) {
 	apiKeyID := c.GetInt64("api_key_id")
+	userID := c.GetInt64("user_id")
 
 	bodyBytes, err := io.ReadAll(c.Request.Body)
 	if err != nil {
@@ -34,13 +35,13 @@ func (e *Engine) HandleChatCompletions(c *gin.Context) {
 		return
 	}
 
-	dbModel, err := e.resolveModel(fullModelID)
+	dbModel, err := e.resolveModel(fullModelID, userID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("unknown model: %s", fullModelID)})
 		return
 	}
 
-	provider, err := e.providerService.GetByID(dbModel.ProviderID)
+	provider, err := e.providerService.GetByID(dbModel.ProviderID, userID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "provider not found or inactive"})
 		return
@@ -106,6 +107,7 @@ func (e *Engine) HandleChatCompletions(c *gin.Context) {
 			Model:        fullModelID,
 			IsError:      true,
 			ErrorMessage: err.Error(),
+			UserID:       &userID,
 		})
 		c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("upstream request failed: %v", err)})
 		return
@@ -120,13 +122,14 @@ func (e *Engine) HandleChatCompletions(c *gin.Context) {
 			Model:        fullModelID,
 			IsError:      true,
 			ErrorMessage: fmt.Sprintf("upstream returned %d", resp.StatusCode),
+			UserID:       &userID,
 		})
 		c.Data(resp.StatusCode, contentTypeOrDefault(resp.Header), respBody)
 		return
 	}
 
 	if isStream {
-		e.handleStreamResponse(c, resp, adapter, apiKeyID, provider.ID, fullModelID, dbModel)
+		e.handleStreamResponse(c, resp, adapter, apiKeyID, provider.ID, fullModelID, dbModel, userID)
 		return
 	}
 
@@ -138,6 +141,7 @@ func (e *Engine) HandleChatCompletions(c *gin.Context) {
 			Model:        fullModelID,
 			IsError:      true,
 			ErrorMessage: "failed to read upstream response",
+			UserID:       &userID,
 		})
 		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to read upstream response"})
 		return
@@ -181,7 +185,7 @@ func (e *Engine) HandleChatCompletions(c *gin.Context) {
 	c.JSON(http.StatusOK, finalResponse)
 }
 
-func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapter Adapter, apiKeyID, providerID int64, fullModelID string, dbModel *models.Model) {
+func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapter Adapter, apiKeyID, providerID int64, fullModelID string, dbModel *models.Model, userID int64) {
 	c.Status(http.StatusOK)
 	copyResponseHeaders(c, resp.Header)
 	c.Header("Content-Type", "text/event-stream")
@@ -248,10 +252,11 @@ func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapt
 		TotalTokens:    totalInputTokens + totalOutputTokens,
 		LatencyMs:      latencyMs,
 		Cost:           cost,
+		UserID:         &userID,
 	})
 }
 
-func (e *Engine) handleRawStreamResponse(c *gin.Context, resp *http.Response, apiKeyID, providerID int64, fullModelID string, start time.Time) {
+func (e *Engine) handleRawStreamResponse(c *gin.Context, resp *http.Response, apiKeyID, providerID int64, fullModelID string, start time.Time, userID int64) {
 	c.Status(http.StatusOK)
 	copyResponseHeaders(c, resp.Header)
 	if resp.Header.Get("Content-Type") == "" {
@@ -282,11 +287,13 @@ func (e *Engine) handleRawStreamResponse(c *gin.Context, resp *http.Response, ap
 		ProviderID: &providerID,
 		Model:      fullModelID,
 		LatencyMs:  time.Since(start).Milliseconds(),
+		UserID:     &userID,
 	})
 }
 
 func (e *Engine) HandleListModels(c *gin.Context) {
-	modelList, err := e.modelService.List("")
+	userID := c.GetInt64("user_id")
+	modelList, err := e.modelService.List("", userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list models"})
 		return
@@ -310,7 +317,8 @@ func (e *Engine) HandleGetModel(c *gin.Context) {
 		return
 	}
 
-	dbModel, err := e.resolveModel(fullModelID)
+	userID := c.GetInt64("user_id")
+	dbModel, err := e.resolveModel(fullModelID, userID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("unknown model: %s", fullModelID)})
 		return
@@ -321,6 +329,7 @@ func (e *Engine) HandleGetModel(c *gin.Context) {
 
 func (e *Engine) HandleMessages(c *gin.Context) {
 	apiKeyID := c.GetInt64("api_key_id")
+	userID := c.GetInt64("user_id")
 
 	bodyBytes, err := io.ReadAll(c.Request.Body)
 	if err != nil {
@@ -345,13 +354,13 @@ func (e *Engine) HandleMessages(c *gin.Context) {
 		return
 	}
 
-	dbModel, err := e.resolveModel(fullModelID)
+	dbModel, err := e.resolveModel(fullModelID, userID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("unknown model: %s", fullModelID)})
 		return
 	}
 
-	provider, err := e.providerService.GetByID(dbModel.ProviderID)
+	provider, err := e.providerService.GetByID(dbModel.ProviderID, userID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "provider not found or inactive"})
 		return
@@ -403,6 +412,7 @@ func (e *Engine) HandleMessages(c *gin.Context) {
 			Model:        fullModelID,
 			IsError:      true,
 			ErrorMessage: err.Error(),
+			UserID:       &userID,
 		})
 		c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("upstream request failed: %v", err)})
 		return
@@ -419,13 +429,14 @@ func (e *Engine) HandleMessages(c *gin.Context) {
 			IsError:      true,
 			ErrorMessage: fmt.Sprintf("upstream returned %d", resp.StatusCode),
 			LatencyMs:    latencyMs,
+			UserID:       &userID,
 		})
 		c.Data(resp.StatusCode, contentTypeOrDefault(resp.Header), respBody)
 		return
 	}
 
 	if isStream {
-		e.handleRawStreamResponse(c, resp, apiKeyID, provider.ID, fullModelID, startTime)
+		e.handleRawStreamResponse(c, resp, apiKeyID, provider.ID, fullModelID, startTime, userID)
 		return
 	}
 
@@ -439,6 +450,7 @@ func (e *Engine) HandleMessages(c *gin.Context) {
 			ProviderID: &provider.ID,
 			Model:      fullModelID,
 			LatencyMs:  latencyMs,
+			UserID:     &userID,
 		})
 		c.Data(resp.StatusCode, contentTypeOrDefault(resp.Header), respBody)
 		return
@@ -451,6 +463,7 @@ func (e *Engine) HandleMessages(c *gin.Context) {
 			ProviderID: &provider.ID,
 			Model:      fullModelID,
 			LatencyMs:  latencyMs,
+			UserID:     &userID,
 		})
 		c.Data(resp.StatusCode, contentTypeOrDefault(resp.Header), respBody)
 		return
@@ -463,6 +476,7 @@ func (e *Engine) HandleMessages(c *gin.Context) {
 		ProviderID: &provider.ID,
 		Model:      fullModelID,
 		LatencyMs:  latencyMs,
+		UserID:     &userID,
 	})
 
 	c.JSON(http.StatusOK, finalResponse)
@@ -473,13 +487,14 @@ func (e *Engine) HandlePathRouted(c *gin.Context) {
 	endpoint := c.Param("endpoint")
 	apiPrefix := routeAPIPrefix(c.Request.URL.Path)
 
-	provider, err := e.providerService.GetByKey(providerKey)
+	apiKeyID := c.GetInt64("api_key_id")
+	userID := c.GetInt64("user_id")
+
+	provider, err := e.providerService.GetByKey(providerKey, userID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("unknown provider: %s", providerKey)})
 		return
 	}
-
-	apiKeyID := c.GetInt64("api_key_id")
 
 	bodyBytes, err := io.ReadAll(c.Request.Body)
 	if err != nil {
@@ -513,26 +528,26 @@ func (e *Engine) HandlePathRouted(c *gin.Context) {
 		fullModelID += "unknown"
 	}
 
-	dbModel, _ := e.resolveModel(fullModelID)
+	dbModel, _ := e.resolveModel(fullModelID, userID)
 	adapter := e.getAdapter(provider.ProviderType)
 
 	isChatCompletions := endpoint == "/chat/completions" && c.Request.Method == http.MethodPost
 	isMessages := endpoint == "/messages" && c.Request.Method == http.MethodPost
 
 	if isChatCompletions && adapter != nil && dbModel != nil {
-		e.handlePathRoutedChat(c, provider, dbModel, adapter, body, fullModelID, apiKeyID)
+		e.handlePathRoutedChat(c, provider, dbModel, adapter, body, fullModelID, apiKeyID, userID)
 		return
 	}
 
 	if isMessages && adapter != nil && dbModel != nil {
-		e.handlePathRoutedMessages(c, provider, dbModel, adapter, body, fullModelID, apiKeyID)
+		e.handlePathRoutedMessages(c, provider, dbModel, adapter, body, fullModelID, apiKeyID, userID)
 		return
 	}
 
-	e.handlePathRoutedProxy(c, provider, dbModel, body, bodyBytes, fullModelID, apiKeyID, endpoint, apiPrefix, hasRequestBody, contentType)
+	e.handlePathRoutedProxy(c, provider, dbModel, body, bodyBytes, fullModelID, apiKeyID, endpoint, apiPrefix, hasRequestBody, contentType, userID)
 }
 
-func (e *Engine) handlePathRoutedChat(c *gin.Context, provider *models.Provider, dbModel *models.Model, adapter Adapter, body map[string]interface{}, fullModelID string, apiKeyID int64) {
+func (e *Engine) handlePathRoutedChat(c *gin.Context, provider *models.Provider, dbModel *models.Model, adapter Adapter, body map[string]interface{}, fullModelID string, apiKeyID int64, userID int64) {
 	apiKey, err := e.providerService.DecryptAPIKey(provider.APIKeyEncrypted)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to decrypt provider key"})
@@ -575,6 +590,7 @@ func (e *Engine) handlePathRoutedChat(c *gin.Context, provider *models.Provider,
 			Model:        fullModelID,
 			IsError:      true,
 			ErrorMessage: err.Error(),
+			UserID:       &userID,
 		})
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create upstream request"})
 		return
@@ -594,6 +610,7 @@ func (e *Engine) handlePathRoutedChat(c *gin.Context, provider *models.Provider,
 			Model:        fullModelID,
 			IsError:      true,
 			ErrorMessage: err.Error(),
+			UserID:       &userID,
 		})
 		c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("upstream request failed: %v", err)})
 		return
@@ -608,13 +625,14 @@ func (e *Engine) handlePathRoutedChat(c *gin.Context, provider *models.Provider,
 			Model:        fullModelID,
 			IsError:      true,
 			ErrorMessage: fmt.Sprintf("upstream returned %d", resp.StatusCode),
+			UserID:       &userID,
 		})
 		c.Data(resp.StatusCode, contentTypeOrDefault(resp.Header), respBody)
 		return
 	}
 
 	if isStream {
-		e.handleStreamResponse(c, resp, adapter, apiKeyID, provider.ID, fullModelID, dbModel)
+		e.handleStreamResponse(c, resp, adapter, apiKeyID, provider.ID, fullModelID, dbModel, userID)
 		return
 	}
 
@@ -626,6 +644,7 @@ func (e *Engine) handlePathRoutedChat(c *gin.Context, provider *models.Provider,
 			Model:        fullModelID,
 			IsError:      true,
 			ErrorMessage: "failed to read upstream response",
+			UserID:       &userID,
 		})
 		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to read upstream response"})
 		return
@@ -663,13 +682,14 @@ func (e *Engine) handlePathRoutedChat(c *gin.Context, provider *models.Provider,
 			TotalTokens:    totalTokens,
 			LatencyMs:      latencyMs,
 			Cost:           cost,
+			UserID:         &userID,
 		})
 	}
 
 	c.JSON(http.StatusOK, finalResponse)
 }
 
-func (e *Engine) handlePathRoutedMessages(c *gin.Context, provider *models.Provider, dbModel *models.Model, adapter Adapter, body map[string]interface{}, fullModelID string, apiKeyID int64) {
+func (e *Engine) handlePathRoutedMessages(c *gin.Context, provider *models.Provider, dbModel *models.Model, adapter Adapter, body map[string]interface{}, fullModelID string, apiKeyID int64, userID int64) {
 	apiKey, err := e.providerService.DecryptAPIKey(provider.APIKeyEncrypted)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to decrypt provider key"})
@@ -715,6 +735,7 @@ func (e *Engine) handlePathRoutedMessages(c *gin.Context, provider *models.Provi
 			Model:        fullModelID,
 			IsError:      true,
 			ErrorMessage: err.Error(),
+			UserID:       &userID,
 		})
 		c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("upstream request failed: %v", err)})
 		return
@@ -731,13 +752,14 @@ func (e *Engine) handlePathRoutedMessages(c *gin.Context, provider *models.Provi
 			IsError:      true,
 			ErrorMessage: fmt.Sprintf("upstream returned %d", resp.StatusCode),
 			LatencyMs:    latencyMs,
+			UserID:       &userID,
 		})
 		c.Data(resp.StatusCode, contentTypeOrDefault(resp.Header), respBody)
 		return
 	}
 
 	if isStream {
-		e.handleRawStreamResponse(c, resp, apiKeyID, provider.ID, fullModelID, startTime)
+		e.handleRawStreamResponse(c, resp, apiKeyID, provider.ID, fullModelID, startTime, userID)
 		return
 	}
 
@@ -751,6 +773,7 @@ func (e *Engine) handlePathRoutedMessages(c *gin.Context, provider *models.Provi
 			ProviderID: &provider.ID,
 			Model:      fullModelID,
 			LatencyMs:  latencyMs,
+			UserID:     &userID,
 		})
 		c.Data(resp.StatusCode, contentTypeOrDefault(resp.Header), respBody)
 		return
@@ -763,6 +786,7 @@ func (e *Engine) handlePathRoutedMessages(c *gin.Context, provider *models.Provi
 			ProviderID: &provider.ID,
 			Model:      fullModelID,
 			LatencyMs:  latencyMs,
+			UserID:     &userID,
 		})
 		c.Data(resp.StatusCode, contentTypeOrDefault(resp.Header), respBody)
 		return
@@ -781,6 +805,7 @@ func (e *Engine) handlePathRoutedMessages(c *gin.Context, provider *models.Provi
 			TotalTokens:    requestTokens + responseTokens,
 			LatencyMs:      latencyMs,
 			Cost:           cost,
+			UserID:         &userID,
 		})
 	}
 
@@ -800,6 +825,7 @@ func (e *Engine) handlePathRoutedMessages(c *gin.Context, provider *models.Provi
 					ProviderID: &provider.ID,
 					Model:      fullModelID,
 					LatencyMs:  latencyMs,
+					UserID:     &userID,
 				})
 			}
 		}
@@ -809,13 +835,14 @@ func (e *Engine) handlePathRoutedMessages(c *gin.Context, provider *models.Provi
 			ProviderID: &provider.ID,
 			Model:      fullModelID,
 			LatencyMs:  latencyMs,
+			UserID:     &userID,
 		})
 	}
 
 	c.JSON(http.StatusOK, finalResponse)
 }
 
-func (e *Engine) handlePathRoutedProxy(c *gin.Context, provider *models.Provider, dbModel *models.Model, body map[string]interface{}, bodyBytes []byte, fullModelID string, apiKeyID int64, endpoint string, apiPrefix string, hasRequestBody bool, contentType string) {
+func (e *Engine) handlePathRoutedProxy(c *gin.Context, provider *models.Provider, dbModel *models.Model, body map[string]interface{}, bodyBytes []byte, fullModelID string, apiKeyID int64, endpoint string, apiPrefix string, hasRequestBody bool, contentType string, userID int64) {
 	apiKey, err := e.providerService.DecryptAPIKey(provider.APIKeyEncrypted)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to decrypt provider key"})
@@ -844,6 +871,7 @@ func (e *Engine) handlePathRoutedProxy(c *gin.Context, provider *models.Provider
 			Model:        fullModelID,
 			IsError:      true,
 			ErrorMessage: err.Error(),
+			UserID:       &userID,
 		})
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create upstream request"})
 		return
@@ -868,6 +896,7 @@ func (e *Engine) handlePathRoutedProxy(c *gin.Context, provider *models.Provider
 			Model:        fullModelID,
 			IsError:      true,
 			ErrorMessage: err.Error(),
+			UserID:       &userID,
 		})
 		c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("upstream request failed: %v", err)})
 		return
@@ -877,7 +906,7 @@ func (e *Engine) handlePathRoutedProxy(c *gin.Context, provider *models.Provider
 	bodyStream, _ := body["stream"].(bool)
 	responseContentType := strings.ToLower(resp.Header.Get("Content-Type"))
 	if isSuccessStatus(resp.StatusCode) && (bodyStream || strings.Contains(responseContentType, "text/event-stream") || strings.Contains(responseContentType, "x-ndjson")) {
-		e.handleRawStreamResponse(c, resp, apiKeyID, provider.ID, fullModelID, startTime)
+		e.handleRawStreamResponse(c, resp, apiKeyID, provider.ID, fullModelID, startTime, userID)
 		return
 	}
 
@@ -892,6 +921,7 @@ func (e *Engine) handlePathRoutedProxy(c *gin.Context, provider *models.Provider
 			IsError:      true,
 			ErrorMessage: fmt.Sprintf("upstream returned %d", resp.StatusCode),
 			LatencyMs:    latencyMs,
+			UserID:       &userID,
 		})
 	} else if dbModel != nil {
 		var respJSON map[string]interface{}
@@ -908,6 +938,7 @@ func (e *Engine) handlePathRoutedProxy(c *gin.Context, provider *models.Provider
 					TotalTokens:    totalTokens,
 					LatencyMs:      latencyMs,
 					Cost:           cost,
+					UserID:         &userID,
 				})
 			} else {
 				e.usageService.Log(models.UsageLog{
@@ -915,6 +946,7 @@ func (e *Engine) handlePathRoutedProxy(c *gin.Context, provider *models.Provider
 					ProviderID: &provider.ID,
 					Model:      fullModelID,
 					LatencyMs:  latencyMs,
+					UserID:     &userID,
 				})
 			}
 		} else {
@@ -923,6 +955,7 @@ func (e *Engine) handlePathRoutedProxy(c *gin.Context, provider *models.Provider
 				ProviderID: &provider.ID,
 				Model:      fullModelID,
 				LatencyMs:  latencyMs,
+				UserID:     &userID,
 			})
 		}
 	} else {
@@ -931,6 +964,7 @@ func (e *Engine) handlePathRoutedProxy(c *gin.Context, provider *models.Provider
 			ProviderID: &provider.ID,
 			Model:      fullModelID,
 			LatencyMs:  latencyMs,
+			UserID:     &userID,
 		})
 	}
 

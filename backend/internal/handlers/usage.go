@@ -11,6 +11,7 @@ import (
 
 func ListUsage(svc *service.UsageService) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		userID := c.GetInt64("user_id")
 		var params models.UsageQueryParams
 
 		if v := c.Query("api_key_id"); v != "" {
@@ -31,7 +32,7 @@ func ListUsage(svc *service.UsageService) gin.HandlerFunc {
 			params.Offset, _ = strconv.Atoi(v)
 		}
 
-		logs, total, err := svc.Query(params)
+		logs, total, err := svc.Query(params, userID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -51,7 +52,8 @@ func ListUsage(svc *service.UsageService) gin.HandlerFunc {
 
 func GetStats(us *service.UsageService, ks *service.APIKeyService) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		stats, err := us.GetStats()
+		userID := c.GetInt64("user_id")
+		stats, err := us.GetStats(userID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return

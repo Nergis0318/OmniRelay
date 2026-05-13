@@ -15,6 +15,7 @@ type Model struct {
 	CacheWrite1hPricePer1MTok float64   `json:"cache_write_1h_price_per_1mtok"`
 	CacheReadPricePer1MTok    float64   `json:"cache_read_price_per_1mtok"`
 	ContextWindow             int64     `json:"context_window"`
+	UserID                    int64     `json:"user_id"`
 	CreatedAt                 time.Time `json:"created_at"`
 }
 

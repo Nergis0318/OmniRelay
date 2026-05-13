@@ -80,6 +80,12 @@ func runMigrations(db *sql.DB) error {
 	addColumnIfMissing(db, "models", "cache_write_5m_price_per_1mtok", "REAL DEFAULT 0.0")
 	addColumnIfMissing(db, "models", "cache_write_1h_price_per_1mtok", "REAL DEFAULT 0.0")
 	addColumnIfMissing(db, "models", "cache_read_price_per_1mtok", "REAL DEFAULT 0.0")
+	addColumnIfMissing(db, "providers", "user_id", "INTEGER REFERENCES users(id)")
+	addColumnIfMissing(db, "models", "user_id", "INTEGER REFERENCES users(id)")
+	addColumnIfMissing(db, "usage_logs", "user_id", "INTEGER REFERENCES users(id)")
+	db.Exec("CREATE INDEX IF NOT EXISTS idx_providers_user_id ON providers(user_id)")
+	db.Exec("CREATE INDEX IF NOT EXISTS idx_models_user_id ON models(user_id)")
+	db.Exec("CREATE INDEX IF NOT EXISTS idx_usage_user_id ON usage_logs(user_id)")
 
 	migrateColumnIfExists(db, "models", "input_price_per_1k", "input_price_per_1mtok")
 	migrateColumnIfExists(db, "models", "output_price_per_1k", "output_price_per_1mtok")
@@ -175,6 +181,7 @@ func upgradeProviderTypeConstraint(db *sql.DB) {
 			api_key_encrypted TEXT NOT NULL,
 			provider_type TEXT NOT NULL CHECK(provider_type IN ('openai', 'anthropic', 'lmstudio', 'ollama', 'gemini')),
 			is_active BOOLEAN DEFAULT 1,
+			user_id INTEGER REFERENCES users(id),
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		)`,
@@ -182,6 +189,7 @@ func upgradeProviderTypeConstraint(db *sql.DB) {
 		`DROP TABLE providers`,
 		`ALTER TABLE providers_new RENAME TO providers`,
 		`CREATE INDEX IF NOT EXISTS idx_models_provider_key ON models(provider_key)`,
+		`CREATE INDEX IF NOT EXISTS idx_providers_user_id ON providers(user_id)`,
 	}
 
 	for _, q := range queries {
