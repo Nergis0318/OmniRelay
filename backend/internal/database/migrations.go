@@ -127,14 +127,31 @@ var migrations = []migration{
 	{
 		version: 4,
 		up: func(tx *sql.Tx) error {
-			stmts := []string{
-				`ALTER TABLE providers ADD COLUMN user_id INTEGER REFERENCES users(id)`,
-				`CREATE INDEX IF NOT EXISTS idx_providers_user_id ON providers(user_id)`,
+			var hasColumn bool
+			rows, err := tx.Query(`PRAGMA table_info(providers)`)
+			if err != nil {
+				return err
 			}
-			for _, s := range stmts {
-				if _, err := tx.Exec(s); err != nil {
+			defer rows.Close()
+			for rows.Next() {
+				var cid int
+				var name, columnType string
+				var notNull, pk int
+				var dfltValue *string
+				if err := rows.Scan(&cid, &name, &columnType, &notNull, &dfltValue, &pk); err != nil {
 					return err
 				}
+				if name == "user_id" {
+					hasColumn = true
+				}
+			}
+			if !hasColumn {
+				if _, err := tx.Exec(`ALTER TABLE providers ADD COLUMN user_id INTEGER REFERENCES users(id)`); err != nil {
+					return err
+				}
+			}
+			if _, err := tx.Exec(`CREATE INDEX IF NOT EXISTS idx_providers_user_id ON providers(user_id)`); err != nil {
+				return err
 			}
 			return nil
 		},
