@@ -1,27 +1,17 @@
 services:
-  backend:
-    image: omnirelay-backend:local
+  omnirelay:
+    image: omnirelay:local
     build:
-      context: ./backend
+      context: .
     environment:
       LISTEN_ADDR: ":8080"
       DATABASE_PATH: /app/data/omnirelay.db
       JWT_SECRET: ${JWT_SECRET:-omnirelay-dev-secret-change-me}
-      ENCRYPT_KEY: ${ENCRYPT_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
+      ENCRYPT_KEY: ${ENCRYPT_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef}
     volumes:
       - omnirelay-data:/app/data
     ports:
-      - "8080:8080"
-    restart: unless-stopped
-
-  frontend:
-    image: omnirelay-frontend:local
-    build:
-      context: ./frontend
-    depends_on:
-      - backend
-    ports:
-      - "5173:80"
+      - "80:80"
     restart: unless-stopped
 
 volumes:

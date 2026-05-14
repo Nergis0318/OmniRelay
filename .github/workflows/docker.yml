@@ -17,16 +17,6 @@ jobs:
       contents: read
       packages: write
 
-    strategy:
-      matrix:
-        service:
-          - name: backend
-            context: ./backend
-            image: omnirelay-backend
-          - name: frontend
-            context: ./frontend
-            image: omnirelay-frontend
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -49,7 +39,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.service.image }}
+          images: ${{ env.REGISTRY }}/${{ github.repository }}/omnirelay
           tags: |
             type=ref,event=branch
             type=ref,event=pr
@@ -62,7 +52,7 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
-          context: ${{ matrix.service.context }}
+          context: .
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
