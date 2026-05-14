@@ -1,13 +1,14 @@
+name: omnirelay
+
 services:
   omnirelay:
-    image: omnirelay:local
-    build:
-      context: .
+    image: ghcr.io/nergis0318/omnirelay:latest
+    container_name: omnirelay
+    env_file:
+      - .env
     environment:
       LISTEN_ADDR: ":8080"
       DATABASE_PATH: /app/data/omnirelay.db
-      JWT_SECRET: ${JWT_SECRET:-omnirelay-dev-secret-change-me}
-      ENCRYPT_KEY: ${ENCRYPT_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef}
     volumes:
       - omnirelay-data:/app/data
     ports:
