@@ -8,69 +8,7 @@
     <div class="auth-card-wrap">
       <!-- Brand mark -->
       <div class="auth-brand">
-        <svg width="36" height="36" viewBox="0 0 28 28" fill="none">
-          <polygon
-            points="14,2 26,8 26,20 14,26 2,20 2,8"
-            stroke="#E8A020"
-            stroke-width="1.5"
-            fill="rgba(232,160,32,0.06)"
-          />
-          <circle cx="14" cy="14" r="3.5" fill="#E8A020" />
-          <line
-            x1="14"
-            y1="5"
-            x2="14"
-            y2="11"
-            stroke="#E8A020"
-            stroke-width="1"
-            opacity="0.5"
-          />
-          <line
-            x1="14"
-            y1="17"
-            x2="14"
-            y2="23"
-            stroke="#E8A020"
-            stroke-width="1"
-            opacity="0.5"
-          />
-          <line
-            x1="5"
-            y1="9.5"
-            x2="10.5"
-            y2="12.5"
-            stroke="#E8A020"
-            stroke-width="1"
-            opacity="0.5"
-          />
-          <line
-            x1="17.5"
-            y1="15.5"
-            x2="23"
-            y2="18.5"
-            stroke="#E8A020"
-            stroke-width="1"
-            opacity="0.5"
-          />
-          <line
-            x1="5"
-            y1="18.5"
-            x2="10.5"
-            y2="15.5"
-            stroke="#E8A020"
-            stroke-width="1"
-            opacity="0.5"
-          />
-          <line
-            x1="17.5"
-            y1="12.5"
-            x2="23"
-            y2="9.5"
-            stroke="#E8A020"
-            stroke-width="1"
-            opacity="0.5"
-          />
-        </svg>
+        <img class="auth-brand__logo" :src="logoUrl" alt="OmniRelay" />
         <span class="auth-brand__name">OmniRelay</span>
       </div>
 
@@ -192,6 +130,7 @@ import { ref } from "vue";
 import { useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import { useAuthStore } from "../stores/auth";
+import logoUrl from "../assets/omnirelay-logo.svg";
 
 const { t } = useI18n();
 const auth = useAuthStore();
@@ -284,6 +223,11 @@ async function handleLogin() {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+.auth-brand__logo {
+  display: block;
+  width: 40px;
+  height: 40px;
 }
 .auth-brand__name {
   font-family: "Fraunces", Georgia, serif;

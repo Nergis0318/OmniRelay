@@ -3,69 +3,7 @@
     <!-- Brand -->
     <div class="brand-area" :class="{ 'brand-area--rail': rail }">
       <div class="brand-logo">
-        <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
-          <polygon
-            points="14,2 26,8 26,20 14,26 2,20 2,8"
-            stroke="#E8A020"
-            stroke-width="1.5"
-            fill="rgba(232,160,32,0.06)"
-          />
-          <circle cx="14" cy="14" r="3.5" fill="#E8A020" />
-          <line
-            x1="14"
-            y1="5"
-            x2="14"
-            y2="11"
-            stroke="#E8A020"
-            stroke-width="1"
-            opacity="0.5"
-          />
-          <line
-            x1="14"
-            y1="17"
-            x2="14"
-            y2="23"
-            stroke="#E8A020"
-            stroke-width="1"
-            opacity="0.5"
-          />
-          <line
-            x1="5"
-            y1="9.5"
-            x2="10.5"
-            y2="12.5"
-            stroke="#E8A020"
-            stroke-width="1"
-            opacity="0.5"
-          />
-          <line
-            x1="17.5"
-            y1="15.5"
-            x2="23"
-            y2="18.5"
-            stroke="#E8A020"
-            stroke-width="1"
-            opacity="0.5"
-          />
-          <line
-            x1="5"
-            y1="18.5"
-            x2="10.5"
-            y2="15.5"
-            stroke="#E8A020"
-            stroke-width="1"
-            opacity="0.5"
-          />
-          <line
-            x1="17.5"
-            y1="12.5"
-            x2="23"
-            y2="9.5"
-            stroke="#E8A020"
-            stroke-width="1"
-            opacity="0.5"
-          />
-        </svg>
+        <img :src="logoUrl" alt="OmniRelay" />
       </div>
       <transition name="fade">
         <div v-if="!rail" class="brand-text">
@@ -157,6 +95,7 @@ import { useRouter, useRoute } from "vue-router";
 import { useI18n } from "vue-i18n";
 import { useAuthStore } from "../stores/auth";
 import { setLocale } from "../plugins/i18n";
+import logoUrl from "../assets/omnirelay-logo.svg";
 
 const auth = useAuthStore();
 const router = useRouter();
@@ -207,6 +146,14 @@ function handleLogout() {
   flex-shrink: 0;
   display: flex;
   align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+}
+.brand-logo img {
+  display: block;
+  width: 32px;
+  height: 32px;
 }
 
 .brand-text {
