@@ -76,7 +76,7 @@
           }}</span>
         </template>
         <template #item.duration_sec="{ item }">
-          <span class="mono-val" :class="{ 'mono-val--slow': item.latency_ms > 10000 }">
+          <span class="mono-val">
             {{ (item.latency_ms / 1000).toFixed(2) }}s
           </span>
         </template>
@@ -84,7 +84,7 @@
           <span class="dim-text">{{ item.provider_name || '-' }}</span>
         </template>
         <template #item.model="{ item }">
-          <code class="mono-tag">{{ item.model }}</code>
+          <code class="mono-tag">{{ getModelName(item.model) }}</code>
         </template>
         <template #item.request_tokens="{ item }">
           <span class="mono-val">{{ item.request_tokens.toLocaleString() }}</span>
@@ -180,6 +180,11 @@ const headers = computed(() => [
 
 function formatTime(ts: string): string {
   return new Date(ts).toLocaleString();
+}
+
+function getModelName(model: string): string {
+  const idx = model.indexOf('/');
+  return idx >= 0 ? model.substring(idx + 1) : model;
 }
 
 async function loadLogs() {

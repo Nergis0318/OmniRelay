@@ -34,6 +34,11 @@ interface DashboardStats {
   total_cache_write_5m: number;
   total_cache_write_1h: number;
   total_cache_read: number;
+  today_cost: number;
+  today_requests: number;
+  today_tokens: number;
+  rpm: number;
+  tpm: number;
   daily_usage: {
     date: string;
     total_tokens: number;

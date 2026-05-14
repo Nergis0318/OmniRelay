@@ -46,6 +46,11 @@ type DashboardStats struct {
 	TotalCacheWrite5M  int64        `json:"total_cache_write_5m"`
 	TotalCacheWrite1H  int64        `json:"total_cache_write_1h"`
 	TotalCacheRead     int64        `json:"total_cache_read"`
+	TodayCost          float64      `json:"today_cost"`
+	TodayRequests      int64        `json:"today_requests"`
+	TodayTokens        int64        `json:"today_tokens"`
+	RPM                float64      `json:"rpm"`
+	TPM                float64      `json:"tpm"`
 }
 
 type DailyUsage struct {

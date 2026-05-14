@@ -48,7 +48,7 @@
       <h2 class="chart-heading">{{ $t("dashboard.usage30Days") }}</h2>
       <div class="chart-area">
         <template v-if="stats?.daily_usage?.length">
-          <Bar :data="chartData" :options="chartOptions" />
+          <Line :data="chartData" :options="chartOptions" />
         </template>
         <div v-else class="empty-state">
           <v-icon size="32" color="#4a4844">mdi-chart-bar</v-icon>
@@ -62,18 +62,20 @@
 <script setup lang="ts">
 import { computed, onMounted } from "vue";
 import { useI18n } from "vue-i18n";
-import { Bar } from "vue-chartjs";
+import { Line } from "vue-chartjs";
 import {
   Chart as ChartJS,
   CategoryScale,
   LinearScale,
-  BarElement,
+  PointElement,
+  LineElement,
+  Filler,
   Tooltip,
   Legend,
 } from "chart.js";
 import { useUsageStore } from "../stores/usage";
 
-ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend);
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, Tooltip, Legend);
 
 const { t } = useI18n();
 const store = useUsageStore();
@@ -85,19 +87,25 @@ const chartData = computed(() => ({
     {
       label: t("dashboard.tokens"),
       data: stats.value?.daily_usage.map((d) => d.total_tokens) ?? [],
-      backgroundColor: "rgba(232, 160, 32, 0.3)",
+      backgroundColor: "rgba(232, 160, 32, 0.1)",
       borderColor: "#e8a020",
-      borderWidth: 1,
-      borderRadius: 4,
+      borderWidth: 2,
+      fill: true,
+      tension: 0.3,
+      pointRadius: 3,
+      pointHoverRadius: 5,
       yAxisID: "y",
     },
     {
       label: t("dashboard.cost"),
       data: stats.value?.daily_usage.map((d) => d.total_cost) ?? [],
-      backgroundColor: "rgba(46, 196, 182, 0.2)",
+      backgroundColor: "rgba(46, 196, 182, 0.1)",
       borderColor: "#2ec4b6",
-      borderWidth: 1,
-      borderRadius: 4,
+      borderWidth: 2,
+      fill: true,
+      tension: 0.3,
+      pointRadius: 3,
+      pointHoverRadius: 5,
       yAxisID: "y1",
     },
   ],

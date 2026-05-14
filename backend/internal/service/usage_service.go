@@ -28,7 +28,7 @@ func (s *UsageService) Log(log models.UsageLog) error {
 }
 
 func (s *UsageService) Query(params models.UsageQueryParams, userID int64) ([]models.UsageLog, int64, error) {
-	where := []string{"(user_id = ? OR user_id IS NULL)"}
+	where := []string{"(u.user_id = ? OR u.user_id IS NULL)"}
 	args := []interface{}{userID}
 
 	if params.APIKeyID != nil {
@@ -64,7 +64,7 @@ func (s *UsageService) Query(params models.UsageQueryParams, userID int64) ([]mo
 	whereClause := strings.Join(where, " AND ")
 
 	var total int64
-	countQuery := "SELECT COUNT(*) FROM usage_logs WHERE " + whereClause
+	countQuery := "SELECT COUNT(*) FROM usage_logs u WHERE " + whereClause
 	s.db.QueryRow(countQuery, args...).Scan(&total)
 
 	query := fmt.Sprintf("SELECT u.id, u.api_key_id, u.provider_id, u.model, u.request_tokens, u.response_tokens, u.total_tokens, COALESCE(u.cache_write_5m_tokens,0), COALESCE(u.cache_write_1h_tokens,0), COALESCE(u.cache_read_tokens,0), u.latency_ms, u.cost, u.is_error, COALESCE(u.error_message,''), COALESCE(u.user_id, 0), u.started_at, u.completed_at, u.created_at, COALESCE(p.name,'') FROM usage_logs u LEFT JOIN providers p ON u.provider_id = p.id WHERE %s ORDER BY u.created_at DESC LIMIT ? OFFSET ?", whereClause)
@@ -100,6 +100,22 @@ func (s *UsageService) GetStats(userID int64) (*models.DashboardStats, error) {
 	s.db.QueryRow("SELECT COUNT(*) FROM api_keys WHERE is_active = 1 AND created_by = ?", userID).Scan(&stats.ActiveKeys)
 	s.db.QueryRow("SELECT COUNT(*) FROM providers WHERE is_active = 1 AND (user_id = ? OR user_id IS NULL)", userID).Scan(&stats.ProvidersCount)
 	s.db.QueryRow("SELECT COUNT(*) FROM models m JOIN providers p ON m.provider_id = p.id WHERE p.is_active = 1 AND (m.user_id = ? OR m.user_id IS NULL)", userID).Scan(&stats.ModelsCount)
+
+	s.db.QueryRow("SELECT COALESCE(SUM(cost), 0) FROM usage_logs WHERE DATE(created_at) = DATE('now') AND (user_id = ? OR user_id IS NULL)", userID).Scan(&stats.TodayCost)
+	s.db.QueryRow("SELECT COUNT(*) FROM usage_logs WHERE DATE(created_at) = DATE('now') AND (user_id = ? OR user_id IS NULL)", userID).Scan(&stats.TodayRequests)
+	s.db.QueryRow("SELECT COALESCE(SUM(total_tokens), 0) FROM usage_logs WHERE DATE(created_at) = DATE('now') AND (user_id = ? OR user_id IS NULL)", userID).Scan(&stats.TodayTokens)
+
+	s.db.QueryRow(`
+		SELECT COALESCE(COUNT(*) * 60.0 / MAX(1, CAST((julianday('now') - julianday(MIN(created_at))) * 24 * 60 AS INTEGER)), 0)
+		FROM usage_logs
+		WHERE created_at >= datetime('now', '-5 minutes') AND (user_id = ? OR user_id IS NULL)
+	`, userID).Scan(&stats.RPM)
+
+	s.db.QueryRow(`
+		SELECT COALESCE(SUM(total_tokens) * 60.0 / MAX(1, CAST((julianday('now') - julianday(MIN(created_at))) * 24 * 60 AS INTEGER)), 0)
+		FROM usage_logs
+		WHERE created_at >= datetime('now', '-5 minutes') AND (user_id = ? OR user_id IS NULL)
+	`, userID).Scan(&stats.TPM)
 
 	rows, err := s.db.Query(`
 		SELECT DATE(created_at) as date, COALESCE(SUM(total_tokens),0), COALESCE(SUM(cost),0), COUNT(*)

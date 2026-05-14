@@ -11,29 +11,64 @@
 
     <!-- Stat cards -->
     <div class="stat-grid">
-      <div
-        v-for="card in statCards"
-        :key="card.title"
-        class="stat-card"
-        :style="{ '--accent': card.accent }"
-      >
+      <div class="stat-card" style="--accent: #e8a020">
         <div class="stat-card__top">
-          <span class="stat-card__label">{{ card.title }}</span>
-          <div
-            class="stat-card__icon-wrap"
-            :style="{ '--accent': card.accent }"
-          >
-            <v-icon size="16">{{ card.icon }}</v-icon>
+          <span class="stat-card__label">{{ $t("dashboard.todayCost") }}</span>
+        </div>
+        <div class="stat-card__value">${{ todayCost.toFixed(4) }}</div>
+        <div class="stat-card__sub">{{ $t("dashboard.total") }}: ${{ (stats?.total_cost ?? 0).toFixed(4) }}</div>
+        <div class="stat-card__bar">
+          <div class="stat-card__bar-fill" :style="{ background: '#e8a020', width: todayCostBarPct + '%' }" />
+        </div>
+      </div>
+
+      <div class="stat-card" style="--accent: #2ec4b6">
+        <div class="stat-card__top">
+          <span class="stat-card__label">{{ $t("dashboard.todayRequests") }}</span>
+        </div>
+        <div class="stat-card__value">{{ todayRequests.toLocaleString() }}</div>
+        <div class="stat-card__sub">{{ $t("dashboard.total") }}: {{ (stats?.total_requests ?? 0).toLocaleString() }}</div>
+        <div class="stat-card__bar">
+          <div class="stat-card__bar-fill" :style="{ background: '#2ec4b6', width: todayRequestsBarPct + '%' }" />
+        </div>
+      </div>
+
+      <div class="stat-card" style="--accent: #7b61ff">
+        <div class="stat-card__top">
+          <span class="stat-card__label">{{ $t("dashboard.todayTokens") }}</span>
+        </div>
+        <div class="stat-card__value">{{ todayTokens.toLocaleString() }}</div>
+        <div class="stat-card__sub">{{ $t("dashboard.total") }}: {{ (stats?.total_tokens ?? 0).toLocaleString() }}</div>
+        <div class="stat-card__bar">
+          <div class="stat-card__bar-fill" :style="{ background: '#7b61ff', width: todayTokensBarPct + '%' }" />
+        </div>
+      </div>
+
+      <div class="stat-card" style="--accent: #ff5757">
+        <div class="stat-card__top">
+          <span class="stat-card__label">{{ $t("dashboard.performance") }}</span>
+        </div>
+        <div class="stat-card__value stat-card__value--dual">
+          <span class="perf-rpm">RPM: {{ rpm.toFixed(0) }}</span>
+          <span class="perf-tpm">TPM: {{ tpm.toFixed(0) }}</span>
+        </div>
+        <div class="stat-card__sub">&nbsp;</div>
+        <div class="stat-card__bar">
+          <div class="stat-card__bar-fill" :style="{ background: '#ff5757', width: perfBarPct + '%' }" />
+        </div>
+      </div>
+
+      <div class="stat-card" style="--accent: #e8a020">
+        <div class="stat-card__top">
+          <span class="stat-card__label">{{ $t("dashboard.avgLatency") }}</span>
+          <div class="stat-card__icon-wrap" :style="{ '--accent': latencySec > 2 ? '#ff5757' : '#e8a020' }">
+            <v-icon size="16">mdi-speedometer</v-icon>
           </div>
         </div>
-        <div class="stat-card__value">
-          {{ formatValue(card.value, card.format) }}
-        </div>
+        <div class="stat-card__value">{{ latencySec.toFixed(2) }} s</div>
+        <div class="stat-card__sub">&nbsp;</div>
         <div class="stat-card__bar">
-          <div
-            class="stat-card__bar-fill"
-            :style="{ background: card.accent, width: card.barPct + '%' }"
-          />
+          <div class="stat-card__bar-fill" :style="{ background: latencySec > 2 ? '#ff5757' : '#e8a020', width: latencyBarPct + '%' }" />
         </div>
       </div>
     </div>
@@ -126,46 +161,28 @@ function tick() {
 tick();
 setInterval(tick, 1000);
 
-const statCards = computed(() => {
-  const requests = stats.value?.total_requests ?? 0;
-  const tokens = stats.value?.total_tokens ?? 0;
-  const cost = stats.value?.total_cost ?? 0;
-  const latency = stats.value?.avg_latency_ms ?? 0;
-  return [
-    {
-      title: t("dashboard.totalRequests"),
-      value: requests,
-      format: "number",
-      icon: "mdi-send-outline",
-      accent: "#e8a020",
-      barPct: Math.min(100, (requests / Math.max(1, requests)) * 100),
-    },
-    {
-      title: t("dashboard.totalTokens"),
-      value: tokens,
-      format: "number",
-      icon: "mdi-code-tags",
-      accent: "#2ec4b6",
-      barPct: Math.min(100, (tokens / Math.max(1, tokens)) * 100),
-    },
-    {
-      title: t("dashboard.totalCost"),
-      value: cost,
-      format: "cost",
-      icon: "mdi-currency-usd",
-      accent: "#7b61ff",
-      barPct: Math.min(100, (cost / Math.max(0.01, cost)) * 100),
-    },
-    {
-      title: t("dashboard.avgLatency"),
-      value: latency,
-      format: "latency",
-      icon: "mdi-speedometer",
-      accent: latency > 2000 ? "#ff5757" : "#e8a020",
-      barPct: Math.min(100, (latency / 5000) * 100),
-    },
-  ];
+const todayCost = computed(() => stats.value?.today_cost ?? 0);
+const todayRequests = computed(() => stats.value?.today_requests ?? 0);
+const todayTokens = computed(() => stats.value?.today_tokens ?? 0);
+const rpm = computed(() => stats.value?.rpm ?? 0);
+const tpm = computed(() => stats.value?.tpm ?? 0);
+const latency = computed(() => stats.value?.avg_latency_ms ?? 0);
+const latencySec = computed(() => latency.value / 1000);
+
+const todayCostBarPct = computed(() => {
+  const total = stats.value?.total_cost ?? 0;
+  return total > 0 ? Math.min(100, (todayCost.value / total) * 100) : 0;
 });
+const todayRequestsBarPct = computed(() => {
+  const total = stats.value?.total_requests ?? 0;
+  return total > 0 ? Math.min(100, (todayRequests.value / total) * 100) : 0;
+});
+const todayTokensBarPct = computed(() => {
+  const total = stats.value?.total_tokens ?? 0;
+  return total > 0 ? Math.min(100, (todayTokens.value / total) * 100) : 0;
+});
+const perfBarPct = computed(() => Math.min(100, (rpm.value / 1000) * 100));
+const latencyBarPct = computed(() => Math.min(100, (latency.value / 5000) * 100));
 
 const infoRows = computed(() => [
   {
@@ -184,7 +201,7 @@ const infoRows = computed(() => [
     icon: "mdi-key-outline",
   },
   {
-    label: t("dashboard.totalRequests"),
+    label: t("logs.totalRequests"),
     value: (stats.value?.total_requests ?? 0).toLocaleString(),
     icon: "mdi-send-outline",
   },
@@ -261,17 +278,6 @@ const chartOptions = {
     },
   },
 };
-
-function formatValue(value: number, format: string): string {
-  switch (format) {
-    case "cost":
-      return `$${value.toFixed(4)}`;
-    case "latency":
-      return `${value.toFixed(0)} ms`;
-    default:
-      return value.toLocaleString();
-  }
-}
 
 onMounted(() => usageStore.fetchStats());
 </script>
@@ -385,7 +391,26 @@ onMounted(() => usageStore.fetchStats());
   color: #e8e6e1;
   letter-spacing: -0.02em;
   line-height: 1;
-  margin-bottom: 12px;
+  margin-bottom: 4px;
+}
+.stat-card__value--dual {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.perf-rpm,
+.perf-tpm {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 1rem;
+  font-weight: 500;
+  color: #e8e6e1;
+}
+.stat-card__sub {
+  font-family: "DM Sans", sans-serif;
+  font-size: 0.72rem;
+  color: #4a4844;
+  margin-bottom: 8px;
+  min-height: 1em;
 }
 .stat-card__bar {
   height: 2px;
