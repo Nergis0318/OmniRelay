@@ -228,4 +228,4 @@ npx vue-tsc --noEmit          # Type check
 
 ## License
 
-MIT
+Apache License Version 2.0

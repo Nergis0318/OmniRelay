@@ -6,9 +6,6 @@ services:
     container_name: omnirelay
     env_file:
       - .env
-    environment:
-      LISTEN_ADDR: ":8080"
-      DATABASE_PATH: /app/data/omnirelay.db
     volumes:
       - omnirelay-data:/app/data
     ports:
