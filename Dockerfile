@@ -1,6 +1,3 @@
-# syntax=docker/dockerfile:1
-
-# Frontend build
 FROM oven/bun:1-alpine AS frontend-builder
 
 WORKDIR /app/frontend
