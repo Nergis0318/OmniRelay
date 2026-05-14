@@ -52,6 +52,43 @@
           </div>
 
           <div class="field-group">
+            <label class="field-label">{{ $t("auth.email") }}</label>
+            <div class="field-wrap">
+              <svg
+                class="field-icon"
+                width="16"
+                height="16"
+                viewBox="0 0 16 16"
+                fill="none"
+              >
+                <rect
+                  x="1.5"
+                  y="3.5"
+                  width="13"
+                  height="9"
+                  rx="1.5"
+                  stroke="currentColor"
+                  stroke-width="1.25"
+                />
+                <path
+                  d="M1.5 3.5l6.5 4.5 6.5-4.5"
+                  stroke="currentColor"
+                  stroke-width="1.25"
+                  stroke-linecap="round"
+                />
+              </svg>
+              <input
+                v-model="email"
+                type="email"
+                class="field-input"
+                placeholder="admin@example.com"
+                autocomplete="email"
+                required
+              />
+            </div>
+          </div>
+
+          <div class="field-group">
             <label class="field-label">{{ $t("auth.password") }}</label>
             <div
               class="field-wrap"
@@ -102,6 +139,7 @@
                 }}</v-icon>
               </button>
             </div>
+            <span class="field-hint">{{ $t("auth.passwordRequirements") }}</span>
           </div>
 
           <div class="field-group">
@@ -191,6 +229,7 @@ const { t } = useI18n();
 const auth = useAuthStore();
 const router = useRouter();
 const username = ref("");
+const email = ref("");
 const password = ref("");
 const confirmPassword = ref("");
 const error = ref("");
@@ -202,7 +241,7 @@ async function handleRegister() {
   loading.value = true;
   error.value = "";
   try {
-    await auth.register(username.value, password.value);
+    await auth.register(username.value, email.value, password.value);
     router.push("/");
   } catch (e: any) {
     error.value = e.response?.data?.error || t("auth.registrationFailed");
@@ -378,6 +417,12 @@ async function handleRegister() {
   font-family: "DM Sans", sans-serif;
   font-size: 0.78rem;
   color: #ff5757;
+  padding-left: 4px;
+}
+.field-hint {
+  font-family: "DM Sans", sans-serif;
+  font-size: 0.78rem;
+  color: #4a4844;
   padding-left: 4px;
 }
 .pw-toggle {

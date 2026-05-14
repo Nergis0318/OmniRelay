@@ -23,6 +23,7 @@ export default {
     registerTitle: "계정 생성",
     registerSubtitle: "게이트웨이 콘솔 액세스 설정",
     username: "사용자 이름",
+    email: "이메일",
     password: "비밀번호",
     confirmPassword: "비밀번호 확인",
     signIn: "로그인",
@@ -34,6 +35,7 @@ export default {
     invalidCredentials: "잘못된 인증 정보입니다",
     registrationFailed: "등록 실패",
     passwordsDontMatch: "비밀번호가 일치하지 않습니다",
+    passwordRequirements: "최소 6자 이상",
   },
   nav: {
     dashboard: "대시보드",

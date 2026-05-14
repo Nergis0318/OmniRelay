@@ -20,7 +20,7 @@ COPY backend/go.mod backend/go.sum ./
 RUN go mod download
 
 COPY backend/ .
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/omnirelay ./cmd/server
+RUN CGO_ENABLED=0 GOOS=linux GIN_MODE=release go build -trimpath -ldflags="-s -w" -o /out/omnirelay ./cmd/server
 
 # Production image
 FROM caddy:2-alpine

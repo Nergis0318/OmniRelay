@@ -17,7 +17,7 @@ var migrations = []migration{
 			stmts := []string{
 				`CREATE TABLE IF NOT EXISTS users (
 					id INTEGER PRIMARY KEY AUTOINCREMENT,
-					username TEXT UNIQUE NOT NULL,
+					username TEXT NOT NULL,
 					password_hash TEXT NOT NULL,
 					is_admin BOOLEAN DEFAULT 0,
 					created_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -104,6 +104,21 @@ var migrations = []migration{
 				version INTEGER PRIMARY KEY
 			)`); err != nil {
 				return err
+			}
+			return nil
+		},
+	},
+	{
+		version: 3,
+		up: func(tx *sql.Tx) error {
+			stmts := []string{
+				`ALTER TABLE users ADD COLUMN email TEXT NOT NULL DEFAULT ''`,
+				`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email)`,
+			}
+			for _, s := range stmts {
+				if _, err := tx.Exec(s); err != nil {
+					return err
+				}
 			}
 			return nil
 		},

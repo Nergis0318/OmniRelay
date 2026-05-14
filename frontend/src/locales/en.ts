@@ -23,6 +23,7 @@ export default {
     registerTitle: "Create account",
     registerSubtitle: "Set up your gateway console access",
     username: "Username",
+    email: "Email",
     password: "Password",
     confirmPassword: "Confirm Password",
     signIn: "Sign In",
@@ -34,6 +35,7 @@ export default {
     invalidCredentials: "Invalid credentials",
     registrationFailed: "Registration failed",
     passwordsDontMatch: "Passwords don't match",
+    passwordRequirements: "At least 6 characters",
   },
   nav: {
     dashboard: "Dashboard",

@@ -35,17 +35,18 @@ func (s *AuthService) Register(req models.RegisterRequest) (*models.User, error)
 	isAdmin := count == 0
 
 	result, err := s.db.Exec(
-		"INSERT INTO users (username, password_hash, is_admin) VALUES (?, ?, ?)",
-		req.Username, string(hash), isAdmin,
+		"INSERT INTO users (username, email, password_hash, is_admin) VALUES (?, ?, ?, ?)",
+		req.Username, req.Email, string(hash), isAdmin,
 	)
 	if err != nil {
-		return nil, errors.New("username already exists")
+		return nil, errors.New("email already exists")
 	}
 
 	id, _ := result.LastInsertId()
 	return &models.User{
 		ID:        id,
 		Username:  req.Username,
+		Email:     req.Email,
 		IsAdmin:   isAdmin,
 		CreatedAt: time.Now(),
 	}, nil

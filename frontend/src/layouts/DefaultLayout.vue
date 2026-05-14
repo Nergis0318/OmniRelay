@@ -61,6 +61,13 @@
           </button>
           <button
             class="locale-btn"
+            :class="{ 'locale-btn--active': locale === 'ja' }"
+            @click="switchLocale('ja')"
+          >
+            JA
+          </button>
+          <button
+            class="locale-btn"
             :class="{ 'locale-btn--active': locale === 'ko' }"
             @click="switchLocale('ko')"
           >
