@@ -11,6 +11,7 @@ services:
     ports:
       - "80:80"
     restart: unless-stopped
+    dns: 1.1.1.1
 
 volumes:
   omnirelay-data:
