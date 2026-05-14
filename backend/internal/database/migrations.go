@@ -30,6 +30,7 @@ var migrations = []migration{
 					api_key_encrypted TEXT NOT NULL,
 					provider_type TEXT NOT NULL CHECK(provider_type IN ('openai', 'anthropic', 'lmstudio', 'ollama', 'gemini')),
 					is_active BOOLEAN DEFAULT 1,
+					user_id INTEGER REFERENCES users(id),
 					created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 					updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 				)`,
@@ -114,6 +115,21 @@ var migrations = []migration{
 			stmts := []string{
 				`ALTER TABLE users ADD COLUMN email TEXT NOT NULL DEFAULT ''`,
 				`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email)`,
+			}
+			for _, s := range stmts {
+				if _, err := tx.Exec(s); err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+	},
+	{
+		version: 4,
+		up: func(tx *sql.Tx) error {
+			stmts := []string{
+				`ALTER TABLE providers ADD COLUMN user_id INTEGER REFERENCES users(id)`,
+				`CREATE INDEX IF NOT EXISTS idx_providers_user_id ON providers(user_id)`,
 			}
 			for _, s := range stmts {
 				if _, err := tx.Exec(s); err != nil {

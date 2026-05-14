@@ -4,13 +4,13 @@
 
 	header /assets/* Cache-Control "public, max-age=31536000, immutable"
 
-	@admin path_prefix /admin/
+	@admin path /admin /admin/*
 	reverse_proxy @admin {
 		to localhost:8080
 		flush_interval -1
 	}
 
-	@v1 path_prefix /v1/
+	@v1 path /v1 /v1/*
 	reverse_proxy @v1 {
 		to localhost:8080
 		flush_interval -1
