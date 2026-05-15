@@ -18,6 +18,7 @@ var migrations = []migration{
 				`CREATE TABLE IF NOT EXISTS users (
 					id INTEGER PRIMARY KEY AUTOINCREMENT,
 					username TEXT NOT NULL,
+					email TEXT NOT NULL DEFAULT '',
 					password_hash TEXT NOT NULL,
 					is_admin BOOLEAN DEFAULT 0,
 					created_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -112,14 +113,17 @@ var migrations = []migration{
 	{
 		version: 3,
 		up: func(tx *sql.Tx) error {
-			stmts := []string{
-				`ALTER TABLE users ADD COLUMN email TEXT NOT NULL DEFAULT ''`,
-				`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email)`,
+			hasColumn, err := hasColumn(tx, "users", "email")
+			if err != nil {
+				return err
 			}
-			for _, s := range stmts {
-				if _, err := tx.Exec(s); err != nil {
+			if !hasColumn {
+				if _, err := tx.Exec(`ALTER TABLE users ADD COLUMN email TEXT NOT NULL DEFAULT ''`); err != nil {
 					return err
 				}
+			}
+			if _, err := tx.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE email <> ''`); err != nil {
+				return err
 			}
 			return nil
 		},
@@ -127,23 +131,9 @@ var migrations = []migration{
 	{
 		version: 4,
 		up: func(tx *sql.Tx) error {
-			var hasColumn bool
-			rows, err := tx.Query(`PRAGMA table_info(providers)`)
+			hasColumn, err := hasColumn(tx, "providers", "user_id")
 			if err != nil {
 				return err
-			}
-			defer rows.Close()
-			for rows.Next() {
-				var cid int
-				var name, columnType string
-				var notNull, pk int
-				var dfltValue *string
-				if err := rows.Scan(&cid, &name, &columnType, &notNull, &dfltValue, &pk); err != nil {
-					return err
-				}
-				if name == "user_id" {
-					hasColumn = true
-				}
 			}
 			if !hasColumn {
 				if _, err := tx.Exec(`ALTER TABLE providers ADD COLUMN user_id INTEGER REFERENCES users(id)`); err != nil {
@@ -156,6 +146,28 @@ var migrations = []migration{
 			return nil
 		},
 	},
+}
+
+func hasColumn(tx *sql.Tx, tableName, columnName string) (bool, error) {
+	rows, err := tx.Query(`PRAGMA table_info(` + tableName + `)`)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var cid int
+		var name, columnType string
+		var notNull, pk int
+		var dfltValue *string
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &dfltValue, &pk); err != nil {
+			return false, err
+		}
+		if name == columnName {
+			return true, nil
+		}
+	}
+	return false, rows.Err()
 }
 
 func runMigrations(db *sql.DB) error {

@@ -24,6 +24,14 @@ func (s *AuthService) SetJWTSecret(secret string) {
 }
 
 func (s *AuthService) Register(req models.RegisterRequest) (*models.User, error) {
+	exists, err := s.emailExists(req.Email)
+	if err != nil {
+		return nil, err
+	}
+	if exists {
+		return nil, errors.New("email already exists")
+	}
+
 	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, err
@@ -39,7 +47,10 @@ func (s *AuthService) Register(req models.RegisterRequest) (*models.User, error)
 		req.Username, req.Email, string(hash), isAdmin,
 	)
 	if err != nil {
-		return nil, errors.New("email already exists")
+		if exists, existsErr := s.emailExists(req.Email); existsErr == nil && exists {
+			return nil, errors.New("email already exists")
+		}
+		return nil, err
 	}
 
 	id, _ := result.LastInsertId()
@@ -52,12 +63,20 @@ func (s *AuthService) Register(req models.RegisterRequest) (*models.User, error)
 	}, nil
 }
 
+func (s *AuthService) emailExists(email string) (bool, error) {
+	var existing int
+	if err := s.db.QueryRow("SELECT COUNT(*) FROM users WHERE email = ?", email).Scan(&existing); err != nil {
+		return false, err
+	}
+	return existing > 0, nil
+}
+
 func (s *AuthService) Login(req models.LoginRequest) (*models.LoginResponse, error) {
 	var user models.User
 	err := s.db.QueryRow(
-		"SELECT id, username, password_hash, is_admin, created_at FROM users WHERE username = ?",
+		"SELECT id, username, email, password_hash, is_admin, created_at FROM users WHERE username = ?",
 		req.Username,
-	).Scan(&user.ID, &user.Username, &user.PasswordHash, &user.IsAdmin, &user.CreatedAt)
+	).Scan(&user.ID, &user.Username, &user.Email, &user.PasswordHash, &user.IsAdmin, &user.CreatedAt)
 	if err != nil {
 		return nil, errors.New("invalid credentials")
 	}
@@ -85,7 +104,7 @@ func (s *AuthService) Login(req models.LoginRequest) (*models.LoginResponse, err
 }
 
 func (s *AuthService) ListUsers() ([]models.User, error) {
-	rows, err := s.db.Query("SELECT id, username, is_admin, created_at FROM users ORDER BY created_at")
+	rows, err := s.db.Query("SELECT id, username, email, is_admin, created_at FROM users ORDER BY created_at")
 	if err != nil {
 		return nil, err
 	}
@@ -94,7 +113,7 @@ func (s *AuthService) ListUsers() ([]models.User, error) {
 	var users []models.User
 	for rows.Next() {
 		var u models.User
-		if err := rows.Scan(&u.ID, &u.Username, &u.IsAdmin, &u.CreatedAt); err != nil {
+		if err := rows.Scan(&u.ID, &u.Username, &u.Email, &u.IsAdmin, &u.CreatedAt); err != nil {
 			return nil, err
 		}
 		users = append(users, u)

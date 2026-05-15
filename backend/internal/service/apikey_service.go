@@ -6,9 +6,13 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"errors"
+	"fmt"
+	"io"
 	"omnirelay/internal/models"
 	"time"
 )
+
+var ErrRateLimitExceeded = errors.New("rate limit exceeded")
 
 type APIKeyService struct {
 	db *sql.DB
@@ -40,7 +44,10 @@ func (s *APIKeyService) List(userID int64) ([]models.APIKey, error) {
 }
 
 func (s *APIKeyService) Create(req models.CreateAPIKeyRequest, userID int64) (*models.CreateAPIKeyResponse, error) {
-	plainKey, prefix, hash := generateAPIKey()
+	plainKey, prefix, hash, err := generateAPIKey()
+	if err != nil {
+		return nil, err
+	}
 
 	result, err := s.db.Exec(
 		"INSERT INTO api_keys (key_hash, key_prefix, name, created_by, rate_limit_rpm) VALUES (?, ?, ?, ?, ?)",
@@ -83,6 +90,9 @@ func (s *APIKeyService) Validate(plainKey string) (*models.APIKey, error) {
 	if !k.IsActive {
 		return nil, errors.New("API key is inactive")
 	}
+	if err := s.checkRateLimit(k); err != nil {
+		return nil, err
+	}
 
 	s.db.Exec("UPDATE api_keys SET last_used_at = CURRENT_TIMESTAMP WHERE id = ?", k.ID)
 
@@ -100,9 +110,30 @@ func (s *APIKeyService) CountActive() (int64, error) {
 	return count, err
 }
 
-func generateAPIKey() (plainKey string, prefix string, hash string) {
+func (s *APIKeyService) checkRateLimit(k models.APIKey) error {
+	if k.RateLimitRPM <= 0 {
+		return nil
+	}
+
+	var count int64
+	err := s.db.QueryRow(
+		"SELECT COUNT(*) FROM usage_logs WHERE api_key_id = ? AND created_at >= datetime('now', '-1 minute')",
+		k.ID,
+	).Scan(&count)
+	if err != nil {
+		return err
+	}
+	if count >= k.RateLimitRPM {
+		return fmt.Errorf("%w: %d requests per minute", ErrRateLimitExceeded, k.RateLimitRPM)
+	}
+	return nil
+}
+
+func generateAPIKey() (plainKey string, prefix string, hash string, err error) {
 	bytes := make([]byte, 32)
-	rand.Read(bytes)
+	if _, err = io.ReadFull(rand.Reader, bytes); err != nil {
+		return "", "", "", err
+	}
 	randomPart := hex.EncodeToString(bytes)
 
 	plainKey = "om-ni-" + randomPart

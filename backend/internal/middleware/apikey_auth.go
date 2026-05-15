@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"errors"
 	"net/http"
 	"omnirelay/internal/service"
 	"strings"
@@ -32,6 +33,11 @@ func APIKeyAuth(svc *service.APIKeyService) gin.HandlerFunc {
 
 		apiKey, err := svc.Validate(apiKeyValue)
 		if err != nil {
+			if errors.Is(err, service.ErrRateLimitExceeded) {
+				c.JSON(http.StatusTooManyRequests, gin.H{"error": err.Error()})
+				c.Abort()
+				return
+			}
 			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 			c.Abort()
 			return
