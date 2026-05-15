@@ -11435,7 +11435,7 @@ paths:
                 "usage_metrics": null,
                 "shared_with_openai": false
               }
-                    
+
           - title: Validation file
             request:
               curl: |
@@ -13498,7 +13498,7 @@ paths:
 
               async function main() {
                 const model = await openai.models.delete("ft:gpt-4o-mini:acemeco:suffix:abc123");
-                
+
                 console.log(model);
               }
               main();
@@ -18610,7 +18610,7 @@ paths:
       security:
         - AdminApiKeyAuth: []
       summary: |
-        Deactivate certificates at the project level. You can atomically and 
+        Deactivate certificates at the project level. You can atomically and
         idempotently deactivate up to 10 certificates at a time.
       operationId: deactivateProjectCertificates
       tags:
@@ -25649,7 +25649,7 @@ paths:
               "speed": 1.1,
               "tracing": "auto",
               "client_secret": {
-                "value": "ek_abc123", 
+                "value": "ek_abc123",
                 "expires_at": 1234567890
               }
             }
@@ -25659,7 +25659,7 @@ paths:
         Create an ephemeral API token for use in client-side applications with
         the
 
-        Realtime API specifically for realtime transcriptions. 
+        Realtime API specifically for realtime transcriptions.
 
         Can be configured with the same session parameters as the
         `transcription_session.update` client event.
@@ -27639,7 +27639,7 @@ paths:
         - Responses
       summary: |
         Cancels a model response with the given ID. Only responses created with
-        the `background` parameter set to `true` can be cancelled. 
+        the `background` parameter set to `true` can be cancelled.
         [Learn more](/docs/guides/background).
       parameters:
         - in: path
@@ -31920,9 +31920,9 @@ paths:
 
 
         For certain `purpose` values, the correct `mime_type` must be
-        specified. 
+        specified.
 
-        Please refer to documentation for the 
+        Please refer to documentation for the
 
         [supported MIME types for your use
         case](/docs/assistants/tools/file-search#supported-files).
@@ -32140,7 +32140,7 @@ paths:
       tags:
         - Uploads
       summary: >
-        Completes the [Upload](/docs/api-reference/uploads/object). 
+        Completes the [Upload](/docs/api-reference/uploads/object).
 
 
         Within the returned Upload object, there is a nested
@@ -32278,7 +32278,7 @@ paths:
       summary: >
         Adds a [Part](/docs/api-reference/uploads/part-object) to an
         [Upload](/docs/api-reference/uploads/object) object. A Part represents a
-        chunk of bytes from the file you are trying to upload. 
+        chunk of bytes from the file you are trying to upload.
 
 
         Each Part can be at most 64 MB, and you can add Parts until you hit the
@@ -38094,7 +38094,7 @@ webhooks:
         '200':
           description: >
             Return a 200 status code to acknowledge receipt of the event.
-            Non-200 
+            Non-200
 
             status codes will be retried.
   batch_completed:
@@ -38111,7 +38111,7 @@ webhooks:
         '200':
           description: >
             Return a 200 status code to acknowledge receipt of the event.
-            Non-200 
+            Non-200
 
             status codes will be retried.
   batch_expired:
@@ -38128,7 +38128,7 @@ webhooks:
         '200':
           description: >
             Return a 200 status code to acknowledge receipt of the event.
-            Non-200 
+            Non-200
 
             status codes will be retried.
   batch_failed:
@@ -38145,7 +38145,7 @@ webhooks:
         '200':
           description: >
             Return a 200 status code to acknowledge receipt of the event.
-            Non-200 
+            Non-200
 
             status codes will be retried.
   eval_run_canceled:
@@ -38162,9 +38162,9 @@ webhooks:
         '200':
           description: >
             Return a 200 status code to acknowledge receipt of the event.
-            Non-200 
+            Non-200
 
-            status codes will be retried. 
+            status codes will be retried.
   eval_run_failed:
     post:
       description: |
@@ -38179,9 +38179,9 @@ webhooks:
         '200':
           description: >
             Return a 200 status code to acknowledge receipt of the event.
-            Non-200 
+            Non-200
 
-            status codes will be retried. 
+            status codes will be retried.
   eval_run_succeeded:
     post:
       description: |
@@ -38196,9 +38196,9 @@ webhooks:
         '200':
           description: >
             Return a 200 status code to acknowledge receipt of the event.
-            Non-200 
+            Non-200
 
-            status codes will be retried. 
+            status codes will be retried.
   fine_tuning_job_cancelled:
     post:
       description: |
@@ -38213,9 +38213,9 @@ webhooks:
         '200':
           description: >
             Return a 200 status code to acknowledge receipt of the event.
-            Non-200 
+            Non-200
 
-            status codes will be retried. 
+            status codes will be retried.
   fine_tuning_job_failed:
     post:
       description: |
@@ -38230,9 +38230,9 @@ webhooks:
         '200':
           description: >
             Return a 200 status code to acknowledge receipt of the event.
-            Non-200 
+            Non-200
 
-            status codes will be retried. 
+            status codes will be retried.
   fine_tuning_job_succeeded:
     post:
       description: |
@@ -38247,9 +38247,9 @@ webhooks:
         '200':
           description: >
             Return a 200 status code to acknowledge receipt of the event.
-            Non-200 
+            Non-200
 
-            status codes will be retried. 
+            status codes will be retried.
   realtime_call_incoming:
     post:
       description: |
@@ -38281,7 +38281,7 @@ webhooks:
         '200':
           description: >
             Return a 200 status code to acknowledge receipt of the event.
-            Non-200 
+            Non-200
 
             status codes will be retried.
   response_completed:
@@ -38298,9 +38298,9 @@ webhooks:
         '200':
           description: >
             Return a 200 status code to acknowledge receipt of the event.
-            Non-200 
+            Non-200
 
-            status codes will be retried. 
+            status codes will be retried.
   response_failed:
     post:
       description: |
@@ -38315,7 +38315,7 @@ webhooks:
         '200':
           description: >
             Return a 200 status code to acknowledge receipt of the event.
-            Non-200 
+            Non-200
 
             status codes will be retried.
   response_incomplete:
@@ -38332,7 +38332,7 @@ webhooks:
         '200':
           description: >
             Return a 200 status code to acknowledge receipt of the event.
-            Non-200 
+            Non-200
 
             status codes will be retried.
 components:
@@ -40939,14 +40939,14 @@ components:
               type: string
               description: >
                 The name of the file, used when passing the file to the model as
-                a 
+                a
 
                 string.
             file_data:
               type: string
               description: >
                 The base64 encoded file data, used when passing the file to the
-                model 
+                model
 
                 as a string.
             file_id:
@@ -41862,7 +41862,7 @@ components:
           default: computer_screenshot
           description: >
             Specifies the event type. For a computer screenshot, this property
-            is 
+            is
 
             always set to `computer_screenshot`.
           x-stainless-const: true
@@ -43119,7 +43119,7 @@ components:
       type: object
       description: |
         Represents a streamed chunk of a chat completion response returned
-        by the model, based on the provided input. 
+        by the model, based on the provided input.
         [Learn more](/docs/guides/streaming-responses).
       properties:
         id:
@@ -44063,7 +44063,7 @@ components:
       title: JsonlRunDataSource
       description: >
         A JsonlRunDataSource object with that specifies a JSONL file that
-        matches the eval 
+        matches the eval
       properties:
         type:
           type: string
@@ -46571,7 +46571,7 @@ components:
                 object can be provided to tweak VAD detection parameters
                 manually. If unset, the audio is transcribed as a single block.
                 Required when using `gpt-4o-transcribe-diarize` for inputs
-                longer than 30 seconds. 
+                longer than 30 seconds.
               anyOf:
                 - type: string
                   enum:
@@ -50186,7 +50186,7 @@ components:
         See the [guide](/docs/guides/function-calling) for examples, and the
         [JSON Schema
         reference](https://json-schema.org/understanding-json-schema/) for
-        documentation about the format. 
+        documentation about the format.
 
 
         Omitting `parameters` defines a function with an empty parameter list.
@@ -50195,7 +50195,7 @@ components:
       type: object
       title: Function tool call
       description: >
-        A tool call to run a function. See the 
+        A tool call to run a function. See the
 
         [function calling guide](/docs/guides/function-calling) for more
         information.
@@ -50717,10 +50717,10 @@ components:
             - rouge_l
           description: >
             The evaluation metric to use. One of `cosine`, `fuzzy_match`,
-            `bleu`, 
+            `bleu`,
 
             `gleu`, `meteor`, `rouge_1`, `rouge_2`, `rouge_3`, `rouge_4`,
-            `rouge_5`, 
+            `rouge_5`,
 
             or `rouge_l`.
       required:
@@ -51831,7 +51831,7 @@ components:
       title: Input item content list
       description: >
         A list of one or many input items to the model, containing different
-        content 
+        content
 
         types.
       items:
@@ -55692,19 +55692,19 @@ components:
       type: object
       description: >
         Add a new Item to the Conversation's context, including messages,
-        function 
+        function
 
         calls, and function call responses. This event can be used both to
-        populate a 
+        populate a
 
         "history" of the conversation and to add new items mid-stream, but has
-        the 
+        the
 
         current limitation that it cannot populate assistant audio messages.
 
 
         If successful, the server will respond with a
-        `conversation.item.created` 
+        `conversation.item.created`
 
         event, otherwise an `error` event will be sent.
       properties:
@@ -55722,7 +55722,7 @@ components:
           type: string
           description: >
             The ID of the preceding item after which the new item will be
-            inserted. 
+            inserted.
 
             If not set, the new item will be appended to the end of the
             conversation.
@@ -55761,13 +55761,13 @@ components:
     RealtimeBetaClientEventConversationItemDelete:
       type: object
       description: >
-        Send this event when you want to remove any item from the conversation 
+        Send this event when you want to remove any item from the conversation
 
         history. The server will respond with a `conversation.item.deleted`
-        event, 
+        event,
 
         unless the item does not exist in the conversation history, in which
-        case the 
+        case the
 
         server will respond with an error.
       properties:
@@ -55802,10 +55802,10 @@ components:
         a specific item in the conversation history. This is useful, for
         example, to inspect user audio after noise cancellation and VAD.
 
-        The server will respond with a `conversation.item.retrieved` event, 
+        The server will respond with a `conversation.item.retrieved` event,
 
         unless the item does not exist in the conversation history, in which
-        case the 
+        case the
 
         server will respond with an error.
       properties:
@@ -55837,30 +55837,30 @@ components:
       type: object
       description: >
         Send this event to truncate a previous assistant message’s audio. The
-        server 
+        server
 
         will produce audio faster than realtime, so this event is useful when
-        the user 
+        the user
 
         interrupts to truncate audio that has already been sent to the client
-        but not 
+        but not
 
         yet played. This will synchronize the server's understanding of the
-        audio with 
+        audio with
 
         the client's playback.
 
 
         Truncating audio will delete the server-side text transcript to ensure
-        there 
+        there
 
         is not text in the context that hasn't been heard by the user.
 
 
         If successful, the server will respond with a
-        `conversation.item.truncated` 
+        `conversation.item.truncated`
 
-        event. 
+        event.
       properties:
         event_id:
           type: string
@@ -55875,7 +55875,7 @@ components:
           type: string
           description: >
             The ID of the assistant message item to truncate. Only assistant
-            message 
+            message
 
             items can be truncated.
         content_index:
@@ -55885,10 +55885,10 @@ components:
           type: integer
           description: >
             Inclusive duration up to which audio is truncated, in milliseconds.
-            If 
+            If
 
             the audio_end_ms is greater than the actual audio duration, the
-            server 
+            server
 
             will respond with an error.
       required:
@@ -55911,13 +55911,13 @@ components:
       type: object
       description: >
         Send this event to append audio bytes to the input audio buffer. The
-        audio 
+        audio
 
         buffer is temporary storage you can write to and later commit. In Server
-        VAD 
+        VAD
 
         mode, the audio buffer is used to detect speech and the server will
-        decide 
+        decide
 
         when to commit. When Server VAD is disabled, you must commit the audio
         buffer
@@ -55926,13 +55926,13 @@ components:
 
 
         The client may choose how much audio to place in each event up to a
-        maximum 
+        maximum
 
         of 15 MiB, for example streaming smaller chunks from the client may
-        allow the 
+        allow the
 
         VAD to be more responsive. Unlike made other client events, the server
-        will 
+        will
 
         not send a confirmation response to this event.
       properties:
@@ -55949,7 +55949,7 @@ components:
           type: string
           description: >
             Base64-encoded audio bytes. This must be in the format specified by
-            the 
+            the
 
             `input_audio_format` field in the session configuration.
       required:
@@ -55967,7 +55967,7 @@ components:
     RealtimeBetaClientEventInputAudioBufferClear:
       type: object
       description: |
-        Send this event to clear the audio bytes in the buffer. The server will 
+        Send this event to clear the audio bytes in the buffer. The server will
         respond with an `input_audio_buffer.cleared` event.
       properties:
         event_id:
@@ -55993,27 +55993,27 @@ components:
       type: object
       description: >
         Send this event to commit the user input audio buffer, which will create
-        a 
+        a
 
         new user message item in the conversation. This event will produce an
-        error 
+        error
 
         if the input audio buffer is empty. When in Server VAD mode, the client
-        does 
+        does
 
-        not need to send this event, the server will commit the audio buffer 
+        not need to send this event, the server will commit the audio buffer
 
         automatically.
 
 
         Committing the input audio buffer will trigger input audio
-        transcription 
+        transcription
 
         (if enabled in session configuration), but it will not create a
-        response 
+        response
 
         from the model. The server will respond with an
-        `input_audio_buffer.committed` 
+        `input_audio_buffer.committed`
 
         event.
       properties:
@@ -56075,10 +56075,10 @@ components:
       type: object
       description: >
         Send this event to cancel an in-progress response. The server will
-        respond 
+        respond
 
         with a `response.done` event with a status of
-        `response.status=cancelled`. If 
+        `response.status=cancelled`. If
 
         there is no response to cancel, the server will respond with an error.
       properties:
@@ -56094,7 +56094,7 @@ components:
         response_id:
           type: string
           description: |
-            A specific response ID to cancel - if not provided, will cancel an 
+            A specific response ID to cancel - if not provided, will cancel an
             in-progress response in the default conversation.
       required:
         - type
@@ -56110,36 +56110,36 @@ components:
       type: object
       description: >
         This event instructs the server to create a Response, which means
-        triggering 
+        triggering
 
         model inference. When in Server VAD mode, the server will create
-        Responses 
+        Responses
 
         automatically.
 
 
         A Response will include at least one Item, and may have two, in which
-        case 
+        case
 
-        the second will be a function call. These Items will be appended to the 
+        the second will be a function call. These Items will be appended to the
 
         conversation history.
 
 
         The server will respond with a `response.created` event, events for
-        Items 
+        Items
 
         and content created, and finally a `response.done` event to indicate
-        the 
+        the
 
         Response is complete.
 
 
         The `response.create` event can optionally include inference
-        configuration like 
+        configuration like
 
         `instructions`, and `temperature`. These fields will override the
-        Session's 
+        Session's
 
         configuration for this Response only.
 
@@ -56362,7 +56362,7 @@ components:
             - in_progress
           description: >
             The final status of the response (`completed`, `cancelled`,
-            `failed`, or 
+            `failed`, or
 
             `incomplete`, `in_progress`).
         status_details:
@@ -56378,10 +56378,10 @@ components:
                 - incomplete
               description: >
                 The type of error that caused the response to fail,
-                corresponding 
+                corresponding
 
                 with the `status` field (`completed`, `cancelled`,
-                `incomplete`, 
+                `incomplete`,
 
                 `failed`).
             reason:
@@ -56393,22 +56393,22 @@ components:
                 - content_filter
               description: >
                 The reason the Response did not complete. For a `cancelled`
-                Response, 
+                Response,
 
                 one of `turn_detected` (the server VAD detected a new start of
-                speech) 
+                speech)
 
-                or `client_cancelled` (the client sent a cancel event). For an 
+                or `client_cancelled` (the client sent a cancel event). For an
 
                 `incomplete` Response, one of `max_output_tokens` or
-                `content_filter` 
+                `content_filter`
 
                 (the server-side safety filter activated and cut off the
                 response).
             error:
               type: object
               description: |
-                A description of the error that caused the response to fail, 
+                A description of the error that caused the response to fail,
                 populated when the `status` is `failed`.
               properties:
                 type:
@@ -56428,13 +56428,13 @@ components:
           type: object
           description: >
             Usage statistics for the Response, this will correspond to billing.
-            A 
+            A
 
             Realtime API session will maintain a conversation context and append
-            new 
+            new
 
             Items to the Conversation, thus output from previous turns (text
-            and 
+            and
 
             audio tokens) will become the input for later turns.
           properties:
@@ -56442,21 +56442,21 @@ components:
               type: integer
               description: >
                 The total number of tokens in the Response including input and
-                output 
+                output
 
                 text and audio tokens.
             input_tokens:
               type: integer
               description: >
                 The number of input tokens used in the Response, including text
-                and 
+                and
 
                 audio tokens.
             output_tokens:
               type: integer
               description: >
                 The number of output tokens sent in the Response, including text
-                and 
+                and
 
                 audio tokens.
             input_token_details:
@@ -56594,33 +56594,33 @@ components:
           type: string
           description: >
             The default system instructions (i.e. system message) prepended to
-            model 
+            model
 
-            calls. This field allows the client to guide the model on desired 
+            calls. This field allows the client to guide the model on desired
 
             responses. The model can be instructed on response content and
-            format, 
+            format,
 
             (e.g. "be extremely succinct", "act friendly", "here are examples of
-            good 
+            good
 
             responses") and on audio behavior (e.g. "talk quickly", "inject
-            emotion 
+            emotion
 
             into your voice", "laugh frequently"). The instructions are not
-            guaranteed 
+            guaranteed
 
             to be followed by the model, but they provide guidance to the model
-            on the 
+            on the
 
             desired behavior.
 
 
             Note that the server sets default instructions which will be used if
-            this 
+            this
 
             field is not set and are visible in the `session.created` event at
-            the 
+            the
 
             start of the session.
         voice:
@@ -56666,10 +56666,10 @@ components:
                 type: string
                 description: >
                   The description of the function, including guidance on when
-                  and how 
+                  and how
 
                   to call it, and guidance about what to tell the user when
-                  calling 
+                  calling
 
                   (if anything).
               parameters:
@@ -56714,7 +56714,7 @@ components:
             means that the contents of the response will be added to the default
 
             conversation. Set this to `none` to create an out-of-band response
-            which 
+            which
 
             will not add items to default conversation.
           oneOf:
@@ -56804,9 +56804,9 @@ components:
       type: object
       description: >
         Returned when an item in the conversation is deleted by the client with
-        a 
+        a
 
-        `conversation.item.delete` event. This event is used to synchronize the 
+        `conversation.item.delete` event. This event is used to synchronize the
 
         server's understanding of the conversation history with the client's
         view.
@@ -56978,9 +56978,9 @@ components:
       type: object
       description: >
         Returned when input audio transcription is configured, and a
-        transcription 
+        transcription
 
-        request for a user message failed. These events are separate from other 
+        request for a user message failed. These events are separate from other
 
         `error` events so that the client can identify the related Item.
       properties:
@@ -57152,16 +57152,16 @@ components:
       type: object
       description: >
         Returned when an earlier assistant audio message item is truncated by
-        the 
+        the
 
-        client with a `conversation.item.truncate` event. This event is used to 
+        client with a `conversation.item.truncate` event. This event is used to
 
         synchronize the server's understanding of the audio with the client's
         playback.
 
 
         This action will truncate the audio and remove the server-side text
-        transcript 
+        transcript
 
         to ensure there is no text in the context that hasn't been heard by the
         user.
@@ -57275,7 +57275,7 @@ components:
     RealtimeBetaServerEventInputAudioBufferCleared:
       type: object
       description: |
-        Returned when the input audio buffer is cleared by the client with a 
+        Returned when the input audio buffer is cleared by the client with a
         `input_audio_buffer.clear` event.
       properties:
         event_id:
@@ -57351,28 +57351,28 @@ components:
       type: object
       description: >
         Sent by the server when in `server_vad` mode to indicate that speech has
-        been 
+        been
 
         detected in the audio buffer. This can happen any time audio is added to
-        the 
+        the
 
         buffer (unless speech is already detected). The client may want to use
-        this 
+        this
 
         event to interrupt audio playback or provide visual feedback to the
-        user. 
+        user.
 
 
         The client should expect to receive a
-        `input_audio_buffer.speech_stopped` event 
+        `input_audio_buffer.speech_stopped` event
 
         when speech stops. The `item_id` property is the ID of the user message
-        item 
+        item
 
-        that will be created when speech stops and will also be included in the 
+        that will be created when speech stops and will also be included in the
 
         `input_audio_buffer.speech_stopped` event (unless the client manually
-        commits 
+        commits
 
         the audio buffer during VAD activation).
       properties:
@@ -57389,11 +57389,11 @@ components:
           type: integer
           description: >
             Milliseconds from the start of all audio written to the buffer
-            during the 
+            during the
 
-            session when speech was first detected. This will correspond to the 
+            session when speech was first detected. This will correspond to the
 
-            beginning of audio sent to the model, and thus includes the 
+            beginning of audio sent to the model, and thus includes the
 
             `prefix_padding_ms` configured in the Session.
         item_id:
@@ -57420,10 +57420,10 @@ components:
       type: object
       description: >
         Returned in `server_vad` mode when the server detects the end of speech
-        in 
+        in
 
         the audio buffer. The server will also send an
-        `conversation.item.created` 
+        `conversation.item.created`
 
         event with the user message item that is created from the audio buffer.
       properties:
@@ -57440,10 +57440,10 @@ components:
           type: integer
           description: >
             Milliseconds since the session started when speech stopped. This
-            will 
+            will
 
             correspond to the end of audio sent to the model, and thus includes
-            the 
+            the
 
             `min_silence_duration_ms` configured in the Session.
         item_id:
@@ -57555,13 +57555,13 @@ components:
       type: object
       description: >
         Emitted at the beginning of a Response to indicate the updated rate
-        limits. 
+        limits.
 
         When a Response is created some tokens will be "reserved" for the
-        output 
+        output
 
         tokens, the rate limits shown here reflect that reservation, which is
-        then 
+        then
 
         adjusted accordingly once the Response is completed.
       properties:
@@ -58025,10 +58025,10 @@ components:
       type: object
       description: >
         Returned when a Response is done streaming. Always emitted, no matter
-        the 
+        the
 
         final state. The Response object included in the `response.done` event
-        will 
+        will
 
         include all output Items in the Response but will omit the raw audio
         data.
@@ -58453,7 +58453,7 @@ components:
       type: object
       description: >
         Returned when an Item is done streaming. Also emitted when a Response
-        is 
+        is
 
         interrupted, incomplete, or cancelled.
       properties:
@@ -58770,7 +58770,7 @@ components:
       type: object
       description: >
         Returned when a transcription session is updated with a
-        `transcription_session.update` event, unless 
+        `transcription_session.update` event, unless
 
         there is an error.
       properties:
@@ -58911,19 +58911,19 @@ components:
       type: object
       description: >
         Add a new Item to the Conversation's context, including messages,
-        function 
+        function
 
         calls, and function call responses. This event can be used both to
-        populate a 
+        populate a
 
         "history" of the conversation and to add new items mid-stream, but has
-        the 
+        the
 
         current limitation that it cannot populate assistant audio messages.
 
 
         If successful, the server will respond with a
-        `conversation.item.created` 
+        `conversation.item.created`
 
         event, otherwise an `error` event will be sent.
       properties:
@@ -58977,13 +58977,13 @@ components:
     RealtimeClientEventConversationItemDelete:
       type: object
       description: >
-        Send this event when you want to remove any item from the conversation 
+        Send this event when you want to remove any item from the conversation
 
         history. The server will respond with a `conversation.item.deleted`
-        event, 
+        event,
 
         unless the item does not exist in the conversation history, in which
-        case the 
+        case the
 
         server will respond with an error.
       properties:
@@ -59019,10 +59019,10 @@ components:
         a specific item in the conversation history. This is useful, for
         example, to inspect user audio after noise cancellation and VAD.
 
-        The server will respond with a `conversation.item.retrieved` event, 
+        The server will respond with a `conversation.item.retrieved` event,
 
         unless the item does not exist in the conversation history, in which
-        case the 
+        case the
 
         server will respond with an error.
       properties:
@@ -59055,30 +59055,30 @@ components:
       type: object
       description: >
         Send this event to truncate a previous assistant message’s audio. The
-        server 
+        server
 
         will produce audio faster than realtime, so this event is useful when
-        the user 
+        the user
 
         interrupts to truncate audio that has already been sent to the client
-        but not 
+        but not
 
         yet played. This will synchronize the server's understanding of the
-        audio with 
+        audio with
 
         the client's playback.
 
 
         Truncating audio will delete the server-side text transcript to ensure
-        there 
+        there
 
         is not text in the context that hasn't been heard by the user.
 
 
         If successful, the server will respond with a
-        `conversation.item.truncated` 
+        `conversation.item.truncated`
 
-        event. 
+        event.
       properties:
         event_id:
           type: string
@@ -59094,7 +59094,7 @@ components:
           type: string
           description: >
             The ID of the assistant message item to truncate. Only assistant
-            message 
+            message
 
             items can be truncated.
         content_index:
@@ -59104,10 +59104,10 @@ components:
           type: integer
           description: >
             Inclusive duration up to which audio is truncated, in milliseconds.
-            If 
+            If
 
             the audio_end_ms is greater than the actual audio duration, the
-            server 
+            server
 
             will respond with an error.
       required:
@@ -59130,7 +59130,7 @@ components:
       type: object
       description: >
         Send this event to append audio bytes to the input audio buffer. The
-        audio 
+        audio
 
         buffer is temporary storage you can write to and later commit. A
         "commit" will create a new
@@ -59143,7 +59143,7 @@ components:
 
 
         If VAD is enabled the audio buffer is used to detect speech and the
-        server will decide 
+        server will decide
 
         when to commit. When Server VAD is disabled, you must commit the audio
         buffer
@@ -59153,13 +59153,13 @@ components:
 
 
         The client may choose how much audio to place in each event up to a
-        maximum 
+        maximum
 
         of 15 MiB, for example streaming smaller chunks from the client may
-        allow the 
+        allow the
 
         VAD to be more responsive. Unlike most other client events, the server
-        will 
+        will
 
         not send a confirmation response to this event.
       properties:
@@ -59177,7 +59177,7 @@ components:
           type: string
           description: >
             Base64-encoded audio bytes. This must be in the format specified by
-            the 
+            the
 
             `input_audio_format` field in the session configuration.
       required:
@@ -59195,7 +59195,7 @@ components:
     RealtimeClientEventInputAudioBufferClear:
       type: object
       description: |
-        Send this event to clear the audio bytes in the buffer. The server will 
+        Send this event to clear the audio bytes in the buffer. The server will
         respond with an `input_audio_buffer.cleared` event.
       properties:
         event_id:
@@ -59292,10 +59292,10 @@ components:
       type: object
       description: >
         Send this event to cancel an in-progress response. The server will
-        respond 
+        respond
 
         with a `response.done` event with a status of
-        `response.status=cancelled`. If 
+        `response.status=cancelled`. If
 
         there is no response to cancel, the server will respond with an error.
         It's safe
@@ -59318,7 +59318,7 @@ components:
         response_id:
           type: string
           description: |
-            A specific response ID to cancel - if not provided, will cancel an 
+            A specific response ID to cancel - if not provided, will cancel an
             in-progress response in the default conversation.
       required:
         - type
@@ -59334,35 +59334,35 @@ components:
       type: object
       description: >
         This event instructs the server to create a Response, which means
-        triggering 
+        triggering
 
         model inference. When in Server VAD mode, the server will create
-        Responses 
+        Responses
 
         automatically.
 
 
         A Response will include at least one Item, and may have two, in which
-        case 
+        case
 
-        the second will be a function call. These Items will be appended to the 
+        the second will be a function call. These Items will be appended to the
 
         conversation history by default.
 
 
         The server will respond with a `response.created` event, events for
-        Items 
+        Items
 
         and content created, and finally a `response.done` event to indicate
-        the 
+        the
 
         Response is complete.
 
 
-        The `response.create` event includes inference configuration like 
+        The `response.create` event includes inference configuration like
 
         `instructions` and `tools`. If these are set, they will override the
-        Session's 
+        Session's
 
         configuration for this Response only.
 
@@ -59955,9 +59955,9 @@ components:
             - in_progress
           description: >
             The status of the item (`completed`, `incomplete`, `in_progress`).
-            These have no effect 
+            These have no effect
 
-            on the conversation, but are accepted for consistency with the 
+            on the conversation, but are accepted for consistency with the
 
             `conversation.item.created` event.
         role:
@@ -59968,18 +59968,18 @@ components:
             - system
           description: >
             The role of the message sender (`user`, `assistant`, `system`),
-            only 
+            only
 
             applicable for `message` items.
         content:
           type: array
           description: >
-            The content of the message, applicable for `message` items. 
+            The content of the message, applicable for `message` items.
 
             - Message items of role `system` support only `input_text` content
 
             - Message items of role `user` support `input_text` and
-            `input_audio` 
+            `input_audio`
               content
             - Message items of role `assistant` support `text` content.
           items:
@@ -60023,13 +60023,13 @@ components:
         call_id:
           type: string
           description: >
-            The ID of the function call (for `function_call` and 
+            The ID of the function call (for `function_call` and
 
             `function_call_output` items). If passed on a
-            `function_call_output` 
+            `function_call_output`
 
             item, the server will check that a `function_call` item with the
-            same 
+            same
 
             ID exists in the conversation history.
         name:
@@ -60434,7 +60434,7 @@ components:
             - in_progress
           description: >
             The final status of the response (`completed`, `cancelled`,
-            `failed`, or 
+            `failed`, or
 
             `incomplete`, `in_progress`).
         status_details:
@@ -60450,10 +60450,10 @@ components:
                 - incomplete
               description: >
                 The type of error that caused the response to fail,
-                corresponding 
+                corresponding
 
                 with the `status` field (`completed`, `cancelled`,
-                `incomplete`, 
+                `incomplete`,
 
                 `failed`).
             reason:
@@ -60473,7 +60473,7 @@ components:
             error:
               type: object
               description: |
-                A description of the error that caused the response to fail, 
+                A description of the error that caused the response to fail,
                 populated when the `status` is `failed`.
               properties:
                 type:
@@ -60520,13 +60520,13 @@ components:
           type: object
           description: >
             Usage statistics for the Response, this will correspond to billing.
-            A 
+            A
 
             Realtime API session will maintain a conversation context and append
-            new 
+            new
 
             Items to the Conversation, thus output from previous turns (text
-            and 
+            and
 
             audio tokens) will become the input for later turns.
           properties:
@@ -60534,21 +60534,21 @@ components:
               type: integer
               description: >
                 The total number of tokens in the Response including input and
-                output 
+                output
 
                 text and audio tokens.
             input_tokens:
               type: integer
               description: >
                 The number of input tokens used in the Response, including text
-                and 
+                and
 
                 audio tokens.
             output_tokens:
               type: integer
               description: >
                 The number of output tokens sent in the Response, including text
-                and 
+                and
 
                 audio tokens.
             input_token_details:
@@ -61024,9 +61024,9 @@ components:
       type: object
       description: >
         Returned when an item in the conversation is deleted by the client with
-        a 
+        a
 
-        `conversation.item.delete` event. This event is used to synchronize the 
+        `conversation.item.delete` event. This event is used to synchronize the
 
         server's understanding of the conversation history with the client's
         view.
@@ -61263,9 +61263,9 @@ components:
       type: object
       description: >
         Returned when input audio transcription is configured, and a
-        transcription 
+        transcription
 
-        request for a user message failed. These events are separate from other 
+        request for a user message failed. These events are separate from other
 
         `error` events so that the client can identify the related Item.
       properties:
@@ -61440,16 +61440,16 @@ components:
       type: object
       description: >
         Returned when an earlier assistant audio message item is truncated by
-        the 
+        the
 
-        client with a `conversation.item.truncate` event. This event is used to 
+        client with a `conversation.item.truncate` event. This event is used to
 
         synchronize the server's understanding of the audio with the client's
         playback.
 
 
         This action will truncate the audio and remove the server-side text
-        transcript 
+        transcript
 
         to ensure there is no text in the context that hasn't been heard by the
         user.
@@ -61563,7 +61563,7 @@ components:
     RealtimeServerEventInputAudioBufferCleared:
       type: object
       description: |
-        Returned when the input audio buffer is cleared by the client with a 
+        Returned when the input audio buffer is cleared by the client with a
         `input_audio_buffer.clear` event.
       properties:
         event_id:
@@ -61679,28 +61679,28 @@ components:
       type: object
       description: >
         Sent by the server when in `server_vad` mode to indicate that speech has
-        been 
+        been
 
         detected in the audio buffer. This can happen any time audio is added to
-        the 
+        the
 
         buffer (unless speech is already detected). The client may want to use
-        this 
+        this
 
         event to interrupt audio playback or provide visual feedback to the
-        user. 
+        user.
 
 
         The client should expect to receive a
-        `input_audio_buffer.speech_stopped` event 
+        `input_audio_buffer.speech_stopped` event
 
         when speech stops. The `item_id` property is the ID of the user message
-        item 
+        item
 
-        that will be created when speech stops and will also be included in the 
+        that will be created when speech stops and will also be included in the
 
         `input_audio_buffer.speech_stopped` event (unless the client manually
-        commits 
+        commits
 
         the audio buffer during VAD activation).
       properties:
@@ -61717,11 +61717,11 @@ components:
           type: integer
           description: >
             Milliseconds from the start of all audio written to the buffer
-            during the 
+            during the
 
-            session when speech was first detected. This will correspond to the 
+            session when speech was first detected. This will correspond to the
 
-            beginning of audio sent to the model, and thus includes the 
+            beginning of audio sent to the model, and thus includes the
 
             `prefix_padding_ms` configured in the Session.
         item_id:
@@ -61748,10 +61748,10 @@ components:
       type: object
       description: >
         Returned in `server_vad` mode when the server detects the end of speech
-        in 
+        in
 
         the audio buffer. The server will also send an
-        `conversation.item.created` 
+        `conversation.item.created`
 
         event with the user message item that is created from the audio buffer.
       properties:
@@ -61768,10 +61768,10 @@ components:
           type: integer
           description: >
             Milliseconds since the session started when speech stopped. This
-            will 
+            will
 
             correspond to the end of audio sent to the model, and thus includes
-            the 
+            the
 
             `min_silence_duration_ms` configured in the Session.
         item_id:
@@ -62078,13 +62078,13 @@ components:
       type: object
       description: >
         Emitted at the beginning of a Response to indicate the updated rate
-        limits. 
+        limits.
 
         When a Response is created some tokens will be "reserved" for the
-        output 
+        output
 
         tokens, the rate limits shown here reflect that reservation, which is
-        then 
+        then
 
         adjusted accordingly once the Response is completed.
       properties:
@@ -62547,10 +62547,10 @@ components:
       type: object
       description: >
         Returned when a Response is done streaming. Always emitted, no matter
-        the 
+        the
 
         final state. The Response object included in the `response.done` event
-        will 
+        will
 
         include all output Items in the Response but will omit the raw audio
         data.
@@ -63004,7 +63004,7 @@ components:
       type: object
       description: >
         Returned when an Item is done streaming. Also emitted when a Response
-        is 
+        is
 
         interrupted, incomplete, or cancelled.
       properties:
@@ -63348,7 +63348,7 @@ components:
       type: object
       description: >
         Returned when a transcription session is updated with a
-        `transcription_session.update` event, unless 
+        `transcription_session.update` event, unless
 
         there is an error.
       properties:
@@ -68069,10 +68069,10 @@ components:
       type: object
       description: >
         A logprob is the logarithmic probability that the model assigns to
-        producing 
+        producing
 
         a particular token at a given position in the sequence. Less-negative
-        (higher) 
+        (higher)
 
         logprob values indicate greater model confidence in that token choice.
       properties:
@@ -69382,7 +69382,7 @@ components:
             cached_tokens:
               type: integer
               description: |
-                The number of tokens that were retrieved from the cache. 
+                The number of tokens that were retrieved from the cache.
                 [More on prompt caching](/docs/guides/prompt-caching).
           required:
             - cached_tokens
@@ -69746,24 +69746,24 @@ components:
           type: object
           description: >
             The dataset item provided to the grader. This will be used to
-            populate 
+            populate
 
             the `item` namespace. See [the guide](/docs/guides/graders) for more
-            details. 
+            details.
         model_sample:
           type: string
           description: >
             The model sample to be evaluated. This value will be used to
-            populate 
+            populate
 
             the `sample` namespace. See [the guide](/docs/guides/graders) for
             more details.
 
             The `output_json` variable will be populated if the model sample is
-            a 
+            a
 
             valid JSON string.
-             
+
       required:
         - grader
         - model_sample
@@ -71343,10 +71343,10 @@ components:
         An object specifying the format that the model must output.
 
 
-        Configuring `{ "type": "json_schema" }` enables Structured Outputs, 
+        Configuring `{ "type": "json_schema" }` enables Structured Outputs,
 
         which ensures the model will match your supplied JSON schema. Learn more
-        in the 
+        in the
 
         [Structured Outputs guide](/docs/guides/structured-outputs).
 
@@ -71995,7 +71995,7 @@ components:
         detection
 
         parameters manually. If unset, the audio is transcribed as a single
-        block. 
+        block.
       oneOf:
         - type: string
           enum:
@@ -73190,23 +73190,23 @@ components:
           type: integer
           default: 300
           description: |
-            Amount of audio to include before the VAD detected speech (in 
+            Amount of audio to include before the VAD detected speech (in
             milliseconds).
         silence_duration_ms:
           type: integer
           default: 200
           description: |
             Duration of silence to detect speech stop (in milliseconds).
-            With shorter values the model will respond more quickly, 
+            With shorter values the model will respond more quickly,
             but may jump in on short pauses from the user.
         threshold:
           type: number
           default: 0.5
           description: >
-            Sensitivity threshold (0.0 to 1.0) for voice activity detection. A 
+            Sensitivity threshold (0.0 to 1.0) for voice activity detection. A
 
             higher threshold will require louder audio to activate the model,
-            and 
+            and
 
             thus might perform better in noisy environments.
     ValidateGraderRequest:
@@ -74115,7 +74115,7 @@ components:
       type: string
       description: >
         High level guidance for the amount of context window space to use for
-        the 
+        the
 
         search. One of `low`, `medium`, or `high`. `medium` is the default.
       enum:
@@ -74131,7 +74131,7 @@ components:
         country:
           type: string
           description: >
-            The two-letter 
+            The two-letter
 
             [ISO country code](https://en.wikipedia.org/wiki/ISO_3166-1) of the
             user,
@@ -74149,7 +74149,7 @@ components:
           type: string
           description: >
             The [IANA
-            timezone](https://timeapi.io/documentation/iana-timezones) 
+            timezone](https://timeapi.io/documentation/iana-timezones)
 
             of the user, e.g. `America/Los_Angeles`.
     WebSearchTool:
@@ -74543,7 +74543,7 @@ components:
             "data": {
               "id": "evalrun_abc123"
             }
-          } 
+          }
     WebhookEvalRunFailed:
       type: object
       title: eval.run.failed
@@ -74600,7 +74600,7 @@ components:
             "data": {
               "id": "evalrun_abc123"
             }
-          } 
+          }
     WebhookEvalRunSucceeded:
       type: object
       title: eval.run.succeeded
@@ -74657,7 +74657,7 @@ components:
             "data": {
               "id": "evalrun_abc123"
             }
-          } 
+          }
     WebhookFineTuningJobCancelled:
       type: object
       title: fine_tuning.job.cancelled
@@ -74715,7 +74715,7 @@ components:
             "data": {
               "id": "ftjob_abc123"
             }
-          } 
+          }
     WebhookFineTuningJobFailed:
       type: object
       title: fine_tuning.job.failed
@@ -74772,7 +74772,7 @@ components:
             "data": {
               "id": "ftjob_abc123"
             }
-          } 
+          }
     WebhookFineTuningJobSucceeded:
       type: object
       title: fine_tuning.job.succeeded
@@ -74830,7 +74830,7 @@ components:
             "data": {
               "id": "ftjob_abc123"
             }
-          } 
+          }
     WebhookRealtimeCallIncoming:
       type: object
       title: realtime.call.incoming
