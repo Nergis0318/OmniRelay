@@ -330,6 +330,10 @@ func (a *AnthropicAdapter) ParseStreamChunk(data []byte) ([]byte, int64, int64, 
 	return buf.Bytes(), inputTokens, outputTokens, nil
 }
 
+func (a *AnthropicAdapter) ParseMessagesStreamChunk(data []byte, state map[string]interface{}) ([]byte, int64, int64, error) {
+	return data, 0, 0, nil
+}
+
 func (a *AnthropicAdapter) FetchModels(apiBaseURL string, apiKey string) ([]string, error) {
 	url := apiBaseURL + "/v1/models?limit=1000"
 	req, err := http.NewRequest("GET", url, nil)

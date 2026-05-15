@@ -301,6 +301,61 @@ func (e *Engine) handleRawStreamResponse(c *gin.Context, resp *http.Response, ap
 	})
 }
 
+func (e *Engine) handleMessagesStreamResponse(c *gin.Context, resp *http.Response, adapter Adapter, apiKeyID, providerID int64, fullModelID string, dbModel *models.Model, start time.Time, userID int64) {
+	c.Status(http.StatusOK)
+	copyResponseHeaders(c, resp.Header)
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+
+	flusher, ok := c.Writer.(http.Flusher)
+	if !ok {
+		return
+	}
+
+	buf := make([]byte, 4096)
+	state := make(map[string]interface{})
+	var totalInputTokens, totalOutputTokens int64
+
+	for {
+		n, err := resp.Body.Read(buf)
+		if n > 0 {
+			transformed, inTok, outTok, _ := adapter.ParseMessagesStreamChunk(buf[:n], state)
+			if inTok > 0 {
+				totalInputTokens = inTok
+			}
+			if outTok > 0 {
+				totalOutputTokens = outTok
+			}
+			if transformed != nil {
+				c.Writer.Write(transformed)
+				flusher.Flush()
+			}
+		}
+		if err != nil {
+			break
+		}
+	}
+
+	completedAt := time.Now()
+	log := models.UsageLog{
+		APIKeyID:       &apiKeyID,
+		ProviderID:     &providerID,
+		Model:          fullModelID,
+		RequestTokens:  totalInputTokens,
+		ResponseTokens: totalOutputTokens,
+		TotalTokens:    totalInputTokens + totalOutputTokens,
+		LatencyMs:      time.Since(start).Milliseconds(),
+		StartedAt:      &start,
+		CompletedAt:    &completedAt,
+		UserID:         &userID,
+	}
+	if dbModel != nil && (totalInputTokens > 0 || totalOutputTokens > 0) {
+		log.Cost = calculateCost(dbModel, totalInputTokens, totalOutputTokens, 0, 0, 0)
+	}
+	e.usageService.Log(log)
+}
+
 func (e *Engine) HandleListModels(c *gin.Context) {
 	userID := c.GetInt64("user_id")
 	modelList, err := e.modelService.List("", userID)
@@ -382,11 +437,6 @@ func (e *Engine) HandleMessages(c *gin.Context) {
 		return
 	}
 
-	if isStream && provider.ProviderType != "anthropic" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "streaming /v1/messages is currently supported only for Anthropic providers"})
-		return
-	}
-
 	apiKey, err := e.providerService.DecryptAPIKey(provider.APIKeyEncrypted)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to decrypt provider key"})
@@ -400,6 +450,16 @@ func (e *Engine) HandleMessages(c *gin.Context) {
 	}
 
 	adaptedJSON, _ := json.Marshal(adaptedBody)
+
+	if provider.ProviderType == "gemini" && isStream {
+		endpoint = strings.Replace(endpoint, ":generateContent", ":streamGenerateContent", 1)
+		if strings.Contains(endpoint, "?") {
+			endpoint += "&alt=sse"
+		} else {
+			endpoint += "?alt=sse"
+		}
+	}
+
 	upstreamURL := joinUpstreamURL(provider.APiBaseURL, endpoint)
 
 	req, err := http.NewRequest("POST", upstreamURL, bytes.NewReader(adaptedJSON))
@@ -446,7 +506,7 @@ func (e *Engine) HandleMessages(c *gin.Context) {
 	}
 
 	if isStream {
-		e.handleRawStreamResponse(c, resp, apiKeyID, provider.ID, fullModelID, startTime, userID)
+		e.handleMessagesStreamResponse(c, resp, adapter, apiKeyID, provider.ID, fullModelID, dbModel, startTime, userID)
 		return
 	}
 
@@ -717,11 +777,6 @@ func (e *Engine) handlePathRoutedMessages(c *gin.Context, provider *models.Provi
 		isStream = stream
 	}
 
-	if isStream && provider.ProviderType != "anthropic" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "streaming /messages is currently supported only for Anthropic providers"})
-		return
-	}
-
 	endpoint, adaptedBody, err := adapter.BuildMessagesRequest(body)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -729,6 +784,16 @@ func (e *Engine) handlePathRoutedMessages(c *gin.Context, provider *models.Provi
 	}
 
 	adaptedJSON, _ := json.Marshal(adaptedBody)
+
+	if provider.ProviderType == "gemini" && isStream {
+		endpoint = strings.Replace(endpoint, ":generateContent", ":streamGenerateContent", 1)
+		if strings.Contains(endpoint, "?") {
+			endpoint += "&alt=sse"
+		} else {
+			endpoint += "?alt=sse"
+		}
+	}
+
 	upstreamURL := joinUpstreamURL(provider.APiBaseURL, endpoint)
 
 	req, err := http.NewRequest("POST", upstreamURL, bytes.NewReader(adaptedJSON))
@@ -775,7 +840,7 @@ func (e *Engine) handlePathRoutedMessages(c *gin.Context, provider *models.Provi
 	}
 
 	if isStream {
-		e.handleRawStreamResponse(c, resp, apiKeyID, provider.ID, fullModelID, startTime, userID)
+		e.handleMessagesStreamResponse(c, resp, adapter, apiKeyID, provider.ID, fullModelID, dbModel, startTime, userID)
 		return
 	}
 
