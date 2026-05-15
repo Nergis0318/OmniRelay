@@ -74,8 +74,8 @@ func (s *AuthService) emailExists(email string) (bool, error) {
 func (s *AuthService) Login(req models.LoginRequest) (*models.LoginResponse, error) {
 	var user models.User
 	err := s.db.QueryRow(
-		"SELECT id, username, email, password_hash, is_admin, created_at FROM users WHERE username = ?",
-		req.Username,
+		"SELECT id, username, email, password_hash, is_admin, created_at FROM users WHERE email = ?",
+		req.Email,
 	).Scan(&user.ID, &user.Username, &user.Email, &user.PasswordHash, &user.IsAdmin, &user.CreatedAt)
 	if err != nil {
 		return nil, errors.New("invalid credentials")

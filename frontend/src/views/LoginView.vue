@@ -20,7 +20,7 @@
 
         <form class="auth-form" @submit.prevent="handleLogin">
           <div class="field-group">
-            <label class="field-label">{{ $t("auth.username") }}</label>
+            <label class="field-label">{{ $t("auth.email") }}</label>
             <div class="field-wrap" :class="{ 'field-wrap--error': !!error }">
               <svg
                 class="field-icon"
@@ -29,26 +29,28 @@
                 viewBox="0 0 16 16"
                 fill="none"
               >
-                <circle
-                  cx="8"
-                  cy="5.5"
-                  r="2.5"
+                <rect
+                  x="1.5"
+                  y="3.5"
+                  width="13"
+                  height="9"
+                  rx="1.5"
                   stroke="currentColor"
                   stroke-width="1.25"
                 />
                 <path
-                  d="M2.5 13c0-2.485 2.462-4.5 5.5-4.5s5.5 2.015 5.5 4.5"
+                  d="M1.5 3.5l6.5 4.5 6.5-4.5"
                   stroke="currentColor"
                   stroke-width="1.25"
                   stroke-linecap="round"
                 />
               </svg>
               <input
-                v-model="username"
-                type="text"
+                v-model="email"
+                type="email"
                 class="field-input"
-                placeholder="admin"
-                autocomplete="username"
+                placeholder="admin@example.com"
+                autocomplete="email"
                 required
               />
             </div>
@@ -135,7 +137,7 @@ import logoUrl from "../assets/omnirelay-logo.svg";
 const { t } = useI18n();
 const auth = useAuthStore();
 const router = useRouter();
-const username = ref("");
+const email = ref("");
 const password = ref("");
 const error = ref("");
 const loading = ref(false);
@@ -145,7 +147,7 @@ async function handleLogin() {
   loading.value = true;
   error.value = "";
   try {
-    await auth.login(username.value, password.value);
+    await auth.login(email.value, password.value);
     router.push("/");
   } catch (e: any) {
     error.value = e.response?.data?.error || t("auth.invalidCredentials");
