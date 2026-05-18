@@ -19,14 +19,7 @@ func (a *OpenAIAdapter) BuildChatRequest(body map[string]interface{}) (string, m
 		return "", nil, fmt.Errorf("model field is required")
 	}
 
-	for i := 0; i < len(modelID); i++ {
-		if modelID[i] == '/' {
-			stripped := modelID[i+1:]
-			body["model"] = stripped
-			return "/chat/completions", body, nil
-		}
-	}
-
+	body["model"] = stripProviderPrefix(modelID)
 	return "/chat/completions", body, nil
 }
 
@@ -218,22 +211,13 @@ func (a *OpenAIAdapter) FetchModels(apiBaseURL string, apiKey string) ([]string,
 	return modelIDs, nil
 }
 
-func (a *OpenAIAdapter) SupportsEndpoint(path string) bool {
-	return true
-}
-
 func (a *OpenAIAdapter) BuildMessagesRequest(body map[string]interface{}) (string, map[string]interface{}, error) {
 	modelID, ok := body["model"].(string)
 	if !ok {
 		return "", nil, fmt.Errorf("model field is required")
 	}
 
-	for i := 0; i < len(modelID); i++ {
-		if modelID[i] == '/' {
-			body["model"] = modelID[i+1:]
-			break
-		}
-	}
+	body["model"] = stripProviderPrefix(modelID)
 
 	openaiBody := make(map[string]interface{})
 	openaiBody["model"] = body["model"]
@@ -352,8 +336,4 @@ func (a *OpenAIAdapter) ParseMessagesResponse(body map[string]interface{}) (map[
 	}
 
 	return response, nil
-}
-
-func (a *OpenAIAdapter) IsSameFormat() bool {
-	return true
 }

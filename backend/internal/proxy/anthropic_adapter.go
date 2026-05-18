@@ -21,14 +21,7 @@ func (a *AnthropicAdapter) BuildChatRequest(body map[string]interface{}) (string
 		return "", nil, fmt.Errorf("model field is required")
 	}
 
-	strippedModel := modelID
-	for i := 0; i < len(modelID); i++ {
-		if modelID[i] == '/' {
-			strippedModel = modelID[i+1:]
-			break
-		}
-	}
-	anthropicBody["model"] = strippedModel
+	anthropicBody["model"] = stripProviderPrefix(modelID)
 
 	if maxTokens, ok := body["max_tokens"]; ok {
 		anthropicBody["max_tokens"] = maxTokens
@@ -371,28 +364,15 @@ func (a *AnthropicAdapter) FetchModels(apiBaseURL string, apiKey string) ([]stri
 	return modelIDs, nil
 }
 
-func (a *AnthropicAdapter) SupportsEndpoint(path string) bool {
-	return true
-}
-
 func (a *AnthropicAdapter) BuildMessagesRequest(body map[string]interface{}) (string, map[string]interface{}, error) {
 	modelID, ok := body["model"].(string)
 	if !ok {
 		return "", nil, fmt.Errorf("model field is required")
 	}
-	for i := 0; i < len(modelID); i++ {
-		if modelID[i] == '/' {
-			body["model"] = modelID[i+1:]
-			break
-		}
-	}
+	body["model"] = stripProviderPrefix(modelID)
 	return "/v1/messages", body, nil
 }
 
 func (a *AnthropicAdapter) ParseMessagesResponse(body map[string]interface{}) (map[string]interface{}, error) {
 	return body, nil
-}
-
-func (a *AnthropicAdapter) IsSameFormat() bool {
-	return false
 }

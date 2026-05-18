@@ -71,7 +71,7 @@ func main() {
 	}
 
 	v1 := r.Group("/v1")
-	v1.Use(middleware.APIKeyAuth(apiKeyService), middleware.UsageLogging(usageService))
+	v1.Use(middleware.APIKeyAuth(apiKeyService))
 	{
 		v1.POST("/chat/completions", proxyEngine.HandleChatCompletions)
 		v1.GET("/models", proxyEngine.HandleListModels)
@@ -82,7 +82,7 @@ func main() {
 	// Path-based routing: /:provider_key/v1/*endpoint
 	// Example: POST /openai/v1/chat/completions with model="gpt-4o"
 	pbr := r.Group("/")
-	pbr.Use(middleware.APIKeyAuth(apiKeyService), middleware.UsageLogging(usageService))
+	pbr.Use(middleware.APIKeyAuth(apiKeyService))
 	pbr.Any("/:provider_key/v1/*endpoint", proxyEngine.HandlePathRouted)
 	pbr.Any("/:provider_key/v1beta/*endpoint", proxyEngine.HandlePathRouted)
 	pbr.Any("/:provider_key/api/*endpoint", proxyEngine.HandlePathRouted)

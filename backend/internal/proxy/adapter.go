@@ -15,8 +15,6 @@ type Adapter interface {
 	// ParseMessagesStreamChunk transforms a raw SSE chunk into Anthropic Messages SSE format.
 	ParseMessagesStreamChunk(data []byte, state map[string]interface{}) ([]byte, int64, int64, error)
 	FetchModels(apiBaseURL string, apiKey string) ([]string, error)
-	SupportsEndpoint(path string) bool
-	IsSameFormat() bool
 }
 
 type Engine struct {

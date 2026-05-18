@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"omnirelay/internal/models"
 	"strings"
-	"time"
 )
 
 type UsageService struct {
@@ -142,5 +141,3 @@ func (s *UsageService) GetStats(userID int64) (*models.DashboardStats, error) {
 
 	return stats, nil
 }
-
-var _ = time.Now

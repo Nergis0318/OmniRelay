@@ -19,13 +19,7 @@ func (a *GeminiAdapter) BuildChatRequest(body map[string]interface{}) (string, m
 		return "", nil, fmt.Errorf("model field is required")
 	}
 
-	strippedModel := modelID
-	for i := 0; i < len(modelID); i++ {
-		if modelID[i] == '/' {
-			strippedModel = modelID[i+1:]
-			break
-		}
-	}
+	strippedModel := stripProviderPrefix(modelID)
 
 	geminiBody := make(map[string]interface{})
 
@@ -73,69 +67,41 @@ func (a *GeminiAdapter) BuildChatRequest(body map[string]interface{}) (string, m
 	geminiBody["contents"] = contents
 
 	if temp, ok := body["temperature"]; ok {
-		geminiBody["generationConfig"] = map[string]interface{}{
-			"temperature": temp,
-		}
+		setGenConfig(geminiBody, "temperature", temp)
 	}
 	if maxTokens, ok := body["max_tokens"]; ok {
-		if gc, ok := geminiBody["generationConfig"].(map[string]interface{}); ok {
-			gc["maxOutputTokens"] = maxTokens
-		} else {
-			geminiBody["generationConfig"] = map[string]interface{}{
-				"maxOutputTokens": maxTokens,
-			}
-		}
+		setGenConfig(geminiBody, "maxOutputTokens", maxTokens)
 	}
 	if maxTokens, ok := body["max_completion_tokens"]; ok {
-		if gc, ok := geminiBody["generationConfig"].(map[string]interface{}); ok {
-			gc["maxOutputTokens"] = maxTokens
-		} else {
-			geminiBody["generationConfig"] = map[string]interface{}{
-				"maxOutputTokens": maxTokens,
-			}
-		}
+		setGenConfig(geminiBody, "maxOutputTokens", maxTokens)
 	}
 	if topP, ok := body["top_p"]; ok {
-		if gc, ok := geminiBody["generationConfig"].(map[string]interface{}); ok {
-			gc["topP"] = topP
-		} else {
-			geminiBody["generationConfig"] = map[string]interface{}{
-				"topP": topP,
-			}
-		}
+		setGenConfig(geminiBody, "topP", topP)
 	}
 	if n, ok := body["n"]; ok {
-		if gc, ok := geminiBody["generationConfig"].(map[string]interface{}); ok {
-			gc["candidateCount"] = n
-		} else {
-			geminiBody["generationConfig"] = map[string]interface{}{
-				"candidateCount": n,
-			}
-		}
+		setGenConfig(geminiBody, "candidateCount", n)
 	}
 	if stop, ok := body["stop"]; ok {
-		if gc, ok := geminiBody["generationConfig"].(map[string]interface{}); ok {
-			gc["stopSequences"] = stop
-		} else {
-			geminiBody["generationConfig"] = map[string]interface{}{
-				"stopSequences": stop,
-			}
-		}
+		setGenConfig(geminiBody, "stopSequences", stop)
 	}
 	if responseFormat, ok := body["response_format"].(map[string]interface{}); ok {
 		if formatType, _ := responseFormat["type"].(string); formatType == "json_object" || formatType == "json_schema" {
-			if gc, ok := geminiBody["generationConfig"].(map[string]interface{}); ok {
-				gc["responseMimeType"] = "application/json"
-			} else {
-				geminiBody["generationConfig"] = map[string]interface{}{
-					"responseMimeType": "application/json",
-				}
-			}
+			setGenConfig(geminiBody, "responseMimeType", "application/json")
 		}
 	}
 
 	endpoint := "/models/" + strippedModel + ":generateContent"
 	return endpoint, geminiBody, nil
+}
+
+// setGenConfig assigns a key inside body["generationConfig"], creating the map on first call.
+func setGenConfig(body map[string]interface{}, key string, value interface{}) {
+	gc, ok := body["generationConfig"].(map[string]interface{})
+	if !ok {
+		gc = make(map[string]interface{})
+		body["generationConfig"] = gc
+	}
+	gc[key] = value
 }
 
 func convertOpenAIContentToGeminiParts(content interface{}) []map[string]interface{} {
@@ -532,23 +498,13 @@ func (a *GeminiAdapter) FetchModels(apiBaseURL string, apiKey string) ([]string,
 	return modelIDs, nil
 }
 
-func (a *GeminiAdapter) SupportsEndpoint(path string) bool {
-	return true
-}
-
 func (a *GeminiAdapter) BuildMessagesRequest(body map[string]interface{}) (string, map[string]interface{}, error) {
 	modelID, ok := body["model"].(string)
 	if !ok {
 		return "", nil, fmt.Errorf("model field is required")
 	}
 
-	strippedModel := modelID
-	for i := 0; i < len(modelID); i++ {
-		if modelID[i] == '/' {
-			strippedModel = modelID[i+1:]
-			break
-		}
-	}
+	strippedModel := stripProviderPrefix(modelID)
 
 	geminiBody := make(map[string]interface{})
 
@@ -595,28 +551,16 @@ func (a *GeminiAdapter) BuildMessagesRequest(body map[string]interface{}) (strin
 	geminiBody["contents"] = contents
 
 	if maxTokens, ok := body["max_tokens"]; ok {
-		geminiBody["generationConfig"] = map[string]interface{}{"maxOutputTokens": maxTokens}
+		setGenConfig(geminiBody, "maxOutputTokens", maxTokens)
 	}
 	if stop, ok := body["stop_sequences"]; ok {
-		if gc, ok := geminiBody["generationConfig"].(map[string]interface{}); ok {
-			gc["stopSequences"] = stop
-		} else {
-			geminiBody["generationConfig"] = map[string]interface{}{"stopSequences": stop}
-		}
+		setGenConfig(geminiBody, "stopSequences", stop)
 	}
 	if temp, ok := body["temperature"]; ok {
-		if gc, ok := geminiBody["generationConfig"].(map[string]interface{}); ok {
-			gc["temperature"] = temp
-		} else {
-			geminiBody["generationConfig"] = map[string]interface{}{"temperature": temp}
-		}
+		setGenConfig(geminiBody, "temperature", temp)
 	}
 	if topP, ok := body["top_p"]; ok {
-		if gc, ok := geminiBody["generationConfig"].(map[string]interface{}); ok {
-			gc["topP"] = topP
-		} else {
-			geminiBody["generationConfig"] = map[string]interface{}{"topP": topP}
-		}
+		setGenConfig(geminiBody, "topP", topP)
 	}
 
 	endpoint := "/models/" + strippedModel + ":generateContent"
@@ -713,8 +657,4 @@ func (a *GeminiAdapter) ParseMessagesResponse(body map[string]interface{}) (map[
 	}
 
 	return response, nil
-}
-
-func (a *GeminiAdapter) IsSameFormat() bool {
-	return false
 }

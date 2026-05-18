@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"errors"
 	"omnirelay/internal/models"
-	"time"
 )
 
 type ModelService struct {
@@ -217,5 +216,3 @@ func (s *ModelService) CountActive() (int64, error) {
 	err := s.db.QueryRow("SELECT COUNT(*) FROM models m JOIN providers p ON m.provider_id = p.id WHERE p.is_active = 1").Scan(&count)
 	return count, err
 }
-
-var _ = time.Now
