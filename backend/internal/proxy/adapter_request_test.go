@@ -206,3 +206,237 @@ func TestOpenAIBuildMessagesRequestRenamesStopSequencesAndOmitsEmptySystem(t *te
 		t.Errorf("without system field, only user message should remain: %#v", msgs)
 	}
 }
+
+func TestGeminiBuildChatRequestExtractsSystemAndMapsRoles(t *testing.T) {
+	adapter := &GeminiAdapter{}
+	body := map[string]interface{}{
+		"model":       "gemini/gemini-2.0-flash",
+		"temperature": 0.5,
+		"top_p":       0.9,
+		"max_tokens":  256,
+		"messages": []interface{}{
+			map[string]interface{}{"role": "system", "content": "you are helpful"},
+			map[string]interface{}{"role": "user", "content": "hi"},
+			map[string]interface{}{"role": "assistant", "content": "hello"},
+		},
+	}
+	endpoint, got, err := adapter.BuildChatRequest(body)
+	if err != nil {
+		t.Fatalf("BuildChatRequest: %v", err)
+	}
+	if endpoint != "/models/gemini-2.0-flash:generateContent" {
+		t.Errorf("endpoint = %q, want /models/gemini-2.0-flash:generateContent (prefix stripped)", endpoint)
+	}
+
+	sys, ok := got["system_instruction"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("system_instruction missing: %#v", got["system_instruction"])
+	}
+	parts, ok := sys["parts"].([]map[string]interface{})
+	if !ok || len(parts) != 1 || parts[0]["text"] != "you are helpful" {
+		t.Errorf("system_instruction.parts = %#v, want [{text:\"you are helpful\"}]", sys["parts"])
+	}
+
+	contents, ok := got["contents"].([]map[string]interface{})
+	if !ok || len(contents) != 2 {
+		t.Fatalf("contents shape unexpected: %#v", got["contents"])
+	}
+	if contents[0]["role"] != "user" {
+		t.Errorf("contents[0].role = %v, want user", contents[0]["role"])
+	}
+	if contents[1]["role"] != "model" {
+		t.Errorf("contents[1].role = %v, want model (assistant → model)", contents[1]["role"])
+	}
+
+	gc, ok := got["generationConfig"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("generationConfig missing: %#v", got["generationConfig"])
+	}
+	if gc["temperature"] != 0.5 {
+		t.Errorf("temperature = %v, want 0.5", gc["temperature"])
+	}
+	if gc["topP"] != 0.9 {
+		t.Errorf("topP = %v, want 0.9", gc["topP"])
+	}
+	if gc["maxOutputTokens"] != 256 {
+		t.Errorf("maxOutputTokens = %v, want 256", gc["maxOutputTokens"])
+	}
+}
+
+func TestGeminiBuildChatRequestConvertsInlineImage(t *testing.T) {
+	adapter := &GeminiAdapter{}
+	body := map[string]interface{}{
+		"model": "gemini-2.0-flash",
+		"messages": []interface{}{
+			map[string]interface{}{
+				"role": "user",
+				"content": []interface{}{
+					map[string]interface{}{"type": "text", "text": "describe"},
+					map[string]interface{}{
+						"type":      "image_url",
+						"image_url": map[string]interface{}{"url": "data:image/jpeg;base64,/9j/4AAQ"},
+					},
+				},
+			},
+		},
+	}
+	_, got, err := adapter.BuildChatRequest(body)
+	if err != nil {
+		t.Fatalf("BuildChatRequest: %v", err)
+	}
+	contents := got["contents"].([]map[string]interface{})
+	parts := contents[0]["parts"].([]map[string]interface{})
+	if len(parts) != 2 {
+		t.Fatalf("expected 2 parts (text + image), got %d: %#v", len(parts), parts)
+	}
+	if parts[0]["text"] != "describe" {
+		t.Errorf("parts[0].text = %v, want describe", parts[0]["text"])
+	}
+	inline, ok := parts[1]["inlineData"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("parts[1].inlineData missing: %#v", parts[1])
+	}
+	if inline["mimeType"] != "image/jpeg" {
+		t.Errorf("inlineData.mimeType = %v, want image/jpeg", inline["mimeType"])
+	}
+	if inline["data"] != "/9j/4AAQ" {
+		t.Errorf("inlineData.data = %v, want raw base64 without prefix", inline["data"])
+	}
+}
+
+func TestGeminiBuildChatRequestConvertsRemoteImageAsFileData(t *testing.T) {
+	adapter := &GeminiAdapter{}
+	body := map[string]interface{}{
+		"model": "gemini-2.0-flash",
+		"messages": []interface{}{
+			map[string]interface{}{
+				"role": "user",
+				"content": []interface{}{
+					map[string]interface{}{
+						"type":      "image_url",
+						"image_url": map[string]interface{}{"url": "https://example.com/cat.png"},
+					},
+				},
+			},
+		},
+	}
+	_, got, _ := adapter.BuildChatRequest(body)
+	parts := got["contents"].([]map[string]interface{})[0]["parts"].([]map[string]interface{})
+	fd, ok := parts[0]["fileData"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("non-data: URL should become fileData, got %#v", parts[0])
+	}
+	if fd["fileUri"] != "https://example.com/cat.png" {
+		t.Errorf("fileData.fileUri = %v, want full URL", fd["fileUri"])
+	}
+}
+
+func TestGeminiBuildChatRequestResponseFormatMapsToJSON(t *testing.T) {
+	adapter := &GeminiAdapter{}
+	body := map[string]interface{}{
+		"model":    "gemini",
+		"messages": []interface{}{map[string]interface{}{"role": "user", "content": "x"}},
+		"response_format": map[string]interface{}{
+			"type": "json_object",
+		},
+	}
+	_, got, _ := adapter.BuildChatRequest(body)
+	gc, ok := got["generationConfig"].(map[string]interface{})
+	if !ok || gc["responseMimeType"] != "application/json" {
+		t.Errorf("response_format=json_object should set responseMimeType, got %v", got["generationConfig"])
+	}
+
+	// response_format with unsupported type should NOT touch responseMimeType.
+	body["response_format"] = map[string]interface{}{"type": "text"}
+	_, got, _ = adapter.BuildChatRequest(body)
+	if gc, ok := got["generationConfig"].(map[string]interface{}); ok {
+		if _, present := gc["responseMimeType"]; present {
+			t.Errorf("response_format=text should not set responseMimeType, got %v", gc)
+		}
+	}
+}
+
+func TestGeminiBuildMessagesRequestExtractsSystemAndMapsRoles(t *testing.T) {
+	adapter := &GeminiAdapter{}
+	body := map[string]interface{}{
+		"model":      "gemini/gemini-2.0-flash",
+		"system":     "you are helpful",
+		"max_tokens": 256,
+		"messages": []interface{}{
+			map[string]interface{}{"role": "user", "content": "hi"},
+			map[string]interface{}{"role": "assistant", "content": "hello"},
+		},
+	}
+	endpoint, got, err := adapter.BuildMessagesRequest(body)
+	if err != nil {
+		t.Fatalf("BuildMessagesRequest: %v", err)
+	}
+	if endpoint != "/models/gemini-2.0-flash:generateContent" {
+		t.Errorf("endpoint = %q, want /models/gemini-2.0-flash:generateContent", endpoint)
+	}
+
+	sys, ok := got["system_instruction"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("system_instruction missing: %#v", got["system_instruction"])
+	}
+	parts := sys["parts"].([]map[string]interface{})
+	if len(parts) != 1 || parts[0]["text"] != "you are helpful" {
+		t.Errorf("system_instruction.parts = %#v", parts)
+	}
+
+	contents := got["contents"].([]map[string]interface{})
+	if len(contents) != 2 {
+		t.Fatalf("contents len = %d, want 2", len(contents))
+	}
+	if contents[0]["role"] != "user" || contents[1]["role"] != "model" {
+		t.Errorf("roles = (%v, %v), want (user, model)", contents[0]["role"], contents[1]["role"])
+	}
+
+	gc := got["generationConfig"].(map[string]interface{})
+	if gc["maxOutputTokens"] != 256 {
+		t.Errorf("maxOutputTokens = %v, want 256", gc["maxOutputTokens"])
+	}
+}
+
+func TestGeminiBuildMessagesRequestHandlesAnthropicContentBlocks(t *testing.T) {
+	adapter := &GeminiAdapter{}
+	body := map[string]interface{}{
+		"model": "gemini",
+		"messages": []interface{}{
+			map[string]interface{}{
+				"role": "user",
+				"content": []interface{}{
+					map[string]interface{}{"type": "text", "text": "what is this?"},
+					map[string]interface{}{
+						"type": "image",
+						"source": map[string]interface{}{
+							"media_type": "image/png",
+							"data":       "iVBORw==",
+						},
+					},
+				},
+			},
+		},
+	}
+	_, got, err := adapter.BuildMessagesRequest(body)
+	if err != nil {
+		t.Fatalf("BuildMessagesRequest: %v", err)
+	}
+	parts := got["contents"].([]map[string]interface{})[0]["parts"].([]map[string]interface{})
+	if len(parts) != 2 {
+		t.Fatalf("expected 2 parts, got %d: %#v", len(parts), parts)
+	}
+	if parts[0]["text"] != "what is this?" {
+		t.Errorf("parts[0].text = %v", parts[0]["text"])
+	}
+	inline, ok := parts[1]["inlineData"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("parts[1].inlineData missing: %#v", parts[1])
+	}
+	if inline["mimeType"] != "image/png" {
+		t.Errorf("inlineData.mimeType = %v, want image/png", inline["mimeType"])
+	}
+	if inline["data"] != "iVBORw==" {
+		t.Errorf("inlineData.data = %v", inline["data"])
+	}
+}
