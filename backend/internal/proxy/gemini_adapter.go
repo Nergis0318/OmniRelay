@@ -324,69 +324,8 @@ func (a *GeminiAdapter) ParseStreamChunk(data []byte) ([]byte, int64, int64, err
 
 func (a *GeminiAdapter) ParseMessagesStreamChunk(data []byte, state map[string]interface{}) ([]byte, int64, int64, error) {
 	text := strings.TrimSpace(string(data))
-	var result bytes.Buffer
+	w := newMessagesStreamWriter(state)
 	var totalInput, totalOutput int64
-
-	writeEvent := func(event map[string]interface{}) {
-		jsonEvent, _ := json.Marshal(event)
-		result.WriteString("event: ")
-		result.WriteString(fmt.Sprint(event["type"]))
-		result.WriteString("\n")
-		result.WriteString("data: ")
-		result.Write(jsonEvent)
-		result.WriteString("\n\n")
-	}
-
-	ensureStarted := func() {
-		if !boolState(state, "started") {
-			writeEvent(map[string]interface{}{
-				"type": "message_start",
-				"message": map[string]interface{}{
-					"id":            fmt.Sprintf("msg_%d", time.Now().UnixNano()),
-					"type":          "message",
-					"role":          "assistant",
-					"content":       []interface{}{},
-					"stop_reason":   nil,
-					"stop_sequence": nil,
-					"usage": map[string]interface{}{
-						"input_tokens": 0,
-					},
-				},
-			})
-			state["started"] = true
-		}
-		if !boolState(state, "content_started") {
-			writeEvent(map[string]interface{}{
-				"type":  "content_block_start",
-				"index": 0,
-				"content_block": map[string]interface{}{
-					"type": "text",
-					"text": "",
-				},
-			})
-			state["content_started"] = true
-		}
-	}
-
-	finish := func(stopReason string) {
-		if boolState(state, "stopped") {
-			return
-		}
-		ensureStarted()
-		writeEvent(map[string]interface{}{"type": "content_block_stop", "index": 0})
-		writeEvent(map[string]interface{}{
-			"type": "message_delta",
-			"delta": map[string]interface{}{
-				"stop_reason":   stopReason,
-				"stop_sequence": nil,
-			},
-			"usage": map[string]interface{}{
-				"output_tokens": int64State(state, "output_tokens", totalOutput),
-			},
-		})
-		writeEvent(map[string]interface{}{"type": "message_stop"})
-		state["stopped"] = true
-	}
 
 	scanner := bufio.NewScanner(strings.NewReader(text))
 	for scanner.Scan() {
@@ -397,7 +336,7 @@ func (a *GeminiAdapter) ParseMessagesStreamChunk(data []byte, state map[string]i
 
 		payload := strings.TrimPrefix(line, "data: ")
 		if payload == "[DONE]" {
-			finish("end_turn")
+			w.finish("end_turn", totalOutput)
 			continue
 		}
 
@@ -420,29 +359,18 @@ func (a *GeminiAdapter) ParseMessagesStreamChunk(data []byte, state map[string]i
 			parts, _ := content["parts"].([]interface{})
 			for _, rawPart := range parts {
 				part, _ := rawPart.(map[string]interface{})
-				if text, ok := part["text"].(string); ok && text != "" {
-					ensureStarted()
-					writeEvent(map[string]interface{}{
-						"type":  "content_block_delta",
-						"index": 0,
-						"delta": map[string]interface{}{
-							"type": "text_delta",
-							"text": text,
-						},
-					})
+				if t, ok := part["text"].(string); ok && t != "" {
+					w.textDelta(t)
 				}
 			}
 
 			if finishReason, ok := candidate["finishReason"].(string); ok && finishReason != "" {
-				finish(geminiFinishReasonToAnthropic(finishReason))
+				w.finish(geminiFinishReasonToAnthropic(finishReason), totalOutput)
 			}
 		}
 	}
 
-	if result.Len() == 0 {
-		return nil, int64State(state, "input_tokens", totalInput), int64State(state, "output_tokens", totalOutput), nil
-	}
-	return result.Bytes(), int64State(state, "input_tokens", totalInput), int64State(state, "output_tokens", totalOutput), nil
+	return w.bytes(), int64State(state, "input_tokens", totalInput), int64State(state, "output_tokens", totalOutput), nil
 }
 
 func geminiFinishReasonToAnthropic(reason string) string {

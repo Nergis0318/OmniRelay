@@ -2,11 +2,9 @@ package proxy
 
 import (
 	"bufio"
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"strings"
-	"time"
 )
 
 type OpenAIAdapter struct{}
@@ -31,69 +29,8 @@ func (a *OpenAIAdapter) ParseStreamChunk(data []byte) ([]byte, int64, int64, err
 
 func (a *OpenAIAdapter) ParseMessagesStreamChunk(data []byte, state map[string]interface{}) ([]byte, int64, int64, error) {
 	text := strings.TrimSpace(string(data))
-	var result bytes.Buffer
+	w := newMessagesStreamWriter(state)
 	var inputTokens, outputTokens int64
-
-	writeEvent := func(event map[string]interface{}) {
-		jsonEvent, _ := json.Marshal(event)
-		result.WriteString("event: ")
-		result.WriteString(fmt.Sprint(event["type"]))
-		result.WriteString("\n")
-		result.WriteString("data: ")
-		result.Write(jsonEvent)
-		result.WriteString("\n\n")
-	}
-
-	ensureStarted := func() {
-		if !boolState(state, "started") {
-			writeEvent(map[string]interface{}{
-				"type": "message_start",
-				"message": map[string]interface{}{
-					"id":            fmt.Sprintf("msg_%d", time.Now().UnixNano()),
-					"type":          "message",
-					"role":          "assistant",
-					"content":       []interface{}{},
-					"stop_reason":   nil,
-					"stop_sequence": nil,
-					"usage": map[string]interface{}{
-						"input_tokens": 0,
-					},
-				},
-			})
-			state["started"] = true
-		}
-		if !boolState(state, "content_started") {
-			writeEvent(map[string]interface{}{
-				"type":  "content_block_start",
-				"index": 0,
-				"content_block": map[string]interface{}{
-					"type": "text",
-					"text": "",
-				},
-			})
-			state["content_started"] = true
-		}
-	}
-
-	finish := func(stopReason string) {
-		if boolState(state, "stopped") {
-			return
-		}
-		ensureStarted()
-		writeEvent(map[string]interface{}{"type": "content_block_stop", "index": 0})
-		writeEvent(map[string]interface{}{
-			"type": "message_delta",
-			"delta": map[string]interface{}{
-				"stop_reason":   stopReason,
-				"stop_sequence": nil,
-			},
-			"usage": map[string]interface{}{
-				"output_tokens": int64State(state, "output_tokens", outputTokens),
-			},
-		})
-		writeEvent(map[string]interface{}{"type": "message_stop"})
-		state["stopped"] = true
-	}
 
 	scanner := bufio.NewScanner(strings.NewReader(text))
 	for scanner.Scan() {
@@ -104,7 +41,7 @@ func (a *OpenAIAdapter) ParseMessagesStreamChunk(data []byte, state map[string]i
 
 		payload := strings.TrimPrefix(line, "data: ")
 		if payload == "[DONE]" {
-			finish("end_turn")
+			w.finish("end_turn", outputTokens)
 			continue
 		}
 
@@ -125,29 +62,18 @@ func (a *OpenAIAdapter) ParseMessagesStreamChunk(data []byte, state map[string]i
 			choice, _ := rawChoice.(map[string]interface{})
 			delta, _ := choice["delta"].(map[string]interface{})
 			if content, ok := delta["content"].(string); ok && content != "" {
-				ensureStarted()
-				writeEvent(map[string]interface{}{
-					"type":  "content_block_delta",
-					"index": 0,
-					"delta": map[string]interface{}{
-						"type": "text_delta",
-						"text": content,
-					},
-				})
+				w.textDelta(content)
 			} else if _, ok := delta["role"].(string); ok {
-				ensureStarted()
+				w.ensureStarted()
 			}
 
 			if finishReason, ok := choice["finish_reason"].(string); ok && finishReason != "" {
-				finish(openAIFinishReasonToAnthropic(finishReason))
+				w.finish(openAIFinishReasonToAnthropic(finishReason), outputTokens)
 			}
 		}
 	}
 
-	if result.Len() == 0 {
-		return nil, int64State(state, "input_tokens", inputTokens), int64State(state, "output_tokens", outputTokens), nil
-	}
-	return result.Bytes(), int64State(state, "input_tokens", inputTokens), int64State(state, "output_tokens", outputTokens), nil
+	return w.bytes(), int64State(state, "input_tokens", inputTokens), int64State(state, "output_tokens", outputTokens), nil
 }
 
 func boolState(state map[string]interface{}, key string) bool {
