@@ -40,20 +40,37 @@ func setProviderAuthHeaders(req *http.Request, providerType, apiKey string) {
 }
 
 func copyForwardableRequestHeaders(c *gin.Context, req *http.Request) {
-	for _, name := range []string{
-		"Accept",
-		"Anthropic-Beta",
-		"Anthropic-Version",
-		"OpenAI-Beta",
-		"OpenAI-Organization",
-		"OpenAI-Project",
-		"X-Goog-Api-Client",
-	} {
-		if values, ok := c.Request.Header[name]; ok {
-			for _, value := range values {
-				req.Header.Add(name, value)
+	connectionHeaders := map[string]struct{}{}
+	for _, value := range c.Request.Header.Values("Connection") {
+		for _, name := range strings.Split(value, ",") {
+			if name = strings.TrimSpace(name); name != "" {
+				connectionHeaders[http.CanonicalHeaderKey(name)] = struct{}{}
 			}
 		}
+	}
+
+	for name, values := range c.Request.Header {
+		if !isForwardableRequestHeader(name, connectionHeaders) {
+			continue
+		}
+		req.Header.Del(name)
+		for _, value := range values {
+			req.Header.Add(name, value)
+		}
+	}
+}
+
+func isForwardableRequestHeader(name string, connectionHeaders map[string]struct{}) bool {
+	canonicalName := http.CanonicalHeaderKey(name)
+	if _, ok := connectionHeaders[canonicalName]; ok {
+		return false
+	}
+
+	switch strings.ToLower(name) {
+	case "authorization", "connection", "content-length", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailer", "transfer-encoding", "upgrade", "x-api-key", "x-goog-api-key":
+		return false
+	default:
+		return true
 	}
 }
 
