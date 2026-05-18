@@ -5,6 +5,62 @@ import (
 	"testing"
 )
 
+func TestGeminiParseStreamChunkConvertsToOpenAIChunks(t *testing.T) {
+	adapter := &GeminiAdapter{}
+	chunk := `data: {"candidates":[{"content":{"parts":[{"text":"hello"}]}}]}` + "\n\n" +
+		`data: {"candidates":[{"content":{"parts":[{"text":" world"}]}}],"usageMetadata":{"promptTokenCount":4,"candidatesTokenCount":2}}` + "\n\n"
+	got, inputTokens, outputTokens, err := adapter.ParseStreamChunk([]byte(chunk))
+	if err != nil {
+		t.Fatalf("ParseStreamChunk: %v", err)
+	}
+	if inputTokens != 4 || outputTokens != 2 {
+		t.Errorf("tokens = (%d, %d), want (4, 2)", inputTokens, outputTokens)
+	}
+
+	text := string(got)
+	if strings.Count(text, `"chat.completion.chunk"`) != 2 {
+		t.Errorf("expected 2 chat.completion.chunk records, got:\n%s", text)
+	}
+	if !strings.Contains(text, `"content":"hello"`) {
+		t.Errorf("missing first delta hello in:\n%s", text)
+	}
+	if !strings.Contains(text, `"content":" world"`) {
+		t.Errorf("missing second delta \" world\" in:\n%s", text)
+	}
+	if !strings.Contains(text, `"prompt_tokens":4`) || !strings.Contains(text, `"total_tokens":6`) {
+		t.Errorf("missing usage block (prompt=4, total=6) in:\n%s", text)
+	}
+}
+
+func TestGeminiParseStreamChunkEmitsPlaceholderWhenNoCandidates(t *testing.T) {
+	adapter := &GeminiAdapter{}
+	got, inputTokens, outputTokens, err := adapter.ParseStreamChunk([]byte(""))
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if inputTokens != 0 || outputTokens != 0 {
+		t.Errorf("empty input: tokens should be zero, got (%d, %d)", inputTokens, outputTokens)
+	}
+	text := string(got)
+	if strings.Count(text, `"chat.completion.chunk"`) != 1 {
+		t.Errorf("expected exactly one placeholder chunk, got:\n%s", text)
+	}
+	if strings.Contains(text, `"content"`) {
+		t.Errorf("placeholder should have empty delta (no content key), got:\n%s", text)
+	}
+}
+
+func TestGeminiParseStreamChunkSkipsDoneSentinel(t *testing.T) {
+	adapter := &GeminiAdapter{}
+	got, _, _, err := adapter.ParseStreamChunk([]byte("data: [DONE]\n\n"))
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if strings.Count(string(got), `"chat.completion.chunk"`) != 1 {
+		t.Errorf("[DONE] alone should produce one placeholder chunk, got:\n%s", got)
+	}
+}
+
 func TestGeminiParseMessagesStreamChunkConvertsToAnthropicEvents(t *testing.T) {
 	adapter := &GeminiAdapter{}
 	state := make(map[string]interface{})
