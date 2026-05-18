@@ -5,8 +5,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"strings"
 	"time"
 )
@@ -456,46 +454,6 @@ func geminiFinishReasonToAnthropic(reason string) string {
 	default:
 		return "end_turn"
 	}
-}
-
-func (a *GeminiAdapter) FetchModels(apiBaseURL string, apiKey string) ([]string, error) {
-	url := apiBaseURL + "/models"
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("x-goog-api-key", apiKey)
-
-	client := &http.Client{Timeout: 15 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	var result struct {
-		Models []struct {
-			Name string `json:"name"`
-		} `json:"models"`
-	}
-	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, err
-	}
-
-	var modelIDs []string
-	for _, m := range result.Models {
-		name := m.Name
-		if idx := strings.LastIndex(name, "/"); idx >= 0 {
-			name = name[idx+1:]
-		}
-		modelIDs = append(modelIDs, name)
-	}
-	return modelIDs, nil
 }
 
 func (a *GeminiAdapter) BuildMessagesRequest(body map[string]interface{}) (string, map[string]interface{}, error) {

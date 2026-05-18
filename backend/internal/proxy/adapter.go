@@ -14,7 +14,6 @@ type Adapter interface {
 	ParseStreamChunk(data []byte) ([]byte, int64, int64, error)
 	// ParseMessagesStreamChunk transforms a raw SSE chunk into Anthropic Messages SSE format.
 	ParseMessagesStreamChunk(data []byte, state map[string]interface{}) ([]byte, int64, int64, error)
-	FetchModels(apiBaseURL string, apiKey string) ([]string, error)
 }
 
 type Engine struct {
@@ -33,7 +32,7 @@ func NewEngine(ps *service.ProviderService, ms *service.ModelService, us *servic
 	}
 	e.adapters["openai"] = &OpenAIAdapter{}
 	e.adapters["lmstudio"] = &OpenAIAdapter{}
-	e.adapters["ollama"] = &OllamaAdapter{}
+	e.adapters["ollama"] = &OpenAIAdapter{}
 	e.adapters["gemini"] = &GeminiAdapter{}
 	e.adapters["anthropic"] = &AnthropicAdapter{}
 	return e

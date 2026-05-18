@@ -5,8 +5,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"strings"
 	"time"
 )
@@ -325,43 +323,6 @@ func (a *AnthropicAdapter) ParseStreamChunk(data []byte) ([]byte, int64, int64, 
 
 func (a *AnthropicAdapter) ParseMessagesStreamChunk(data []byte, state map[string]interface{}) ([]byte, int64, int64, error) {
 	return data, 0, 0, nil
-}
-
-func (a *AnthropicAdapter) FetchModels(apiBaseURL string, apiKey string) ([]string, error) {
-	url := apiBaseURL + "/v1/models?limit=1000"
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("x-api-key", apiKey)
-	req.Header.Set("anthropic-version", "2023-06-01")
-
-	client := &http.Client{Timeout: 15 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	var result struct {
-		Data []struct {
-			ID string `json:"id"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, err
-	}
-
-	var modelIDs []string
-	for _, m := range result.Data {
-		modelIDs = append(modelIDs, m.ID)
-	}
-	return modelIDs, nil
 }
 
 func (a *AnthropicAdapter) BuildMessagesRequest(body map[string]interface{}) (string, map[string]interface{}, error) {
