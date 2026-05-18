@@ -4,16 +4,17 @@
 
 OmniRelay is a single-Docker-image AI proxy: Go backend (Gin) + Vue 3 dashboard (Vuetify), served behind Caddy as reverse proxy.
 
-- `backend/` — Go module `omnirelay` (Go 1.22), entrypoint `cmd/server/`
+- `backend/` — Go module `omnirelay` (Go 1.25), entrypoint `cmd/server/`
   - `internal/handlers/` — thin Gin HTTP handlers
-  - `internal/proxy/` — provider adapters (OpenAI, Anthropic, LM Studio, Ollama, Gemini)
-  - `internal/service/` — business logic (auth, providers, models, usage)
+  - `internal/proxy/` — provider adapters (OpenAI, Anthropic, LM Studio, Ollama, Gemini), shared request/usage helpers in `proxy_helpers.go` and `usage_log.go`
+  - `internal/service/` — business logic (auth, providers, models, usage); `provider_service.go` is the single source of truth for upstream model-list fetching (`FetchModelsFromProvider`)
   - `internal/database/` — SQLite via `modernc.org/sqlite` (pure Go, no CGO); `migrations.go` auto-runs on startup
   - `internal/middleware/` — JWT and API key auth
   - `internal/models/` — shared structs
 - `frontend/` — Vue 3 + Vuetify 3 + Pinia + Chart.js, two-space indentation
   - `frontend/Caddyfile` — Caddy v2 config used in Docker image (/etc/caddy/Caddyfile)
 - `Dockerfile` — single multi-stage build: frontend (Bun) → backend (Go) → runtime (caddy:2-alpine)
+- `compose.yml` — `docker compose up -d` runs the published `ghcr.io/nergis0318/omnirelay:latest` image
 - `OpenAPI-Specification/` — provider reference specs
 
 ## Build & Run Commands
@@ -38,9 +39,12 @@ bun run preview
 ```bash
 docker build -t omnirelay .
 docker run -p 80:80 omnirelay
+
+# Or use the published image via Compose:
+docker compose up -d
 ```
 
-The Dockerfile builds a **single container** with Caddy + the Go backend. No docker-compose file exists (despite README mention). Backend and Caddy run via shell entrypoint: `/app/omnirelay & caddy run --config /etc/caddy/Caddyfile --adapter caddyfile`.
+The Dockerfile builds a **single container** with Caddy + the Go backend. `compose.yml` at the repo root pulls `ghcr.io/nergis0318/omnirelay:latest` (no local build) and mounts a named volume for the SQLite DB. Backend and Caddy run via shell entrypoint: `/app/omnirelay & caddy run --config /etc/caddy/Caddyfile --adapter caddyfile`.
 
 Environment in container:
 - `LISTEN_ADDR=:8080` — backend listen address
@@ -81,7 +85,15 @@ Migration v4 adds: `providers.user_id` (idempotent).
 
 ## Testing
 
-No tests are currently checked in. When adding Go tests, place them beside implementations as `*_test.go` and run `go test ./...` from `backend/`. For frontend, `bun run build` provides type safety; manual dashboard testing is the current verification.
+A small set of Go tests is checked in:
+
+- `internal/proxy/openai_adapter_test.go` — header forwarding and OpenAI → Anthropic Messages SSE conversion
+- `internal/proxy/proxy_helpers_test.go` — `applyGeminiStreamingURL`, `buildUpstreamRequest`, `stripProviderPrefix`, `setGenConfig`
+- `internal/service/auth_service_test.go`, `internal/service/apikey_service_test.go` — registration uniqueness and API-key rate limiting
+
+Place new tests beside implementations as `*_test.go` and run `go test ./...` from `backend/`. The frontend has no test runner; `bun run build` runs `vue-tsc --noEmit` for type checking and manual dashboard testing is the current verification.
+
+The Python scripts under `test/` (`main.py`, `test2.py`, `test3.py`) are runnable integration probes against a live proxy, not pytest cases. They contain hardcoded `om-ni-...` keys that target a specific dev environment.
 
 ## Security
 
