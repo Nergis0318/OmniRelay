@@ -57,7 +57,7 @@ func (a *GeminiAdapter) BuildChatRequest(body map[string]interface{}) (string, m
 	}
 
 	if len(systemParts) > 0 {
-		geminiBody["system_instruction"] = map[string]interface{}{
+		geminiBody["systemInstruction"] = map[string]interface{}{
 			"parts": systemParts,
 		}
 	}
@@ -410,7 +410,7 @@ func (a *GeminiAdapter) BuildMessagesRequest(body map[string]interface{}) (strin
 		}
 	}
 	if len(systemParts) > 0 {
-		geminiBody["system_instruction"] = map[string]interface{}{"parts": systemParts}
+		geminiBody["systemInstruction"] = map[string]interface{}{"parts": systemParts}
 	}
 
 	messages, _ := body["messages"].([]interface{})

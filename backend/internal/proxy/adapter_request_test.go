@@ -228,13 +228,13 @@ func TestGeminiBuildChatRequestExtractsSystemAndMapsRoles(t *testing.T) {
 		t.Errorf("endpoint = %q, want /models/gemini-2.0-flash:generateContent (prefix stripped)", endpoint)
 	}
 
-	sys, ok := got["system_instruction"].(map[string]interface{})
+	sys, ok := got["systemInstruction"].(map[string]interface{})
 	if !ok {
-		t.Fatalf("system_instruction missing: %#v", got["system_instruction"])
+		t.Fatalf("systemInstruction missing: %#v", got["systemInstruction"])
 	}
 	parts, ok := sys["parts"].([]map[string]interface{})
 	if !ok || len(parts) != 1 || parts[0]["text"] != "you are helpful" {
-		t.Errorf("system_instruction.parts = %#v, want [{text:\"you are helpful\"}]", sys["parts"])
+		t.Errorf("systemInstruction.parts = %#v, want [{text:\"you are helpful\"}]", sys["parts"])
 	}
 
 	contents, ok := got["contents"].([]map[string]interface{})
@@ -375,13 +375,13 @@ func TestGeminiBuildMessagesRequestExtractsSystemAndMapsRoles(t *testing.T) {
 		t.Errorf("endpoint = %q, want /models/gemini-2.0-flash:generateContent", endpoint)
 	}
 
-	sys, ok := got["system_instruction"].(map[string]interface{})
+	sys, ok := got["systemInstruction"].(map[string]interface{})
 	if !ok {
-		t.Fatalf("system_instruction missing: %#v", got["system_instruction"])
+		t.Fatalf("systemInstruction missing: %#v", got["systemInstruction"])
 	}
 	parts := sys["parts"].([]map[string]interface{})
 	if len(parts) != 1 || parts[0]["text"] != "you are helpful" {
-		t.Errorf("system_instruction.parts = %#v", parts)
+		t.Errorf("systemInstruction.parts = %#v", parts)
 	}
 
 	contents := got["contents"].([]map[string]interface{})
