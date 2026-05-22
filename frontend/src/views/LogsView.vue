@@ -123,6 +123,28 @@
         </template>
       </v-data-table>
 
+      <!-- Mobile cards -->
+      <div class="mobile-cards">
+        <MobileDataCard
+          v-for="log in store.logs"
+          :key="log.id"
+          :items="[
+            { label: $t('logs.startedAt'), value: log.started_at ? formatTime(log.started_at) : '-' },
+            { label: $t('logs.completedAt'), value: log.completed_at ? formatTime(log.completed_at) : '-' },
+            { label: $t('logs.duration'), value: (log.latency_ms / 1000).toFixed(2) + 's' },
+            { label: $t('logs.provider'), value: log.provider_name || '-' },
+            { label: $t('logs.model'), value: getModelName(log.model) },
+            { label: $t('logs.totalTokens'), value: log.total_tokens.toLocaleString() },
+            { label: $t('logs.totalCost'), value: '$' + log.cost.toFixed(6) },
+            { label: $t('logs.status'), value: log.is_error ? $t('logs.error') : $t('logs.ok') },
+          ]"
+        />
+        <div v-if="!store.logs.length" class="empty-state">
+          <v-icon size="32" color="#4a4844">mdi-text-box-search-outline</v-icon>
+          <p>{{ $t("logs.noRecords") }}</p>
+        </div>
+      </div>
+
       <div class="table-footer">
         <span class="mono-val">{{ store.logs.length }}</span>
         <span class="dim-text"> {{ $t("logs.of") }} </span>
@@ -150,9 +172,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, onUnmounted } from "vue";
 import { useI18n } from "vue-i18n";
 import { useUsageStore } from "../stores/usage";
+import MobileDataCard from "../components/MobileDataCard.vue";
 
 const { t } = useI18n();
 const store = useUsageStore();
@@ -161,6 +184,11 @@ const limit = 50;
 const offset = ref(0);
 
 const filters = ref({ model: "", provider: "", from: "", to: "" });
+
+const isMobile = ref(false);
+function checkMobile() {
+  isMobile.value = window.innerWidth <= 768;
+}
 
 const headers = computed(() => [
   { title: t("logs.startedAt"), key: "started_at", minWidth: "140" },
@@ -205,7 +233,15 @@ function prevPage() {
   loadLogs();
 }
 
-onMounted(() => loadLogs());
+onMounted(() => {
+  checkMobile();
+  window.addEventListener("resize", checkMobile);
+  loadLogs();
+});
+
+onUnmounted(() => {
+  window.removeEventListener("resize", checkMobile);
+});
 </script>
 
 <style scoped>
@@ -269,5 +305,21 @@ onMounted(() => loadLogs());
 .pagination-btn:disabled {
   opacity: 0.3;
   cursor: not-allowed;
+}
+
+.mobile-cards {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .v-data-table {
+    display: none;
+  }
+  .mobile-cards {
+    display: block;
+  }
+  .table-footer {
+    justify-content: center;
+  }
 }
 </style>
