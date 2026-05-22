@@ -1,5 +1,12 @@
 <template>
-  <v-navigation-drawer v-model="drawer" :rail="rail" permanent width="220">
+  <!-- Desktop / Tablet sidebar -->
+  <v-navigation-drawer
+    v-if="!isMobile"
+    v-model="drawer"
+    :rail="rail"
+    permanent
+    width="220"
+  >
     <!-- Brand -->
     <div class="brand-area" :class="{ 'brand-area--rail': rail }">
       <div class="brand-logo">
@@ -49,7 +56,6 @@
     <!-- Footer -->
     <template #append>
       <div class="nav-footer" :class="{ 'nav-footer--rail': rail }">
-        <!-- Language switcher -->
         <div class="nav-divider" />
         <div class="locale-switch" :class="{ 'locale-switch--rail': rail }">
           <button
@@ -89,7 +95,25 @@
     </template>
   </v-navigation-drawer>
 
-  <v-main>
+  <!-- Mobile bottom tab bar -->
+  <nav v-else class="mobile-tab-bar">
+    <router-link
+      v-for="item in menuItems"
+      :key="item.to"
+      :to="item.to"
+      class="mobile-tab"
+      :class="{ 'mobile-tab--active': isActive(item.to) }"
+    >
+      <v-icon size="20">{{ item.icon }}</v-icon>
+      <span class="mobile-tab__label">{{ $t(item.i18nKey) }}</span>
+    </router-link>
+    <button class="mobile-tab mobile-tab--logout" @click="handleLogout">
+      <v-icon size="20">mdi-logout</v-icon>
+      <span class="mobile-tab__label">{{ $t("common.signOut") }}</span>
+    </button>
+  </nav>
+
+  <v-main :class="{ 'main--mobile': isMobile }">
     <v-container fluid class="pa-8">
       <router-view />
     </v-container>
@@ -97,7 +121,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from "vue";
+import { ref, computed, onMounted, onUnmounted } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { useI18n } from "vue-i18n";
 import { useAuthStore } from "../stores/auth";
@@ -110,6 +134,18 @@ const route = useRoute();
 const { locale } = useI18n();
 const drawer = ref(true);
 const rail = ref(false);
+
+const isMobile = ref(false);
+function checkMobile() {
+  isMobile.value = window.innerWidth <= 768;
+}
+onMounted(() => {
+  checkMobile();
+  window.addEventListener("resize", checkMobile);
+});
+onUnmounted(() => {
+  window.removeEventListener("resize", checkMobile);
+});
 
 const menuItems = [
   { i18nKey: "nav.dashboard", icon: "mdi-view-dashboard-outline", to: "/" },
@@ -352,5 +388,54 @@ function handleLogout() {
 :deep(.v-navigation-drawer) {
   background: #131316 !important;
   border-right: 1px solid rgba(255, 255, 255, 0.06) !important;
+}
+
+/* ── Mobile bottom tab bar ── */
+.mobile-tab-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 56px;
+  background: #131316;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  z-index: 1000;
+}
+.mobile-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  flex: 1;
+  height: 100%;
+  text-decoration: none;
+  color: #4a4844;
+  transition: color 0.15s;
+  min-width: 0;
+}
+.mobile-tab--active {
+  color: #e8a020;
+}
+.mobile-tab__label {
+  font-family: "DM Sans", sans-serif;
+  font-size: 0.6rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.mobile-tab--logout {
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.main--mobile .v-container {
+  padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px) + 16px) !important;
 }
 </style>
