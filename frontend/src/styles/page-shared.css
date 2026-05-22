@@ -388,3 +388,61 @@
   flex: 1;
   min-width: 140px;
 }
+
+/* ── Mobile utilities ── */
+@media (max-width: 768px) {
+  .page {
+    gap: 16px;
+  }
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .page-title {
+    font-size: 1.25rem;
+  }
+  .table-card {
+    border-radius: 10px;
+  }
+  .filter-bar {
+    padding: 12px 14px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+  .filter-col {
+    min-width: 0;
+  }
+  .filter-submit {
+    align-self: stretch;
+  }
+  .dialog-card {
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+  }
+  .dialog-header {
+    padding: 16px 16px 10px;
+  }
+  .dialog-body {
+    padding: 14px 16px;
+    gap: 12px;
+  }
+  .dialog-footer {
+    padding: 10px 16px 16px;
+  }
+  .field-input,
+  .field-select {
+    font-size: 16px; /* prevent iOS zoom */
+  }
+}
+
+@media (max-width: 768px) {
+  pre,
+  code {
+    overflow-x: auto;
+    white-space: pre;
+    word-break: normal;
+  }
+}
