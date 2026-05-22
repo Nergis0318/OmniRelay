@@ -418,4 +418,21 @@ async function handleLogin() {
   color: #f5c842;
   text-decoration: underline;
 }
+
+@media (max-width: 480px) {
+  .auth-card-wrap {
+    padding: 16px;
+    max-width: 100%;
+  }
+  .auth-card {
+    border-radius: 12px;
+    padding: 24px;
+  }
+  .auth-card__title {
+    font-size: 1.3rem;
+  }
+  .field-input {
+    font-size: 16px;
+  }
+}
 </style>
