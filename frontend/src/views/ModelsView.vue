@@ -87,7 +87,35 @@
       </v-data-table>
     </div>
 
-    <v-dialog v-model="dialog" max-width="500">
+    <!-- Mobile cards -->
+    <div class="mobile-cards">
+      <MobileDataCard
+        v-for="m in store.models"
+        :key="m.id"
+        :items="[
+          { label: $t('models.model'), value: m.provider_key + '/' + m.model_id },
+          { label: $t('models.provider'), value: m.provider_key },
+          { label: $t('models.source'), value: m.is_manual ? $t('models.manual') : $t('models.auto') },
+          { label: $t('models.pricing'), value: '$' + (m.input_price_per_1mtok ?? 0) + ' / $' + (m.output_price_per_1mtok ?? 0) },
+          { label: $t('models.context'), value: m.context_window ? (m.context_window / 1000).toFixed(0) + 'k' : '—' },
+        ]"
+      >
+        <template #actions>
+          <button class="row-btn" title="Edit" @click="openEditDialog(m)">
+            <v-icon size="15">mdi-pencil-outline</v-icon>
+          </button>
+          <button class="row-btn row-btn--danger" title="Delete" @click="handleDelete(m.id)">
+            <v-icon size="15">mdi-delete-outline</v-icon>
+          </button>
+        </template>
+      </MobileDataCard>
+      <div v-if="!store.models.length" class="empty-state">
+        <v-icon size="32" color="#4a4844">mdi-cube-off-outline</v-icon>
+        <p>{{ $t("models.noModels") }}</p>
+      </div>
+    </div>
+
+    <v-dialog v-model="dialog" :max-width="isMobile ? undefined : 500" :fullscreen="isMobile">
       <div class="dialog-card">
         <div class="dialog-header">
           <h2 class="dialog-title">
@@ -206,10 +234,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, onUnmounted } from "vue";
 import { useI18n } from "vue-i18n";
 import { useModelsStore } from "../stores/models";
 import { useProvidersStore } from "../stores/providers";
+import MobileDataCard from "../components/MobileDataCard.vue";
 
 const { t } = useI18n();
 const store = useModelsStore();
@@ -219,6 +248,18 @@ const editMode = ref(false);
 const editingId = ref<number | null>(null);
 const saving = ref(false);
 const dialogError = ref("");
+
+const isMobile = ref(false);
+function checkMobile() {
+  isMobile.value = window.innerWidth <= 768;
+}
+onMounted(() => {
+  checkMobile();
+  window.addEventListener("resize", checkMobile);
+});
+onUnmounted(() => {
+  window.removeEventListener("resize", checkMobile);
+});
 
 const form = ref({
   provider_id: null as number | null,
@@ -375,5 +416,19 @@ onMounted(async () => {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
+}
+.mobile-cards {
+  display: none;
+}
+@media (max-width: 768px) {
+  .v-data-table {
+    display: none;
+  }
+  .mobile-cards {
+    display: block;
+  }
+  .price-grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>
