@@ -334,6 +334,28 @@ onMounted(() => usageStore.fetchStats());
 @media (max-width: 560px) {
   .stat-grid {
     grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  .dash {
+    gap: 18px;
+  }
+}
+
+@media (max-width: 480px) {
+  .dash-title {
+    font-size: 1.35rem;
+  }
+  .stat-card {
+    padding: 14px 16px 10px;
+  }
+  .stat-card__value {
+    font-size: 1.2rem;
+  }
+  .chart-wrap {
+    height: 220px;
+  }
+  .charts-row {
+    gap: 10px;
   }
 }
 
