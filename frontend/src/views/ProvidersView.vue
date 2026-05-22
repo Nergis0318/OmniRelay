@@ -66,8 +66,38 @@
       </v-data-table>
     </div>
 
+    <!-- Mobile cards -->
+    <div class="mobile-cards">
+      <MobileDataCard
+        v-for="p in store.providers"
+        :key="p.id"
+        :items="[
+          { label: $t('providers.key'), value: p.provider_key },
+          { label: $t('providers.name'), value: p.name },
+          { label: $t('providers.type'), value: p.provider_type },
+          { label: $t('providers.status'), value: p.is_active ? $t('providers.active') : $t('providers.inactive') },
+        ]"
+      >
+        <template #actions>
+          <button class="row-btn" title="Edit" @click="openDialog(p)">
+            <v-icon size="15">mdi-pencil-outline</v-icon>
+          </button>
+          <button class="row-btn" title="Sync Models" @click="handleSync(p.id)">
+            <v-icon size="15">mdi-sync</v-icon>
+          </button>
+          <button class="row-btn row-btn--danger" title="Delete" @click="handleDelete(p.id)">
+            <v-icon size="15">mdi-delete-outline</v-icon>
+          </button>
+        </template>
+      </MobileDataCard>
+      <div v-if="!store.providers.length" class="empty-state">
+        <v-icon size="32" color="#4a4844">mdi-server-off</v-icon>
+        <p>{{ $t("providers.noProviders") }}</p>
+      </div>
+    </div>
+
     <!-- Dialog -->
-    <v-dialog v-model="dialog" max-width="520">
+    <v-dialog v-model="dialog" :max-width="isMobile ? undefined : 520" :fullscreen="isMobile">
       <div class="dialog-card">
         <div class="dialog-header">
           <h2 class="dialog-title">
@@ -164,12 +194,26 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, onUnmounted } from "vue";
 import { useI18n } from "vue-i18n";
 import { useProvidersStore } from "../stores/providers";
+import MobileDataCard from "../components/MobileDataCard.vue";
 
 const { t } = useI18n();
 const store = useProvidersStore();
+const isMobile = ref(false);
+function checkMobile() {
+  isMobile.value = window.innerWidth <= 768;
+}
+onMounted(() => {
+  checkMobile();
+  window.addEventListener("resize", checkMobile);
+  store.fetch();
+});
+onUnmounted(() => {
+  window.removeEventListener("resize", checkMobile);
+});
+
 const dialog = ref(false);
 const editing = ref<any>(null);
 const saving = ref(false);
@@ -264,9 +308,19 @@ async function handleDelete(id: number) {
   await store.remove(id);
 }
 
-onMounted(() => store.fetch());
 </script>
 
 <style scoped>
 @import "../styles/page-shared.css";
+.mobile-cards {
+  display: none;
+}
+@media (max-width: 768px) {
+  .v-data-table {
+    display: none;
+  }
+  .mobile-cards {
+    display: block;
+  }
+}
 </style>
