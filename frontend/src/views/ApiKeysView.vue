@@ -71,8 +71,39 @@
       </v-data-table>
     </div>
 
+    <!-- Mobile cards -->
+    <div class="mobile-cards">
+      <MobileDataCard
+        v-for="k in store.apiKeys"
+        :key="k.id"
+        :items="[
+          { label: $t('apiKeys.name'), value: k.name },
+          { label: $t('apiKeys.keyPrefix'), value: k.key_prefix },
+          { label: $t('apiKeys.status'), value: k.is_active ? $t('apiKeys.active') : $t('apiKeys.revoked') },
+          { label: $t('apiKeys.rateLimit'), value: k.rate_limit_rpm === 0 ? '∞' : String(k.rate_limit_rpm) },
+          { label: $t('apiKeys.lastUsed'), value: k.last_used_at ? new Date(k.last_used_at).toLocaleString() : $t('apiKeys.never') },
+          { label: $t('apiKeys.created'), value: new Date(k.created_at).toLocaleDateString() },
+        ]"
+      >
+        <template #actions>
+          <button
+            v-if="k.is_active"
+            class="row-btn row-btn--danger"
+            title="Revoke key"
+            @click="handleDelete(k.id)"
+          >
+            <v-icon size="15">mdi-block-helper</v-icon>
+          </button>
+        </template>
+      </MobileDataCard>
+      <div v-if="!store.apiKeys.length" class="empty-state">
+        <v-icon size="32" color="#4a4844">mdi-key-off-outline</v-icon>
+        <p>{{ $t("apiKeys.noKeys") }}</p>
+      </div>
+    </div>
+
     <!-- Create dialog -->
-    <v-dialog v-model="createDialog" max-width="460">
+    <v-dialog v-model="createDialog" :max-width="isMobile ? undefined : 460" :fullscreen="isMobile">
       <div class="dialog-card">
         <div class="dialog-header">
           <h2 class="dialog-title">{{ $t("apiKeys.issueNew") }}</h2>
@@ -121,7 +152,7 @@
     </v-dialog>
 
     <!-- Show key dialog -->
-    <v-dialog v-model="showKey" max-width="500">
+    <v-dialog v-model="showKey" :max-width="isMobile ? undefined : 500" :fullscreen="isMobile">
       <div class="dialog-card">
         <div class="dialog-header">
           <h2 class="dialog-title" style="color: #2ec4b6">
@@ -163,9 +194,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, onUnmounted } from "vue";
 import { useI18n } from "vue-i18n";
 import { useApiKeysStore } from "../stores/apikeys";
+import MobileDataCard from "../components/MobileDataCard.vue";
 
 const { t } = useI18n();
 const store = useApiKeysStore();
@@ -175,6 +207,11 @@ const newKey = ref("");
 const creating = ref(false);
 const dialogError = ref("");
 const copied = ref(false);
+
+const isMobile = ref(false);
+function checkMobile() {
+  isMobile.value = window.innerWidth <= 768;
+}
 
 const form = ref({ name: "", rate_limit_rpm: 0 });
 
@@ -225,11 +262,30 @@ async function handleDelete(id: number) {
   await store.remove(id);
 }
 
-onMounted(() => store.fetch());
+onMounted(() => {
+  checkMobile();
+  window.addEventListener("resize", checkMobile);
+  store.fetch();
+});
+onUnmounted(() => {
+  window.removeEventListener("resize", checkMobile);
+});
 </script>
 
 <style scoped>
 @import "../styles/page-shared.css";
+
+.mobile-cards {
+  display: none;
+}
+@media (max-width: 768px) {
+  .v-data-table {
+    display: none;
+  }
+  .mobile-cards {
+    display: block;
+  }
+}
 
 .dim-text {
   font-family: "DM Sans", sans-serif;
