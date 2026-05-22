@@ -239,4 +239,31 @@ onMounted(() => store.fetchStats());
 .empty-state p {
   margin: 0;
 }
+
+@media (max-width: 768px) {
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+  .stat-card {
+    padding: 12px 14px;
+  }
+  .stat-value {
+    font-size: 1.1rem;
+  }
+  .chart-area {
+    height: 240px;
+  }
+  .chart-section {
+    padding: 14px;
+  }
+}
+@media (max-width: 480px) {
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+  .chart-area {
+    height: 200px;
+  }
+}
 </style>
