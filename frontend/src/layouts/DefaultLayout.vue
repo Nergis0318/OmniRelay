@@ -103,11 +103,12 @@
       :to="item.to"
       class="mobile-tab"
       :class="{ 'mobile-tab--active': isActive(item.to) }"
+      :aria-current="isActive(item.to) ? 'page' : undefined"
     >
       <v-icon size="20">{{ item.icon }}</v-icon>
       <span class="mobile-tab__label">{{ $t(item.i18nKey) }}</span>
     </router-link>
-    <button class="mobile-tab mobile-tab--logout" @click="handleLogout">
+    <button class="mobile-tab mobile-tab--logout" @click="handleLogout" :aria-label="$t('common.signOut')">
       <v-icon size="20">mdi-logout</v-icon>
       <span class="mobile-tab__label">{{ $t("common.signOut") }}</span>
     </button>
@@ -135,16 +136,19 @@ const { locale } = useI18n();
 const drawer = ref(true);
 const rail = ref(false);
 
+const MOBILE_BREAKPOINT = 768;
 const isMobile = ref(false);
-function checkMobile() {
-  isMobile.value = window.innerWidth <= 768;
+let mql: MediaQueryList | null = null;
+function handleMQLChange(e: MediaQueryListEvent) {
+  isMobile.value = e.matches;
 }
 onMounted(() => {
-  checkMobile();
-  window.addEventListener("resize", checkMobile);
+  mql = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT}px)`);
+  isMobile.value = mql.matches;
+  mql.addEventListener("change", handleMQLChange);
 });
 onUnmounted(() => {
-  window.removeEventListener("resize", checkMobile);
+  mql?.removeEventListener("change", handleMQLChange);
 });
 
 const menuItems = [
