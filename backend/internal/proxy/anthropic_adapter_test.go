@@ -7,13 +7,14 @@ import (
 
 func TestAnthropicParseStreamChunkConvertsToOpenAIChunks(t *testing.T) {
 	adapter := &AnthropicAdapter{}
+	state := make(map[string]interface{})
 
 	// A realistic three-event Anthropic Messages SSE sequence.
 	chunk := `data: {"type":"message_start","message":{"usage":{"input_tokens":11}}}` + "\n\n" +
 		`data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"hello"}}` + "\n\n" +
 		`data: {"type":"message_delta","usage":{"output_tokens":4}}` + "\n\n"
 
-	got, inputTokens, outputTokens, err := adapter.ParseStreamChunk([]byte(chunk))
+	got, inputTokens, outputTokens, err := adapter.ParseStreamChunk([]byte(chunk), state)
 	if err != nil {
 		t.Fatalf("ParseStreamChunk: %v", err)
 	}
@@ -51,9 +52,10 @@ func TestAnthropicParseStreamChunkConvertsToOpenAIChunks(t *testing.T) {
 
 func TestAnthropicParseStreamChunkIgnoresUnknownDeltaTypes(t *testing.T) {
 	adapter := &AnthropicAdapter{}
+	state := make(map[string]interface{})
 	// input_json_delta and tool_use deltas should not produce content chunks.
 	chunk := `data: {"type":"content_block_delta","delta":{"type":"input_json_delta","partial_json":"{\"x\":1}"}}` + "\n\n"
-	got, _, _, err := adapter.ParseStreamChunk([]byte(chunk))
+	got, _, _, err := adapter.ParseStreamChunk([]byte(chunk), state)
 	if err != nil {
 		t.Fatalf("ParseStreamChunk: %v", err)
 	}
@@ -69,7 +71,8 @@ func TestAnthropicParseStreamChunkIgnoresUnknownDeltaTypes(t *testing.T) {
 
 func TestAnthropicParseStreamChunkEmitsPlaceholderForEmptyInput(t *testing.T) {
 	adapter := &AnthropicAdapter{}
-	got, inputTokens, outputTokens, err := adapter.ParseStreamChunk([]byte(""))
+	state := make(map[string]interface{})
+	got, inputTokens, outputTokens, err := adapter.ParseStreamChunk([]byte(""), state)
 	if err != nil {
 		t.Fatalf("ParseStreamChunk: %v", err)
 	}
@@ -87,8 +90,9 @@ func TestAnthropicParseStreamChunkEmitsPlaceholderForEmptyInput(t *testing.T) {
 
 func TestAnthropicParseStreamChunkSkipsDoneSentinel(t *testing.T) {
 	adapter := &AnthropicAdapter{}
+	state := make(map[string]interface{})
 	chunk := "data: [DONE]\n\n"
-	got, _, _, err := adapter.ParseStreamChunk([]byte(chunk))
+	got, _, _, err := adapter.ParseStreamChunk([]byte(chunk), state)
 	if err != nil {
 		t.Fatalf("ParseStreamChunk: %v", err)
 	}

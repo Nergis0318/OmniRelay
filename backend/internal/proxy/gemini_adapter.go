@@ -235,7 +235,7 @@ func (a *GeminiAdapter) ParseChatResponse(body map[string]interface{}) (map[stri
 	return response, nil
 }
 
-func (a *GeminiAdapter) ParseStreamChunk(data []byte) ([]byte, int64, int64, error) {
+func (a *GeminiAdapter) ParseStreamChunk(data []byte, state map[string]interface{}) ([]byte, int64, int64, error) {
 	text := strings.TrimSpace(string(data))
 
 	var result bytes.Buffer

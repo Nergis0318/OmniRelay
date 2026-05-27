@@ -23,7 +23,7 @@ func (a *OpenAIAdapter) ParseChatResponse(body map[string]interface{}) (map[stri
 	return body, nil
 }
 
-func (a *OpenAIAdapter) ParseStreamChunk(data []byte) ([]byte, int64, int64, error) {
+func (a *OpenAIAdapter) ParseStreamChunk(data []byte, state map[string]interface{}) ([]byte, int64, int64, error) {
 	return data, 0, 0, nil
 }
 

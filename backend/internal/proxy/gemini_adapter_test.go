@@ -7,9 +7,10 @@ import (
 
 func TestGeminiParseStreamChunkConvertsToOpenAIChunks(t *testing.T) {
 	adapter := &GeminiAdapter{}
+	state := make(map[string]interface{})
 	chunk := `data: {"candidates":[{"content":{"parts":[{"text":"hello"}]}}]}` + "\n\n" +
 		`data: {"candidates":[{"content":{"parts":[{"text":" world"}]}}],"usageMetadata":{"promptTokenCount":4,"candidatesTokenCount":2}}` + "\n\n"
-	got, inputTokens, outputTokens, err := adapter.ParseStreamChunk([]byte(chunk))
+	got, inputTokens, outputTokens, err := adapter.ParseStreamChunk([]byte(chunk), state)
 	if err != nil {
 		t.Fatalf("ParseStreamChunk: %v", err)
 	}
@@ -34,7 +35,8 @@ func TestGeminiParseStreamChunkConvertsToOpenAIChunks(t *testing.T) {
 
 func TestGeminiParseStreamChunkEmitsPlaceholderWhenNoCandidates(t *testing.T) {
 	adapter := &GeminiAdapter{}
-	got, inputTokens, outputTokens, err := adapter.ParseStreamChunk([]byte(""))
+	state := make(map[string]interface{})
+	got, inputTokens, outputTokens, err := adapter.ParseStreamChunk([]byte(""), state)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -52,7 +54,8 @@ func TestGeminiParseStreamChunkEmitsPlaceholderWhenNoCandidates(t *testing.T) {
 
 func TestGeminiParseStreamChunkSkipsDoneSentinel(t *testing.T) {
 	adapter := &GeminiAdapter{}
-	got, _, _, err := adapter.ParseStreamChunk([]byte("data: [DONE]\n\n"))
+	state := make(map[string]interface{})
+	got, _, _, err := adapter.ParseStreamChunk([]byte("data: [DONE]\n\n"), state)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}

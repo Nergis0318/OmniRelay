@@ -406,6 +406,7 @@ func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapt
 	buf := make([]byte, 4096)
 	var totalInputTokens, totalOutputTokens int64
 	sentDone := false
+	state := make(map[string]interface{})
 
 	for {
 		n, err := resp.Body.Read(buf)
@@ -415,7 +416,7 @@ func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapt
 				sentDone = true
 			}
 
-			transformed, inTok, outTok, _ := adapter.ParseStreamChunk(chunk)
+			transformed, inTok, outTok, _ := adapter.ParseStreamChunk(chunk, state)
 			if inTok > 0 {
 				totalInputTokens = inTok
 			}

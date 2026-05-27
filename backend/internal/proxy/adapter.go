@@ -11,7 +11,8 @@ type Adapter interface {
 	BuildMessagesRequest(body map[string]interface{}) (string, map[string]interface{}, error)
 	ParseMessagesResponse(body map[string]interface{}) (map[string]interface{}, error)
 	// ParseStreamChunk transforms a raw SSE chunk and returns (transformed, inputTokens, outputTokens, err).
-	ParseStreamChunk(data []byte) ([]byte, int64, int64, error)
+	// The state map persists across chunks to carry provider-specific values (e.g., input_tokens from message_start).
+	ParseStreamChunk(data []byte, state map[string]interface{}) ([]byte, int64, int64, error)
 	// ParseMessagesStreamChunk transforms a raw SSE chunk into Anthropic Messages SSE format.
 	ParseMessagesStreamChunk(data []byte, state map[string]interface{}) ([]byte, int64, int64, error)
 }

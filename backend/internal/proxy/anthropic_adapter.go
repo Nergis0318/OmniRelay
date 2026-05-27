@@ -219,11 +219,12 @@ func (a *AnthropicAdapter) ParseChatResponse(body map[string]interface{}) (map[s
 	return response, nil
 }
 
-func (a *AnthropicAdapter) ParseStreamChunk(data []byte) ([]byte, int64, int64, error) {
+func (a *AnthropicAdapter) ParseStreamChunk(data []byte, state map[string]interface{}) ([]byte, int64, int64, error) {
 	text := strings.TrimSpace(string(data))
 
 	var events []map[string]interface{}
-	var inputTokens, outputTokens int64
+	inputTokens := int64State(state, "input_tokens", 0)
+	var outputTokens int64
 
 	scanner := bufio.NewScanner(strings.NewReader(text))
 	for scanner.Scan() {
@@ -259,6 +260,7 @@ func (a *AnthropicAdapter) ParseStreamChunk(data []byte) ([]byte, int64, int64, 
 				if usage, ok := msg["usage"].(map[string]interface{}); ok {
 					if v, ok := usage["input_tokens"].(float64); ok {
 						inputTokens = int64(v)
+						state["input_tokens"] = inputTokens
 					}
 					events = append(events, map[string]interface{}{
 						"choices": []map[string]interface{}{
@@ -322,7 +324,49 @@ func (a *AnthropicAdapter) ParseStreamChunk(data []byte) ([]byte, int64, int64, 
 }
 
 func (a *AnthropicAdapter) ParseMessagesStreamChunk(data []byte, state map[string]interface{}) ([]byte, int64, int64, error) {
-	return data, 0, 0, nil
+	text := strings.TrimSpace(string(data))
+	inputTokens := int64State(state, "input_tokens", 0)
+	var outputTokens int64
+
+	scanner := bufio.NewScanner(strings.NewReader(text))
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+
+		payload := strings.TrimPrefix(line, "data: ")
+		if payload == "[DONE]" {
+			continue
+		}
+
+		var event map[string]interface{}
+		if err := json.Unmarshal([]byte(payload), &event); err != nil {
+			continue
+		}
+
+		eventType, _ := event["type"].(string)
+		switch eventType {
+		case "message_start":
+			if msg, ok := event["message"].(map[string]interface{}); ok {
+				if usage, ok := msg["usage"].(map[string]interface{}); ok {
+					if v, ok := usage["input_tokens"].(float64); ok {
+						inputTokens = int64(v)
+						state["input_tokens"] = inputTokens
+					}
+				}
+			}
+		case "message_delta":
+			if usage, ok := event["usage"].(map[string]interface{}); ok {
+				if v, ok := usage["output_tokens"].(float64); ok {
+					outputTokens = int64(v)
+					state["output_tokens"] = outputTokens
+				}
+			}
+		}
+	}
+
+	return data, inputTokens, outputTokens, nil
 }
 
 func (a *AnthropicAdapter) BuildMessagesRequest(body map[string]interface{}) (string, map[string]interface{}, error) {
