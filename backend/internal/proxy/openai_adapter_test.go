@@ -107,3 +107,38 @@ func TestOpenAIParseMessagesStreamChunkKeepsStateAcrossChunks(t *testing.T) {
 		t.Fatalf("message_start should only be emitted once; first=%q second=%q", first, second)
 	}
 }
+
+func TestOpenAIParseStreamChunkExtractsUsageFromFinalChunk(t *testing.T) {
+	adapter := &OpenAIAdapter{}
+	state := make(map[string]interface{})
+
+	chunk := "data: {\"choices\":[{\"delta\":{\"content\":\"hello\"}}]}\n\n" +
+		"data: {\"choices\":[],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":5}}\n\n"
+
+	_, inputTokens, outputTokens, err := adapter.ParseStreamChunk([]byte(chunk), state)
+	if err != nil {
+		t.Fatalf("ParseStreamChunk returned error: %v", err)
+	}
+
+	if inputTokens != 10 {
+		t.Errorf("inputTokens = %d, want 10", inputTokens)
+	}
+	if outputTokens != 5 {
+		t.Errorf("outputTokens = %d, want 5", outputTokens)
+	}
+}
+
+func TestOpenAIParseStreamChunkReturnsDataAsIs(t *testing.T) {
+	adapter := &OpenAIAdapter{}
+	state := make(map[string]interface{})
+
+	input := []byte("data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\n")
+	got, _, _, err := adapter.ParseStreamChunk(input, state)
+	if err != nil {
+		t.Fatalf("ParseStreamChunk returned error: %v", err)
+	}
+
+	if string(got) != string(input) {
+		t.Errorf("ParseStreamChunk should return data unchanged; got %q", got)
+	}
+}

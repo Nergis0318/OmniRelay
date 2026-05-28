@@ -596,13 +596,16 @@ func (e *Engine) handlePathRoutedProxy(c *gin.Context, provider *models.Provider
 
 	if !isSuccessStatus(resp.StatusCode) {
 		e.logUpstreamError(u, fmt.Sprintf("upstream returned %d", resp.StatusCode), latencyMs)
-	} else if dbModel != nil {
+	} else {
 		var respJSON map[string]interface{}
 		if json.Unmarshal(respBody, &respJSON) == nil {
 			requestTokens, responseTokens, totalTokens, cacheWrite5m, cacheWrite1h, cacheReadTokens := extractUsageFromRawResponse(provider.ProviderType, respJSON)
 			if requestTokens > 0 || responseTokens > 0 {
 				completedAt := time.Now()
-				cost := calculateCost(dbModel, requestTokens, responseTokens, cacheWrite5m, cacheWrite1h, cacheReadTokens)
+				var cost float64
+				if dbModel != nil {
+					cost = calculateCost(dbModel, requestTokens, responseTokens, cacheWrite5m, cacheWrite1h, cacheReadTokens)
+				}
 				e.logTokenUsage(u, tokenUsage{
 					requestTokens:  requestTokens,
 					responseTokens: responseTokens,
@@ -621,8 +624,6 @@ func (e *Engine) handlePathRoutedProxy(c *gin.Context, provider *models.Provider
 		} else {
 			e.logLatencyOnly(u, latencyMs)
 		}
-	} else {
-		e.logLatencyOnly(u, latencyMs)
 	}
 
 	copyResponseHeaders(c, resp.Header)
@@ -641,5 +642,8 @@ func calculateCost(m *models.Model, inputTokens, outputTokens, cacheWrite5mToken
 func extractCacheTokens(usage map[string]interface{}) (cacheWrite5m, cacheWrite1h, cacheRead int64) {
 	cacheWrite5m = numberToInt64(usage["cache_creation_input_tokens"])
 	cacheRead = numberToInt64(usage["cache_read_input_tokens"])
+	if cacheRead == 0 {
+		cacheRead = numberToInt64(usage["cached_content_token_count"])
+	}
 	return
 }

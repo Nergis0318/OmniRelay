@@ -24,7 +24,35 @@ func (a *OpenAIAdapter) ParseChatResponse(body map[string]interface{}) (map[stri
 }
 
 func (a *OpenAIAdapter) ParseStreamChunk(data []byte, state map[string]interface{}) ([]byte, int64, int64, error) {
-	return data, 0, 0, nil
+	text := strings.TrimSpace(string(data))
+	var inputTokens, outputTokens int64
+
+	scanner := bufio.NewScanner(strings.NewReader(text))
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+
+		payload := strings.TrimPrefix(line, "data: ")
+		if payload == "[DONE]" {
+			continue
+		}
+
+		var chunk map[string]interface{}
+		if err := json.Unmarshal([]byte(payload), &chunk); err != nil {
+			continue
+		}
+
+		if usage, ok := chunk["usage"].(map[string]interface{}); ok {
+			inputTokens = numberToInt64(usage["prompt_tokens"])
+			outputTokens = numberToInt64(usage["completion_tokens"])
+			state["input_tokens"] = inputTokens
+			state["output_tokens"] = outputTokens
+		}
+	}
+
+	return data, int64State(state, "input_tokens", inputTokens), int64State(state, "output_tokens", outputTokens), nil
 }
 
 func (a *OpenAIAdapter) ParseMessagesStreamChunk(data []byte, state map[string]interface{}) ([]byte, int64, int64, error) {
