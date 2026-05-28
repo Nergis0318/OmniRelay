@@ -456,11 +456,13 @@ func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapt
 
 	latencyMs := time.Since(start).Milliseconds()
 	completedAt := time.Now()
-	cost := calculateCost(dbModel, totalInputTokens, totalOutputTokens, 0, 0, 0)
+	cacheReadTokens := int64State(state, "cache_read_tokens", 0)
+	cost := calculateCost(dbModel, totalInputTokens, totalOutputTokens, 0, 0, cacheReadTokens)
 
 	e.logTokenUsage(u, tokenUsage{
 		requestTokens:  totalInputTokens,
 		responseTokens: totalOutputTokens,
+		cacheRead:      cacheReadTokens,
 		cost:           cost,
 		startedAt:      &start,
 		completedAt:    &completedAt,
@@ -535,14 +537,16 @@ func (e *Engine) handleMessagesStreamResponse(c *gin.Context, resp *http.Respons
 
 	completedAt := time.Now()
 	latencyMs := time.Since(start).Milliseconds()
+	cacheReadTokens := int64State(state, "cache_read_tokens", 0)
 	var cost float64
 	if dbModel != nil && (totalInputTokens > 0 || totalOutputTokens > 0) {
-		cost = calculateCost(dbModel, totalInputTokens, totalOutputTokens, 0, 0, 0)
+		cost = calculateCost(dbModel, totalInputTokens, totalOutputTokens, 0, 0, cacheReadTokens)
 	}
 
 	e.logTokenUsage(u, tokenUsage{
 		requestTokens:  totalInputTokens,
 		responseTokens: totalOutputTokens,
+		cacheRead:      cacheReadTokens,
 		cost:           cost,
 		startedAt:      &start,
 		completedAt:    &completedAt,
@@ -654,6 +658,11 @@ func extractCacheTokens(usage map[string]interface{}) (cacheWrite5m, cacheWrite1
 	cacheRead = numberToInt64(usage["cache_read_input_tokens"])
 	if cacheRead == 0 {
 		cacheRead = numberToInt64(usage["cached_content_token_count"])
+	}
+	if cacheRead == 0 {
+		if details, ok := usage["prompt_tokens_details"].(map[string]interface{}); ok {
+			cacheRead = numberToInt64(details["cached_tokens"])
+		}
 	}
 	return
 }
