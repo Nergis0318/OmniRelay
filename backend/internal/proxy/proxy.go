@@ -569,6 +569,12 @@ func (e *Engine) handlePathRoutedProxy(c *gin.Context, provider *models.Provider
 
 	var reqBodyBytes []byte
 	if hasRequestBody {
+		bodyStream, _ := body["stream"].(bool)
+		if bodyStream && isOpenAICompat(provider.ProviderType) {
+			if _, ok := body["stream_options"]; !ok {
+				body["stream_options"] = map[string]interface{}{"include_usage": true}
+			}
+		}
 		if len(body) > 0 && isJSONContentType(contentType) {
 			reqBodyBytes, _ = json.Marshal(body)
 		} else if len(bodyBytes) > 0 {
@@ -605,7 +611,11 @@ func (e *Engine) handlePathRoutedProxy(c *gin.Context, provider *models.Provider
 	bodyStream, _ := body["stream"].(bool)
 	responseContentType := strings.ToLower(resp.Header.Get("Content-Type"))
 	if isSuccessStatus(resp.StatusCode) && (bodyStream || strings.Contains(responseContentType, "text/event-stream") || strings.Contains(responseContentType, "x-ndjson")) {
-		e.handleRawStreamResponse(c, resp, startTime, u)
+		if adapter := e.getAdapter(provider.ProviderType); adapter != nil {
+			e.handleStreamResponse(c, resp, adapter, dbModel, startTime, u)
+		} else {
+			e.handleRawStreamResponse(c, resp, startTime, u)
+		}
 		return
 	}
 
