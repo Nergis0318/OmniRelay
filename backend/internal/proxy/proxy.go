@@ -243,6 +243,11 @@ func (e *Engine) executeChat(c *gin.Context, body map[string]interface{}, fullMo
 	}
 
 	isStream, _ := body["stream"].(bool)
+	if isStream && isOpenAICompat(provider.ProviderType) {
+		if _, ok := adaptedBody["stream_options"]; !ok {
+			adaptedBody["stream_options"] = map[string]interface{}{"include_usage": true}
+		}
+	}
 	endpoint = applyGeminiStreamingURL(provider.ProviderType, endpoint, isStream)
 	upstreamURL := joinUpstreamURL(provider.APiBaseURL, endpoint)
 
@@ -319,6 +324,11 @@ func (e *Engine) executeMessages(c *gin.Context, body map[string]interface{}, fu
 	}
 
 	isStream, _ := body["stream"].(bool)
+	if isStream && isOpenAICompat(provider.ProviderType) {
+		if _, ok := adaptedBody["stream_options"]; !ok {
+			adaptedBody["stream_options"] = map[string]interface{}{"include_usage": true}
+		}
+	}
 	endpoint = applyGeminiStreamingURL(provider.ProviderType, endpoint, isStream)
 	upstreamURL := joinUpstreamURL(provider.APiBaseURL, endpoint)
 
@@ -646,4 +656,12 @@ func extractCacheTokens(usage map[string]interface{}) (cacheWrite5m, cacheWrite1
 		cacheRead = numberToInt64(usage["cached_content_token_count"])
 	}
 	return
+}
+
+func isOpenAICompat(providerType string) bool {
+	switch providerType {
+	case "openai", "lmstudio", "ollama":
+		return true
+	}
+	return false
 }
