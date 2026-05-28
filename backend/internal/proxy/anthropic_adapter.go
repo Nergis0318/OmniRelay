@@ -262,6 +262,12 @@ func (a *AnthropicAdapter) ParseStreamChunk(data []byte, state map[string]interf
 						inputTokens = int64(v)
 						state["input_tokens"] = inputTokens
 					}
+					if v, ok := usage["cache_creation_input_tokens"].(float64); ok && v > 0 {
+						state["cache_write_5m_tokens"] = int64(v)
+					}
+					if v, ok := usage["cache_read_input_tokens"].(float64); ok && v > 0 {
+						state["cache_read_tokens"] = int64(v)
+					}
 					events = append(events, map[string]interface{}{
 						"choices": []map[string]interface{}{
 							{"index": 0, "delta": map[string]interface{}{"role": "assistant"}},
@@ -353,6 +359,12 @@ func (a *AnthropicAdapter) ParseMessagesStreamChunk(data []byte, state map[strin
 					if v, ok := usage["input_tokens"].(float64); ok {
 						inputTokens = int64(v)
 						state["input_tokens"] = inputTokens
+					}
+					if v, ok := usage["cache_creation_input_tokens"].(float64); ok && v > 0 {
+						state["cache_write_5m_tokens"] = int64(v)
+					}
+					if v, ok := usage["cache_read_input_tokens"].(float64); ok && v > 0 {
+						state["cache_read_tokens"] = int64(v)
 					}
 				}
 			}

@@ -297,6 +297,9 @@ func (a *GeminiAdapter) ParseStreamChunk(data []byte, state map[string]interface
 				"completion_tokens": output,
 				"total_tokens":      input + output,
 			}
+			if cached := numberToInt64(usage["cached_content_token_count"]); cached > 0 {
+				state["cache_read_tokens"] = cached
+			}
 		}
 
 		jsonChunk, _ := json.Marshal(chunk)
@@ -350,6 +353,9 @@ func (a *GeminiAdapter) ParseMessagesStreamChunk(data []byte, state map[string]i
 			totalOutput = numberToInt64(usage["candidatesTokenCount"])
 			state["input_tokens"] = totalInput
 			state["output_tokens"] = totalOutput
+			if cached := numberToInt64(usage["cached_content_token_count"]); cached > 0 {
+				state["cache_read_tokens"] = cached
+			}
 		}
 
 		candidates, _ := event["candidates"].([]interface{})
