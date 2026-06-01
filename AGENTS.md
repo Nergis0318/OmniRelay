@@ -119,12 +119,21 @@ For **streaming**: each adapter's `ParseStreamChunk` / `ParseMessagesStreamChunk
 
 Path-routed proxy (`handlePathRoutedProxy`) must use `handleStreamResponse` (not `handleRawStreamResponse`) when a known adapter exists for the provider type.
 
+### `extractUsageFromRawResponse` must extract cache tokens for ALL providers
+
+This function in `http_helpers.go` has provider-specific branches. Every branch that reads usage must also extract cache tokens — the Anthropic and Gemini cases historically only read basic token counts and silently dropped cache write/read tokens.
+
+Anthropic needs: `extractCacheTokens(usage)` (reads `cache_creation_input_tokens` + `cache_read_input_tokens`)
+Gemini needs: `numberToInt64(usage["cached_content_token_count"])`
+Default (OpenAI/etc): `extractCacheTokens(usage)` (reads all cache field formats with fallbacks)
+
 ### Path-routed proxy (`handlePathRoutedProxy`)
 
-This handler processes requests like `/openai/v1/chat/completions` where the provider is in the URL path rather than the model ID. Key gotchas:
+This handler processes requests like `/openai/v1/chat/completions` where the provider is in the URL path rather than the model ID. Also handles requests where `dbModel == nil` (model not found in DB). Key gotchas:
 - Token extraction and logging happens in the final `else` block (not gated by `dbModel != nil`; cost is only calculated when `dbModel != nil`)
 - Must inject `stream_options: { "include_usage": true }` before marshaling when streaming + OpenAI-compatible
 - Must dispatch to `handleStreamResponse` or `handleMessagesStreamResponse` when a known adapter exists, only falling back to `handleRawStreamResponse` for truly unknown formats
+- Non-streaming response parsing uses `extractUsageFromRawResponse()` — ensure cache tokens are extracted for all provider types
 
 ## Testing
 

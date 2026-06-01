@@ -76,30 +76,42 @@ func TestAppendRawQuery(t *testing.T) {
 func TestExtractUsageFromRawResponseAnthropic(t *testing.T) {
 	body := map[string]interface{}{
 		"usage": map[string]interface{}{
-			"input_tokens":  float64(11),
-			"output_tokens": float64(4),
+			"input_tokens":                 float64(11),
+			"output_tokens":                float64(4),
+			"cache_creation_input_tokens":  float64(2),
+			"cache_read_input_tokens":      float64(3),
 		},
 	}
-	rq, rs, total, _, _, _ := extractUsageFromRawResponse("anthropic", body)
+	rq, rs, total, cw5m, _, cr := extractUsageFromRawResponse("anthropic", body)
 	if rq != 11 || rs != 4 {
 		t.Errorf("anthropic tokens = (%d, %d), want (11, 4)", rq, rs)
 	}
 	if total != 15 {
 		t.Errorf("total should derive when missing: got %d, want 15", total)
 	}
+	if cw5m != 2 {
+		t.Errorf("cache write 5m = %d, want 2", cw5m)
+	}
+	if cr != 3 {
+		t.Errorf("cache read = %d, want 3", cr)
+	}
 }
 
 func TestExtractUsageFromRawResponseGemini(t *testing.T) {
 	body := map[string]interface{}{
 		"usageMetadata": map[string]interface{}{
-			"promptTokenCount":     float64(3),
-			"candidatesTokenCount": float64(2),
-			"totalTokenCount":      float64(5),
+			"promptTokenCount":            float64(3),
+			"candidatesTokenCount":        float64(2),
+			"totalTokenCount":             float64(5),
+			"cached_content_token_count":  float64(7),
 		},
 	}
-	rq, rs, total, _, _, _ := extractUsageFromRawResponse("gemini", body)
+	rq, rs, total, _, _, cr := extractUsageFromRawResponse("gemini", body)
 	if rq != 3 || rs != 2 || total != 5 {
 		t.Errorf("gemini tokens = (%d, %d, %d), want (3, 2, 5)", rq, rs, total)
+	}
+	if cr != 7 {
+		t.Errorf("cache read = %d, want 7", cr)
 	}
 }
 

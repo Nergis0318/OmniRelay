@@ -162,12 +162,14 @@ func extractUsageFromRawResponse(providerType string, body map[string]interface{
 		if usage, ok := body["usage"].(map[string]interface{}); ok {
 			requestTokens = numberToInt64(usage["input_tokens"])
 			responseTokens = numberToInt64(usage["output_tokens"])
+			cacheWrite5m, cacheWrite1h, cacheRead = extractCacheTokens(usage)
 		}
 	case "gemini":
 		if usage, ok := body["usageMetadata"].(map[string]interface{}); ok {
 			requestTokens = numberToInt64(usage["promptTokenCount"])
 			responseTokens = numberToInt64(usage["candidatesTokenCount"])
 			totalTokens = numberToInt64(usage["totalTokenCount"])
+			cacheRead = numberToInt64(usage["cached_content_token_count"])
 		}
 	default:
 		if usage, ok := body["usage"].(map[string]interface{}); ok {
