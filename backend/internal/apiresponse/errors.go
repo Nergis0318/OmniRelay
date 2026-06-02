@@ -1,0 +1,129 @@
+package apiresponse
+
+import (
+	"net/http"
+	"strings"
+
+	"github.com/gin-gonic/gin"
+)
+
+// Format selects provider-native error JSON for proxy routes.
+type Format int
+
+const (
+	FormatOpenAI Format = iota
+	FormatAnthropic
+)
+
+// FormatFromPath picks OpenAI-style vs Anthropic-style errors from the request path.
+func FormatFromPath(path string) Format {
+	path = strings.TrimSuffix(path, "/")
+	if strings.HasSuffix(path, "/messages") {
+		return FormatAnthropic
+	}
+	return FormatOpenAI
+}
+
+// FormatFromContext uses the incoming request URL path.
+func FormatFromContext(c *gin.Context) Format {
+	return FormatFromPath(c.Request.URL.Path)
+}
+
+// Abort writes a spec-shaped error and stops the handler chain.
+func Abort(c *gin.Context, status int, format Format, errType, message, code, param string) {
+	switch format {
+	case FormatAnthropic:
+		abortAnthropic(c, status, errType, message)
+	default:
+		abortOpenAI(c, status, errType, message, code, param)
+	}
+	c.Abort()
+}
+
+func abortOpenAI(c *gin.Context, status int, errType, message, code, param string) {
+	if errType == "" {
+		errType = "invalid_request_error"
+	}
+	errObj := gin.H{
+		"message": message,
+		"type":    errType,
+		"param":   nil,
+		"code":    nil,
+	}
+	if param != "" {
+		errObj["param"] = param
+	}
+	if code != "" {
+		errObj["code"] = code
+	}
+	c.JSON(status, gin.H{"error": errObj})
+}
+
+func abortAnthropic(c *gin.Context, status int, errType, message string) {
+	if errType == "" {
+		errType = "invalid_request_error"
+	}
+	c.JSON(status, gin.H{
+		"type": "error",
+		"error": gin.H{
+			"type":    errType,
+			"message": message,
+		},
+		"request_id": nil,
+	})
+}
+
+// AbortInvalidRequest is a convenience for 400 invalid_request_error.
+func AbortInvalidRequest(c *gin.Context, format Format, message, param string) {
+	Abort(c, http.StatusBadRequest, format, "invalid_request_error", message, "missing_required_parameter", param)
+}
+
+// AbortUnauthorized writes authentication errors in the appropriate format.
+func AbortUnauthorized(c *gin.Context, format Format, message string) {
+	switch format {
+	case FormatAnthropic:
+		Abort(c, http.StatusUnauthorized, format, "authentication_error", message, "", "")
+	default:
+		Abort(c, http.StatusUnauthorized, format, "invalid_request_error", message, "invalid_api_key", "")
+	}
+}
+
+// AbortRateLimited writes rate-limit errors in the appropriate format.
+func AbortRateLimited(c *gin.Context, format Format, message string) {
+	switch format {
+	case FormatAnthropic:
+		Abort(c, http.StatusTooManyRequests, format, "rate_limit_error", message, "", "")
+	default:
+		Abort(c, http.StatusTooManyRequests, format, "rate_limit_exceeded", message, "rate_limit_exceeded", "")
+	}
+}
+
+// AbortNotFound writes not-found errors (OpenAI model param when applicable).
+func AbortNotFound(c *gin.Context, format Format, message, param string) {
+	switch format {
+	case FormatAnthropic:
+		Abort(c, http.StatusNotFound, format, "not_found_error", message, "", "")
+	default:
+		Abort(c, http.StatusNotFound, format, "invalid_request_error", message, "model_not_found", param)
+	}
+}
+
+// AbortInternal writes server-side gateway errors.
+func AbortInternal(c *gin.Context, format Format, message string) {
+	switch format {
+	case FormatAnthropic:
+		Abort(c, http.StatusInternalServerError, format, "api_error", message, "", "")
+	default:
+		Abort(c, http.StatusInternalServerError, format, "server_error", message, "internal_error", "")
+	}
+}
+
+// AbortBadGateway writes upstream connectivity failures.
+func AbortBadGateway(c *gin.Context, format Format, message string) {
+	switch format {
+	case FormatAnthropic:
+		Abort(c, http.StatusBadGateway, format, "api_error", message, "", "")
+	default:
+		Abort(c, http.StatusBadGateway, format, "server_error", message, "upstream_error", "")
+	}
+}

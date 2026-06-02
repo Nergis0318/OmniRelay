@@ -218,9 +218,11 @@ OmniRelay가 provider API key를 `x-goog-api-key` 헤더로 설정하고, 응답
 
 Ollama는 OpenAI 호환 API와 native API 라우팅을 모두 사용할 수 있습니다.
 
+`OpenAPI-Specification/Ollama.yaml`은 **native** `/api/*` 스키마입니다. `provider_type: ollama`의 `/v1/chat/completions` 어댑터는 upstream이 **OpenAI 호환 `/v1`** 을 제공한다고 가정하며, native 채팅은 `POST /:provider/api/chat` 패스스루를 사용하세요.
+
 ```text
-POST /ollama/v1/chat/completions
-POST /ollama/api/chat
+POST /ollama/v1/chat/completions   # OpenAI 호환 upstream (/v1) 필요
+POST /ollama/api/chat              # Ollama.yaml native 스키마
 GET  /ollama/api/tags
 ```
 

@@ -2,7 +2,7 @@ package middleware
 
 import (
 	"errors"
-	"net/http"
+	"omnirelay/internal/apiresponse"
 	"omnirelay/internal/service"
 	"strings"
 
@@ -25,21 +25,20 @@ func APIKeyAuth(svc *service.APIKeyService) gin.HandlerFunc {
 			apiKeyValue = c.GetHeader("x-api-key")
 		}
 
+		errFmt := apiresponse.FormatFromContext(c)
+
 		if apiKeyValue == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "missing Authorization header"})
-			c.Abort()
+			apiresponse.AbortUnauthorized(c, errFmt, "missing Authorization header")
 			return
 		}
 
 		apiKey, err := svc.Validate(apiKeyValue)
 		if err != nil {
 			if errors.Is(err, service.ErrRateLimitExceeded) {
-				c.JSON(http.StatusTooManyRequests, gin.H{"error": err.Error()})
-				c.Abort()
+				apiresponse.AbortRateLimited(c, errFmt, err.Error())
 				return
 			}
-			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
-			c.Abort()
+			apiresponse.AbortUnauthorized(c, errFmt, err.Error())
 			return
 		}
 

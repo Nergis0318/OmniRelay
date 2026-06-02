@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"omnirelay/internal/apiresponse"
 	"omnirelay/internal/models"
 	"strings"
 	"time"
@@ -20,14 +21,14 @@ func (e *Engine) HandleChatCompletions(c *gin.Context) {
 	if !ok {
 		return
 	}
-
-	fullModelID, ok := body["model"].(string)
-	if !ok {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "model field is required"})
+	if param, err := apiresponse.ValidateChatCompletionBody(body); err != nil {
+		apiresponse.AbortInvalidRequest(c, apiresponse.FormatOpenAI, err.Error(), param)
 		return
 	}
 
-	dbModel, provider, adapter, apiKey, ok := e.resolveDispatch(c, fullModelID, userID)
+	fullModelID := body["model"].(string)
+
+	dbModel, provider, adapter, apiKey, ok := e.resolveDispatch(c, fullModelID, userID, apiresponse.FormatOpenAI)
 	if !ok {
 		return
 	}
@@ -48,14 +49,14 @@ func (e *Engine) HandleMessages(c *gin.Context) {
 	if !ok {
 		return
 	}
-
-	fullModelID, ok := body["model"].(string)
-	if !ok {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "model field is required"})
+	if param, err := apiresponse.ValidateMessagesBody(body); err != nil {
+		apiresponse.AbortInvalidRequest(c, apiresponse.FormatAnthropic, err.Error(), param)
 		return
 	}
 
-	dbModel, provider, adapter, apiKey, ok := e.resolveDispatch(c, fullModelID, userID)
+	fullModelID := body["model"].(string)
+
+	dbModel, provider, adapter, apiKey, ok := e.resolveDispatch(c, fullModelID, userID, apiresponse.FormatAnthropic)
 	if !ok {
 		return
 	}
@@ -72,7 +73,7 @@ func (e *Engine) HandleListModels(c *gin.Context) {
 	userID := c.GetInt64("user_id")
 	modelList, err := e.modelService.List("", userID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list models"})
+		apiresponse.AbortInternal(c, apiresponse.FormatOpenAI, "failed to list models")
 		return
 	}
 
@@ -90,14 +91,14 @@ func (e *Engine) HandleListModels(c *gin.Context) {
 func (e *Engine) HandleGetModel(c *gin.Context) {
 	fullModelID := strings.TrimPrefix(c.Param("model"), "/")
 	if fullModelID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "model path parameter is required"})
+		apiresponse.AbortInvalidRequest(c, apiresponse.FormatOpenAI, "model path parameter is required", "model")
 		return
 	}
 
 	userID := c.GetInt64("user_id")
 	dbModel, err := e.resolveModel(fullModelID, userID)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("unknown model: %s", fullModelID)})
+		apiresponse.AbortNotFound(c, apiresponse.FormatOpenAI, fmt.Sprintf("The model '%s' does not exist", fullModelID), "model")
 		return
 	}
 
@@ -112,15 +113,17 @@ func (e *Engine) HandlePathRouted(c *gin.Context) {
 	apiKeyID := c.GetInt64("api_key_id")
 	userID := c.GetInt64("user_id")
 
+	errFmt := apiresponse.FormatFromContext(c)
+
 	provider, err := e.providerService.GetByKey(providerKey, userID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("unknown provider: %s", providerKey)})
+		apiresponse.AbortInvalidRequest(c, errFmt, fmt.Sprintf("unknown provider: %s", providerKey), "provider")
 		return
 	}
 
 	bodyBytes, err := io.ReadAll(c.Request.Body)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read request body"})
+		apiresponse.AbortInvalidRequest(c, errFmt, "failed to read request body", "")
 		return
 	}
 
@@ -130,7 +133,7 @@ func (e *Engine) HandlePathRouted(c *gin.Context) {
 
 	if hasRequestBody && len(bodyBytes) > 0 && isJSONContentType(contentType) {
 		if err := json.Unmarshal(bodyBytes, &body); err != nil {
-			c.Data(http.StatusBadRequest, "application/json", bodyBytes)
+			apiresponse.AbortInvalidRequest(c, errFmt, "invalid JSON in request body", "")
 			return
 		}
 	}
@@ -163,10 +166,23 @@ func (e *Engine) HandlePathRouted(c *gin.Context) {
 	isChatCompletions := endpoint == "/chat/completions" && c.Request.Method == http.MethodPost
 	isMessages := endpoint == "/messages" && c.Request.Method == http.MethodPost
 
+	if isChatCompletions && hasRequestBody && isJSONContentType(contentType) {
+		if param, err := apiresponse.ValidateChatCompletionBody(body); err != nil {
+			apiresponse.AbortInvalidRequest(c, apiresponse.FormatOpenAI, err.Error(), param)
+			return
+		}
+	}
+	if isMessages && hasRequestBody && isJSONContentType(contentType) {
+		if param, err := apiresponse.ValidateMessagesBody(body); err != nil {
+			apiresponse.AbortInvalidRequest(c, apiresponse.FormatAnthropic, err.Error(), param)
+			return
+		}
+	}
+
 	if isChatCompletions && adapter != nil && dbModel != nil {
 		apiKey, err := e.providerService.DecryptAPIKey(provider.APIKeyEncrypted)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to decrypt provider key"})
+			apiresponse.AbortInternal(c, apiresponse.FormatOpenAI, "failed to decrypt provider key")
 			return
 		}
 		e.executeChat(c, body, fullModelID, dbModel, provider, adapter, apiKey, u)
@@ -176,7 +192,7 @@ func (e *Engine) HandlePathRouted(c *gin.Context) {
 	if isMessages && adapter != nil && dbModel != nil {
 		apiKey, err := e.providerService.DecryptAPIKey(provider.APIKeyEncrypted)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to decrypt provider key"})
+			apiresponse.AbortInternal(c, apiresponse.FormatAnthropic, "failed to decrypt provider key")
 			return
 		}
 		e.executeMessages(c, body, fullModelID, dbModel, provider, adapter, apiKey, u)
@@ -188,28 +204,28 @@ func (e *Engine) HandlePathRouted(c *gin.Context) {
 
 // resolveDispatch resolves dbModel/provider/adapter/apiKey for body-driven endpoints (HandleChatCompletions / HandleMessages).
 // It writes the appropriate error response if anything fails.
-func (e *Engine) resolveDispatch(c *gin.Context, fullModelID string, userID int64) (*models.Model, *models.Provider, Adapter, string, bool) {
+func (e *Engine) resolveDispatch(c *gin.Context, fullModelID string, userID int64, errFmt apiresponse.Format) (*models.Model, *models.Provider, Adapter, string, bool) {
 	dbModel, err := e.resolveModel(fullModelID, userID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("unknown model: %s", fullModelID)})
+		apiresponse.AbortNotFound(c, errFmt, fmt.Sprintf("The model '%s' does not exist", fullModelID), "model")
 		return nil, nil, nil, "", false
 	}
 
 	provider, err := e.providerService.GetByID(dbModel.ProviderID, userID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "provider not found or inactive"})
+		apiresponse.AbortInvalidRequest(c, errFmt, "provider not found or inactive", "model")
 		return nil, nil, nil, "", false
 	}
 
 	adapter := e.getAdapter(provider.ProviderType)
 	if adapter == nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "unsupported provider type"})
+		apiresponse.AbortInternal(c, errFmt, "unsupported provider type")
 		return nil, nil, nil, "", false
 	}
 
 	apiKey, err := e.providerService.DecryptAPIKey(provider.APIKeyEncrypted)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to decrypt provider key"})
+		apiresponse.AbortInternal(c, errFmt, "failed to decrypt provider key")
 		return nil, nil, nil, "", false
 	}
 
@@ -217,14 +233,15 @@ func (e *Engine) resolveDispatch(c *gin.Context, fullModelID string, userID int6
 }
 
 func readJSONBody(c *gin.Context) (map[string]interface{}, bool) {
+	errFmt := apiresponse.FormatFromContext(c)
 	bodyBytes, err := io.ReadAll(c.Request.Body)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read request body"})
+		apiresponse.AbortInvalidRequest(c, errFmt, "failed to read request body", "")
 		return nil, false
 	}
 	var body map[string]interface{}
 	if err := json.Unmarshal(bodyBytes, &body); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON"})
+		apiresponse.AbortInvalidRequest(c, errFmt, "invalid JSON in request body", "")
 		return nil, false
 	}
 	return body, true
@@ -238,7 +255,7 @@ func (e *Engine) executeChat(c *gin.Context, body map[string]interface{}, fullMo
 
 	endpoint, adaptedBody, err := adapter.BuildChatRequest(body)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		apiresponse.AbortInvalidRequest(c, apiresponse.FormatOpenAI, err.Error(), "")
 		return
 	}
 
@@ -265,7 +282,7 @@ func (e *Engine) executeChat(c *gin.Context, body map[string]interface{}, fullMo
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		e.logUpstreamError(u, "failed to read upstream response", time.Since(startTime).Milliseconds())
-		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to read upstream response"})
+		apiresponse.AbortBadGateway(c, apiresponse.FormatOpenAI, "failed to read upstream response")
 		return
 	}
 
@@ -319,7 +336,7 @@ func (e *Engine) executeChat(c *gin.Context, body map[string]interface{}, fullMo
 func (e *Engine) executeMessages(c *gin.Context, body map[string]interface{}, fullModelID string, dbModel *models.Model, provider *models.Provider, adapter Adapter, apiKey string, u usageContext) {
 	endpoint, adaptedBody, err := adapter.BuildMessagesRequest(body)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		apiresponse.AbortInvalidRequest(c, apiresponse.FormatAnthropic, err.Error(), "")
 		return
 	}
 
@@ -561,9 +578,11 @@ func (e *Engine) handleMessagesStreamResponse(c *gin.Context, resp *http.Respons
 // handlePathRoutedProxy is the catch-all path-routed request handler used when the request is not
 // a known /chat/completions or /messages call (or when no model record exists in the DB).
 func (e *Engine) handlePathRoutedProxy(c *gin.Context, provider *models.Provider, dbModel *models.Model, body map[string]interface{}, bodyBytes []byte, fullModelID string, endpoint string, apiPrefix string, hasRequestBody bool, contentType string, u usageContext) {
+	errFmt := apiresponse.FormatFromContext(c)
+
 	apiKey, err := e.providerService.DecryptAPIKey(provider.APIKeyEncrypted)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to decrypt provider key"})
+		apiresponse.AbortInternal(c, errFmt, "failed to decrypt provider key")
 		return
 	}
 
@@ -589,7 +608,7 @@ func (e *Engine) handlePathRoutedProxy(c *gin.Context, provider *models.Provider
 	req, err := buildUpstreamRequest(c, c.Request.Method, upstreamURL, reqBodyBytes, provider.ProviderType, apiKey)
 	if err != nil {
 		e.logUpstreamError(u, err.Error(), 0)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create upstream request"})
+		apiresponse.AbortInternal(c, errFmt, "failed to create upstream request")
 		return
 	}
 	if hasRequestBody {
@@ -603,7 +622,7 @@ func (e *Engine) handlePathRoutedProxy(c *gin.Context, provider *models.Provider
 	resp, startTime, err := e.doUpstream(req)
 	if err != nil {
 		e.logUpstreamError(u, err.Error(), 0)
-		c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("upstream request failed: %v", err)})
+		apiresponse.AbortBadGateway(c, errFmt, fmt.Sprintf("upstream request failed: %v", err))
 		return
 	}
 	defer resp.Body.Close()

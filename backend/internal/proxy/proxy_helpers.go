@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"omnirelay/internal/apiresponse"
 	"strings"
 	"time"
 
@@ -65,9 +66,11 @@ func writeUpstreamErrorBody(c *gin.Context, resp *http.Response) {
 // On success it returns (resp, startTime, true). On any failure it writes an error response,
 // logs the failure via the engine, and returns ok=false. Callers must close the response body.
 func (e *Engine) proxyJSONRequest(c *gin.Context, u usageContext, providerType, apiKey, upstreamURL string, adaptedBody map[string]interface{}, logNewRequestErrors bool) (*http.Response, time.Time, bool) {
+	errFmt := apiresponse.FormatFromContext(c)
+
 	adaptedJSON, err := json.Marshal(adaptedBody)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to encode upstream request"})
+		apiresponse.AbortInternal(c, errFmt, "failed to encode upstream request")
 		return nil, time.Time{}, false
 	}
 
@@ -76,14 +79,14 @@ func (e *Engine) proxyJSONRequest(c *gin.Context, u usageContext, providerType, 
 		if logNewRequestErrors {
 			e.logUpstreamError(u, err.Error(), 0)
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create upstream request"})
+		apiresponse.AbortInternal(c, errFmt, "failed to create upstream request")
 		return nil, time.Time{}, false
 	}
 
 	resp, start, err := e.doUpstream(req)
 	if err != nil {
 		e.logUpstreamError(u, err.Error(), 0)
-		c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("upstream request failed: %v", err)})
+		apiresponse.AbortBadGateway(c, errFmt, fmt.Sprintf("upstream request failed: %v", err))
 		return nil, time.Time{}, false
 	}
 
