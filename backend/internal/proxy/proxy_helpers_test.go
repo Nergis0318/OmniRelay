@@ -190,3 +190,27 @@ func TestApplyGeminiStreamingURLDoesNotAffectAlreadyStreaming(t *testing.T) {
 		t.Fatalf("alt=sse should appear exactly once, got %q", out)
 	}
 }
+
+func TestWriteUpstreamErrorBodyForwardsStatusAndPayload(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+
+	resp := &http.Response{
+		StatusCode: http.StatusTooManyRequests,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"error":"rate limited"}`)),
+	}
+
+	writeUpstreamErrorBody(c, resp)
+
+	if w.Code != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusTooManyRequests)
+	}
+	if got := w.Header().Get("Content-Type"); got != "application/json" {
+		t.Fatalf("Content-Type = %q, want application/json", got)
+	}
+	if got := w.Body.String(); got != `{"error":"rate limited"}` {
+		t.Fatalf("body = %q", got)
+	}
+}

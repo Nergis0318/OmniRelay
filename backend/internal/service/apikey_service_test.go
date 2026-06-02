@@ -146,7 +146,7 @@ func TestCountActiveReflectsDeletes(t *testing.T) {
 	svc := newTestAPIKeyService(t)
 	a, _ := svc.Create(models.CreateAPIKeyRequest{Name: "a"}, 1)
 	_, _ = svc.Create(models.CreateAPIKeyRequest{Name: "b"}, 1)
-	count, err := svc.CountActive()
+	count, err := svc.CountActive(1)
 	if err != nil {
 		t.Fatalf("count: %v", err)
 	}
@@ -157,7 +157,7 @@ func TestCountActiveReflectsDeletes(t *testing.T) {
 	if err := svc.Delete(a.APIKey.ID, 1); err != nil {
 		t.Fatalf("delete: %v", err)
 	}
-	count, _ = svc.CountActive()
+	count, _ = svc.CountActive(1)
 	if count != 1 {
 		t.Errorf("after delete count = %d, want 1", count)
 	}

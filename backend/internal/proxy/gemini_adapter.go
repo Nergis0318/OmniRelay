@@ -39,9 +39,7 @@ func (a *GeminiAdapter) BuildChatRequest(body map[string]interface{}) (string, m
 		parts := convertOpenAIContentToGeminiParts(msg["content"])
 
 		if role == "system" {
-			for _, p := range parts {
-				systemParts = append(systemParts, p)
-			}
+			systemParts = append(systemParts, parts...)
 			continue
 		}
 

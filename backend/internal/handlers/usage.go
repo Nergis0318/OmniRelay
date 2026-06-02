@@ -50,10 +50,21 @@ func ListUsage(svc *service.UsageService) gin.HandlerFunc {
 	}
 }
 
-func GetStats(us *service.UsageService, ks *service.APIKeyService) gin.HandlerFunc {
+func GetStats(us *service.UsageService, ks *service.APIKeyService, ms *service.ModelService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID := c.GetInt64("user_id")
 		stats, err := us.GetStats(userID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		stats.ActiveKeys, err = ks.CountActive(userID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		stats.ModelsCount, err = ms.CountActive(userID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return

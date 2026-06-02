@@ -211,8 +211,11 @@ func (s *ModelService) Delete(id int64, userID int64) error {
 	return err
 }
 
-func (s *ModelService) CountActive() (int64, error) {
+func (s *ModelService) CountActive(userID int64) (int64, error) {
 	var count int64
-	err := s.db.QueryRow("SELECT COUNT(*) FROM models m JOIN providers p ON m.provider_id = p.id WHERE p.is_active = 1").Scan(&count)
+	err := s.db.QueryRow(
+		"SELECT COUNT(*) FROM models m JOIN providers p ON m.provider_id = p.id WHERE p.is_active = 1 AND (m.user_id = ? OR m.user_id IS NULL)",
+		userID,
+	).Scan(&count)
 	return count, err
 }

@@ -146,6 +146,18 @@ var migrations = []migration{
 			return nil
 		},
 	},
+	{
+		version: 5,
+		up: func(tx *sql.Tx) error {
+			_, err := tx.Exec(`
+				UPDATE usage_logs
+				SET user_id = (SELECT created_by FROM api_keys WHERE api_keys.id = usage_logs.api_key_id)
+				WHERE user_id IS NULL AND api_key_id IS NOT NULL
+				  AND EXISTS (SELECT 1 FROM api_keys WHERE api_keys.id = usage_logs.api_key_id AND created_by IS NOT NULL)
+			`)
+			return err
+		},
+	},
 }
 
 func hasColumn(tx *sql.Tx, tableName, columnName string) (bool, error) {

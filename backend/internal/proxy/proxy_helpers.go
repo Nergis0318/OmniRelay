@@ -48,11 +48,10 @@ func buildUpstreamRequest(c *gin.Context, method, upstreamURL string, body []byt
 	return req, nil
 }
 
-// doUpstream issues a request with the shared HTTP client timeout and returns the response and start time.
-func doUpstream(req *http.Request) (*http.Response, time.Time, error) {
-	client := &http.Client{Timeout: upstreamRequestTimeout}
+// doUpstream issues a request with the engine's shared HTTP client and returns the response and start time.
+func (e *Engine) doUpstream(req *http.Request) (*http.Response, time.Time, error) {
 	start := time.Now()
-	resp, err := client.Do(req)
+	resp, err := e.httpClient.Do(req)
 	return resp, start, err
 }
 
@@ -81,7 +80,7 @@ func (e *Engine) proxyJSONRequest(c *gin.Context, u usageContext, providerType, 
 		return nil, time.Time{}, false
 	}
 
-	resp, start, err := doUpstream(req)
+	resp, start, err := e.doUpstream(req)
 	if err != nil {
 		e.logUpstreamError(u, err.Error(), 0)
 		c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("upstream request failed: %v", err)})
@@ -89,11 +88,10 @@ func (e *Engine) proxyJSONRequest(c *gin.Context, u usageContext, providerType, 
 	}
 
 	if !isSuccessStatus(resp.StatusCode) {
-		respBody, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
 		latencyMs := time.Since(start).Milliseconds()
 		e.logUpstreamError(u, fmt.Sprintf("upstream returned %d", resp.StatusCode), latencyMs)
-		c.Data(resp.StatusCode, contentTypeOrDefault(resp.Header), respBody)
+		writeUpstreamErrorBody(c, resp)
+		resp.Body.Close()
 		return nil, time.Time{}, false
 	}
 

@@ -64,7 +64,7 @@ func main() {
 			adminAuth.DELETE("/api-keys/:id", handlers.DeleteAPIKey(apiKeyService))
 
 			adminAuth.GET("/usage", handlers.ListUsage(usageService))
-			adminAuth.GET("/stats", handlers.GetStats(usageService, apiKeyService))
+			adminAuth.GET("/stats", handlers.GetStats(usageService, apiKeyService, modelService))
 
 			adminAuth.GET("/users", handlers.ListUsers(authService))
 		}

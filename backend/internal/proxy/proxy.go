@@ -600,7 +600,7 @@ func (e *Engine) handlePathRoutedProxy(c *gin.Context, provider *models.Provider
 		req.Header.Set("Content-Type", ct)
 	}
 
-	resp, startTime, err := doUpstream(req)
+	resp, startTime, err := e.doUpstream(req)
 	if err != nil {
 		e.logUpstreamError(u, err.Error(), 0)
 		c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("upstream request failed: %v", err)})
@@ -619,39 +619,42 @@ func (e *Engine) handlePathRoutedProxy(c *gin.Context, provider *models.Provider
 		return
 	}
 
+	if !isSuccessStatus(resp.StatusCode) {
+		latencyMs := time.Since(startTime).Milliseconds()
+		e.logUpstreamError(u, fmt.Sprintf("upstream returned %d", resp.StatusCode), latencyMs)
+		writeUpstreamErrorBody(c, resp)
+		return
+	}
+
 	respBody, _ := io.ReadAll(resp.Body)
 	latencyMs := time.Since(startTime).Milliseconds()
 
-	if !isSuccessStatus(resp.StatusCode) {
-		e.logUpstreamError(u, fmt.Sprintf("upstream returned %d", resp.StatusCode), latencyMs)
-	} else {
-		var respJSON map[string]interface{}
-		if json.Unmarshal(respBody, &respJSON) == nil {
-			requestTokens, responseTokens, totalTokens, cacheWrite5m, cacheWrite1h, cacheReadTokens := extractUsageFromRawResponse(provider.ProviderType, respJSON)
-			if requestTokens > 0 || responseTokens > 0 {
-				completedAt := time.Now()
-				var cost float64
-				if dbModel != nil {
-					cost = calculateCost(dbModel, requestTokens, responseTokens, cacheWrite5m, cacheWrite1h, cacheReadTokens)
-				}
-				e.logTokenUsage(u, tokenUsage{
-					requestTokens:  requestTokens,
-					responseTokens: responseTokens,
-					totalTokens:    totalTokens,
-					cacheWrite5m:   cacheWrite5m,
-					cacheWrite1h:   cacheWrite1h,
-					cacheRead:      cacheReadTokens,
-					cost:           cost,
-					startedAt:      &startTime,
-					completedAt:    &completedAt,
-					latencyMs:      latencyMs,
-				})
-			} else {
-				e.logLatencyOnly(u, latencyMs)
+	var respJSON map[string]interface{}
+	if json.Unmarshal(respBody, &respJSON) == nil {
+		requestTokens, responseTokens, totalTokens, cacheWrite5m, cacheWrite1h, cacheReadTokens := extractUsageFromRawResponse(provider.ProviderType, respJSON)
+		if requestTokens > 0 || responseTokens > 0 {
+			completedAt := time.Now()
+			var cost float64
+			if dbModel != nil {
+				cost = calculateCost(dbModel, requestTokens, responseTokens, cacheWrite5m, cacheWrite1h, cacheReadTokens)
 			}
+			e.logTokenUsage(u, tokenUsage{
+				requestTokens:  requestTokens,
+				responseTokens: responseTokens,
+				totalTokens:    totalTokens,
+				cacheWrite5m:   cacheWrite5m,
+				cacheWrite1h:   cacheWrite1h,
+				cacheRead:      cacheReadTokens,
+				cost:           cost,
+				startedAt:      &startTime,
+				completedAt:    &completedAt,
+				latencyMs:      latencyMs,
+			})
 		} else {
 			e.logLatencyOnly(u, latencyMs)
 		}
+	} else {
+		e.logLatencyOnly(u, latencyMs)
 	}
 
 	copyResponseHeaders(c, resp.Header)

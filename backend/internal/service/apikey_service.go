@@ -104,9 +104,9 @@ func (s *APIKeyService) Delete(id int64, userID int64) error {
 	return err
 }
 
-func (s *APIKeyService) CountActive() (int64, error) {
+func (s *APIKeyService) CountActive(userID int64) (int64, error) {
 	var count int64
-	err := s.db.QueryRow("SELECT COUNT(*) FROM api_keys WHERE is_active = 1").Scan(&count)
+	err := s.db.QueryRow("SELECT COUNT(*) FROM api_keys WHERE is_active = 1 AND created_by = ?", userID).Scan(&count)
 	return count, err
 }
 
