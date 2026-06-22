@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"log"
 	"omnirelay/internal/models"
 	"time"
 )
@@ -25,18 +26,24 @@ func (u usageContext) base() models.UsageLog {
 	}
 }
 
+func (e *Engine) persistUsage(entry models.UsageLog) {
+	if err := e.usageService.Log(entry); err != nil {
+		log.Printf("failed to write usage log: %v", err)
+	}
+}
+
 func (e *Engine) logUpstreamError(u usageContext, message string, latencyMs int64) {
-	log := u.base()
-	log.IsError = true
-	log.ErrorMessage = message
-	log.LatencyMs = latencyMs
-	e.usageService.Log(log)
+	entry := u.base()
+	entry.IsError = true
+	entry.ErrorMessage = message
+	entry.LatencyMs = latencyMs
+	e.persistUsage(entry)
 }
 
 func (e *Engine) logLatencyOnly(u usageContext, latencyMs int64) {
-	log := u.base()
-	log.LatencyMs = latencyMs
-	e.usageService.Log(log)
+	entry := u.base()
+	entry.LatencyMs = latencyMs
+	e.persistUsage(entry)
 }
 
 // tokenUsage carries all of the numeric counters we may want to log for a successful call.
@@ -54,20 +61,20 @@ type tokenUsage struct {
 }
 
 func (e *Engine) logTokenUsage(u usageContext, t tokenUsage) {
-	log := u.base()
-	log.RequestTokens = t.requestTokens
-	log.ResponseTokens = t.responseTokens
+	entry := u.base()
+	entry.RequestTokens = t.requestTokens
+	entry.ResponseTokens = t.responseTokens
 	if t.totalTokens > 0 {
-		log.TotalTokens = t.totalTokens
+		entry.TotalTokens = t.totalTokens
 	} else {
-		log.TotalTokens = t.requestTokens + t.responseTokens
+		entry.TotalTokens = t.requestTokens + t.responseTokens
 	}
-	log.CacheWrite5MTokens = t.cacheWrite5m
-	log.CacheWrite1HTokens = t.cacheWrite1h
-	log.CacheReadTokens = t.cacheRead
-	log.Cost = t.cost
-	log.LatencyMs = t.latencyMs
-	log.StartedAt = t.startedAt
-	log.CompletedAt = t.completedAt
-	e.usageService.Log(log)
+	entry.CacheWrite5MTokens = t.cacheWrite5m
+	entry.CacheWrite1HTokens = t.cacheWrite1h
+	entry.CacheReadTokens = t.cacheRead
+	entry.Cost = t.cost
+	entry.LatencyMs = t.latencyMs
+	entry.StartedAt = t.startedAt
+	entry.CompletedAt = t.completedAt
+	e.persistUsage(entry)
 }

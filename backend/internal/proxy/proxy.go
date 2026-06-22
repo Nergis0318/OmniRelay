@@ -475,7 +475,10 @@ func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapt
 	completedAt := time.Now()
 	cacheWrite5m := int64State(state, "cache_write_5m_tokens", 0)
 	cacheReadTokens := int64State(state, "cache_read_tokens", 0)
-	cost := calculateCost(dbModel, totalInputTokens, totalOutputTokens, cacheWrite5m, 0, cacheReadTokens)
+	var cost float64
+	if dbModel != nil && (totalInputTokens > 0 || totalOutputTokens > 0) {
+		cost = calculateCost(dbModel, totalInputTokens, totalOutputTokens, cacheWrite5m, 0, cacheReadTokens)
+	}
 
 	e.logTokenUsage(u, tokenUsage{
 		requestTokens:  totalInputTokens,

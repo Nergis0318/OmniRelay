@@ -21,7 +21,29 @@ func scanUsageRow(db *sql.DB, query string, args []interface{}, dest ...interfac
 	return db.QueryRow(query, args...).Scan(dest...)
 }
 
+func (s *UsageService) resolveLogUserID(log models.UsageLog) *int64 {
+	if log.UserID != nil && *log.UserID > 0 {
+		return log.UserID
+	}
+	if log.APIKeyID == nil || *log.APIKeyID <= 0 {
+		return log.UserID
+	}
+
+	var createdBy sql.NullInt64
+	if err := s.db.QueryRow(
+		"SELECT created_by FROM api_keys WHERE id = ?",
+		*log.APIKeyID,
+	).Scan(&createdBy); err != nil || !createdBy.Valid || createdBy.Int64 <= 0 {
+		return log.UserID
+	}
+
+	id := createdBy.Int64
+	return &id
+}
+
 func (s *UsageService) Log(log models.UsageLog) error {
+	log.UserID = s.resolveLogUserID(log)
+
 	_, err := s.db.Exec(
 		`INSERT INTO usage_logs (api_key_id, provider_id, model, request_tokens, response_tokens, total_tokens, cache_write_5m_tokens, cache_write_1h_tokens, cache_read_tokens, latency_ms, cost, is_error, error_message, user_id, started_at, completed_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
