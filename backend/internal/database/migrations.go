@@ -170,6 +170,21 @@ var migrations = []migration{
 			return err
 		},
 	},
+	{
+		version: 7,
+		up: func(tx *sql.Tx) error {
+			hasColumn, err := hasColumn(tx, "api_keys", "total_token_limit")
+			if err != nil {
+				return err
+			}
+			if !hasColumn {
+				if _, err := tx.Exec(`ALTER TABLE api_keys ADD COLUMN total_token_limit INTEGER DEFAULT 0`); err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+	},
 }
 
 func hasColumn(tx *sql.Tx, tableName, columnName string) (bool, error) {

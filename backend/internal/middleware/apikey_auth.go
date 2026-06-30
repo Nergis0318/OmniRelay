@@ -38,6 +38,10 @@ func APIKeyAuth(svc *service.APIKeyService) gin.HandlerFunc {
 				apiresponse.AbortRateLimited(c, errFmt, err.Error())
 				return
 			}
+			if errors.Is(err, service.ErrTokenLimitExceeded) {
+				apiresponse.AbortForbidden(c, errFmt, err.Error())
+				return
+			}
 			apiresponse.AbortUnauthorized(c, errFmt, err.Error())
 			return
 		}

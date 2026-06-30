@@ -130,3 +130,13 @@ func AbortBadGateway(c *gin.Context, format Format, message string) {
 		Abort(c, http.StatusBadGateway, format, "server_error", message, "upstream_error", "")
 	}
 }
+
+// AbortForbidden writes forbidden errors in the appropriate format.
+func AbortForbidden(c *gin.Context, format Format, message string) {
+	switch format {
+	case FormatAnthropic:
+		Abort(c, http.StatusForbidden, format, "permission_error", message, "", "")
+	default:
+		Abort(c, http.StatusForbidden, format, "permission_denied", message, "permission_denied", "")
+	}
+}

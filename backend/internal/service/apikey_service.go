@@ -13,6 +13,7 @@ import (
 )
 
 var ErrRateLimitExceeded = errors.New("rate limit exceeded")
+var ErrTokenLimitExceeded = errors.New("token limit exceeded")
 
 type APIKeyService struct {
 	db *sql.DB
@@ -24,7 +25,7 @@ func NewAPIKeyService(db *sql.DB) *APIKeyService {
 
 func (s *APIKeyService) List(userID int64) ([]models.APIKey, error) {
 	rows, err := s.db.Query(
-		"SELECT id, key_prefix, name, created_by, is_active, rate_limit_rpm, created_at, last_used_at FROM api_keys WHERE created_by = ? ORDER BY created_at DESC",
+		"SELECT id, key_prefix, name, created_by, is_active, rate_limit_rpm, total_token_limit, created_at, last_used_at FROM api_keys WHERE created_by = ? ORDER BY created_at DESC",
 		userID,
 	)
 	if err != nil {
@@ -35,7 +36,7 @@ func (s *APIKeyService) List(userID int64) ([]models.APIKey, error) {
 	var keys []models.APIKey
 	for rows.Next() {
 		var k models.APIKey
-		if err := rows.Scan(&k.ID, &k.KeyPrefix, &k.Name, &k.CreatedBy, &k.IsActive, &k.RateLimitRPM, &k.CreatedAt, &k.LastUsedAt); err != nil {
+		if err := rows.Scan(&k.ID, &k.KeyPrefix, &k.Name, &k.CreatedBy, &k.IsActive, &k.RateLimitRPM, &k.TotalTokenLimit, &k.CreatedAt, &k.LastUsedAt); err != nil {
 			return nil, err
 		}
 		keys = append(keys, k)
@@ -50,8 +51,8 @@ func (s *APIKeyService) Create(req models.CreateAPIKeyRequest, userID int64) (*m
 	}
 
 	result, err := s.db.Exec(
-		"INSERT INTO api_keys (key_hash, key_prefix, name, created_by, rate_limit_rpm) VALUES (?, ?, ?, ?, ?)",
-		hash, prefix, req.Name, userID, req.RateLimitRPM,
+		"INSERT INTO api_keys (key_hash, key_prefix, name, created_by, rate_limit_rpm, total_token_limit) VALUES (?, ?, ?, ?, ?, ?)",
+		hash, prefix, req.Name, userID, req.RateLimitRPM, req.TotalTokenLimit,
 	)
 	if err != nil {
 		return nil, err
@@ -60,13 +61,14 @@ func (s *APIKeyService) Create(req models.CreateAPIKeyRequest, userID int64) (*m
 	id, _ := result.LastInsertId()
 
 	apiKey := models.APIKey{
-		ID:           id,
-		KeyPrefix:    prefix,
-		Name:         req.Name,
-		CreatedBy:    userID,
-		IsActive:     true,
-		RateLimitRPM: req.RateLimitRPM,
-		CreatedAt:    time.Now(),
+		ID:               id,
+		KeyPrefix:        prefix,
+		Name:             req.Name,
+		CreatedBy:        userID,
+		IsActive:         true,
+		RateLimitRPM:     req.RateLimitRPM,
+		TotalTokenLimit:  req.TotalTokenLimit,
+		CreatedAt:        time.Now(),
 	}
 
 	return &models.CreateAPIKeyResponse{
@@ -80,9 +82,9 @@ func (s *APIKeyService) Validate(plainKey string) (*models.APIKey, error) {
 
 	var k models.APIKey
 	err := s.db.QueryRow(
-		"SELECT id, key_prefix, name, created_by, is_active, rate_limit_rpm, created_at, last_used_at FROM api_keys WHERE key_hash = ?",
+		"SELECT id, key_prefix, name, created_by, is_active, rate_limit_rpm, total_token_limit, created_at, last_used_at FROM api_keys WHERE key_hash = ?",
 		hash,
-	).Scan(&k.ID, &k.KeyPrefix, &k.Name, &k.CreatedBy, &k.IsActive, &k.RateLimitRPM, &k.CreatedAt, &k.LastUsedAt)
+	).Scan(&k.ID, &k.KeyPrefix, &k.Name, &k.CreatedBy, &k.IsActive, &k.RateLimitRPM, &k.TotalTokenLimit, &k.CreatedAt, &k.LastUsedAt)
 	if err != nil {
 		return nil, errors.New("invalid API key")
 	}
@@ -91,6 +93,9 @@ func (s *APIKeyService) Validate(plainKey string) (*models.APIKey, error) {
 		return nil, errors.New("API key is inactive")
 	}
 	if err := s.checkRateLimit(k); err != nil {
+		return nil, err
+	}
+	if err := s.checkTokenLimit(k); err != nil {
 		return nil, err
 	}
 
@@ -125,6 +130,25 @@ func (s *APIKeyService) checkRateLimit(k models.APIKey) error {
 	}
 	if count >= k.RateLimitRPM {
 		return fmt.Errorf("%w: %d requests per minute", ErrRateLimitExceeded, k.RateLimitRPM)
+	}
+	return nil
+}
+
+func (s *APIKeyService) checkTokenLimit(k models.APIKey) error {
+	if k.TotalTokenLimit <= 0 {
+		return nil
+	}
+
+	var totalTokens int64
+	err := s.db.QueryRow(
+		"SELECT COALESCE(SUM(total_tokens), 0) FROM usage_logs WHERE api_key_id = ?",
+		k.ID,
+	).Scan(&totalTokens)
+	if err != nil {
+		return err
+	}
+	if totalTokens >= k.TotalTokenLimit {
+		return fmt.Errorf("%w: %d tokens total limit", ErrTokenLimitExceeded, k.TotalTokenLimit)
 	}
 	return nil
 }
