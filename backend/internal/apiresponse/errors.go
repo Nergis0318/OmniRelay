@@ -56,6 +56,9 @@ func abortOpenAI(c *gin.Context, status int, errType, message, code, param strin
 	if code != "" {
 		errObj["code"] = code
 	}
+	if requestID := c.GetString("request_id"); requestID != "" {
+		errObj["request_id"] = requestID
+	}
 	c.JSON(status, gin.H{"error": errObj})
 }
 
@@ -69,7 +72,7 @@ func abortAnthropic(c *gin.Context, status int, errType, message string) {
 			"type":    errType,
 			"message": message,
 		},
-		"request_id": nil,
+		"request_id": c.GetString("request_id"),
 	})
 }
 

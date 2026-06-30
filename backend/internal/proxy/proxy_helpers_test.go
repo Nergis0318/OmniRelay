@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -195,14 +196,15 @@ func TestWriteUpstreamErrorBodyForwardsStatusAndPayload(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
 
 	resp := &http.Response{
 		StatusCode: http.StatusTooManyRequests,
 		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body:       io.NopCloser(strings.NewReader(`{"error":"rate limited"}`)),
+		Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"rate limited","type":"rate_limit_error"}}`)),
 	}
 
-	writeUpstreamErrorBody(c, resp)
+	writeUpstreamErrorBody(c, resp, "unknown")
 
 	if w.Code != http.StatusTooManyRequests {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusTooManyRequests)
@@ -210,7 +212,18 @@ func TestWriteUpstreamErrorBodyForwardsStatusAndPayload(t *testing.T) {
 	if got := w.Header().Get("Content-Type"); got != "application/json" {
 		t.Fatalf("Content-Type = %q, want application/json", got)
 	}
-	if got := w.Body.String(); got != `{"error":"rate limited"}` {
-		t.Fatalf("body = %q", got)
+	var respBody map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &respBody); err != nil {
+		t.Fatalf("body not valid JSON: %v", err)
+	}
+	errObj, ok := respBody["error"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("error object missing: %v", respBody)
+	}
+	if errObj["message"] != "rate limited" {
+		t.Errorf("message = %v, want 'rate limited'", errObj["message"])
+	}
+	if errObj["type"] != "rate_limit_error" {
+		t.Errorf("type = %v, want 'rate_limit_error'", errObj["type"])
 	}
 }

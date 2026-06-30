@@ -14,6 +14,7 @@ import (
 )
 
 func (e *Engine) HandleChatCompletions(c *gin.Context) {
+	ensureRequestID(c)
 	apiKeyID := c.GetInt64("api_key_id")
 	userID := c.GetInt64("user_id")
 
@@ -42,6 +43,7 @@ func (e *Engine) HandleChatCompletions(c *gin.Context) {
 }
 
 func (e *Engine) HandleMessages(c *gin.Context) {
+	ensureRequestID(c)
 	apiKeyID := c.GetInt64("api_key_id")
 	userID := c.GetInt64("user_id")
 
@@ -106,6 +108,7 @@ func (e *Engine) HandleGetModel(c *gin.Context) {
 }
 
 func (e *Engine) HandlePathRouted(c *gin.Context) {
+	ensureRequestID(c)
 	providerKey := c.Param("provider_key")
 	endpoint := c.Param("endpoint")
 	apiPrefix := routeAPIPrefix(c.Request.URL.Path)
@@ -462,6 +465,20 @@ func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapt
 			}
 		}
 		if err != nil {
+			if err != io.EOF {
+				requestID := c.GetString("request_id")
+				errorPayload := map[string]interface{}{
+					"error": map[string]interface{}{
+						"type":       "api_error",
+						"message":    "upstream stream interrupted",
+						"request_id": requestID,
+					},
+				}
+				if errorJSON, e := json.Marshal(errorPayload); e == nil {
+					fmt.Fprintf(c.Writer, "event: error\ndata: %s\n\n", errorJSON)
+					flusher.Flush()
+				}
+			}
 			break
 		}
 	}
@@ -514,6 +531,20 @@ func (e *Engine) handleRawStreamResponse(c *gin.Context, resp *http.Response, st
 			flusher.Flush()
 		}
 		if err != nil {
+			if err != io.EOF {
+				requestID := c.GetString("request_id")
+				errorPayload := map[string]interface{}{
+					"error": map[string]interface{}{
+						"type":       "api_error",
+						"message":    "upstream stream interrupted",
+						"request_id": requestID,
+					},
+				}
+				if errorJSON, e := json.Marshal(errorPayload); e == nil {
+					fmt.Fprintf(c.Writer, "event: error\ndata: %s\n\n", errorJSON)
+					flusher.Flush()
+				}
+			}
 			break
 		}
 	}
@@ -553,6 +584,20 @@ func (e *Engine) handleMessagesStreamResponse(c *gin.Context, resp *http.Respons
 			}
 		}
 		if err != nil {
+			if err != io.EOF {
+				requestID := c.GetString("request_id")
+				errorPayload := map[string]interface{}{
+					"error": map[string]interface{}{
+						"type":       "api_error",
+						"message":    "upstream stream interrupted",
+						"request_id": requestID,
+					},
+				}
+				if errorJSON, e := json.Marshal(errorPayload); e == nil {
+					fmt.Fprintf(c.Writer, "event: error\ndata: %s\n\n", errorJSON)
+					flusher.Flush()
+				}
+			}
 			break
 		}
 	}
@@ -644,7 +689,7 @@ func (e *Engine) handlePathRoutedProxy(c *gin.Context, provider *models.Provider
 	if !isSuccessStatus(resp.StatusCode) {
 		latencyMs := time.Since(startTime).Milliseconds()
 		e.logUpstreamError(u, fmt.Sprintf("upstream returned %d", resp.StatusCode), latencyMs)
-		writeUpstreamErrorBody(c, resp)
+		writeUpstreamErrorBody(c, resp, provider.ProviderType)
 		return
 	}
 

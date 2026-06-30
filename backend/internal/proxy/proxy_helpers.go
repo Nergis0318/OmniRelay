@@ -56,9 +56,19 @@ func (e *Engine) doUpstream(req *http.Request) (*http.Response, time.Time, error
 	return resp, start, err
 }
 
-// readUpstreamError reads the body and writes an error response back to the client with the provider's status code.
-func writeUpstreamErrorBody(c *gin.Context, resp *http.Response) {
+// writeUpstreamErrorBody reads the upstream error body and writes it back to the client,
+// normalizing to the client's expected format (OpenAI or Anthropic) and including request_id.
+// Falls back to raw passthrough if the error body cannot be parsed.
+func writeUpstreamErrorBody(c *gin.Context, resp *http.Response, providerType string) {
 	respBody, _ := io.ReadAll(resp.Body)
+
+	if parsed, ok := parseUpstreamError(providerType, respBody); ok {
+		errFmt := apiresponse.FormatFromContext(c)
+		requestID := c.GetString("request_id")
+		normalized := reformatError(parsed, errFmt, requestID)
+		c.Data(resp.StatusCode, "application/json", normalized)
+		return
+	}
 	c.Data(resp.StatusCode, contentTypeOrDefault(resp.Header), respBody)
 }
 
@@ -93,7 +103,7 @@ func (e *Engine) proxyJSONRequest(c *gin.Context, u usageContext, providerType, 
 	if !isSuccessStatus(resp.StatusCode) {
 		latencyMs := time.Since(start).Milliseconds()
 		e.logUpstreamError(u, fmt.Sprintf("upstream returned %d", resp.StatusCode), latencyMs)
-		writeUpstreamErrorBody(c, resp)
+		writeUpstreamErrorBody(c, resp, providerType)
 		resp.Body.Close()
 		return nil, time.Time{}, false
 	}

@@ -14,6 +14,7 @@ func TestAbortOpenAIErrorShape(t *testing.T) {
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	c.Set("request_id", "test-request-id-001")
 
 	AbortInvalidRequest(c, FormatOpenAI, "you must provide a messages parameter", "messages")
 
@@ -25,7 +26,7 @@ func TestAbortOpenAIErrorShape(t *testing.T) {
 	if !ok {
 		t.Fatalf("error object missing: %v", resp)
 	}
-	for _, key := range []string{"message", "type", "param", "code"} {
+	for _, key := range []string{"message", "type", "param", "code", "request_id"} {
 		if _, ok := errObj[key]; !ok {
 			t.Errorf("missing error.%s", key)
 		}
@@ -35,6 +36,9 @@ func TestAbortOpenAIErrorShape(t *testing.T) {
 	}
 	if errObj["param"] != "messages" {
 		t.Errorf("param = %v", errObj["param"])
+	}
+	if errObj["request_id"] != "test-request-id-001" {
+		t.Errorf("request_id = %v, want test-request-id-001", errObj["request_id"])
 	}
 }
 
@@ -61,7 +65,7 @@ func TestAbortAnthropicErrorShape(t *testing.T) {
 		t.Errorf("error.type = %v", errObj["type"])
 	}
 	if _, ok := resp["request_id"]; !ok {
-		t.Error("request_id missing")
+		t.Error("request_id key missing")
 	}
 }
 
