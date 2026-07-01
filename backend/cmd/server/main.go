@@ -12,6 +12,7 @@ import (
 	"omnirelay/internal/config"
 	"omnirelay/internal/database"
 	"omnirelay/internal/handlers"
+	"omnirelay/internal/hub"
 	"omnirelay/internal/middleware"
 	"omnirelay/internal/proxy"
 	"omnirelay/internal/service"
@@ -38,7 +39,9 @@ func main() {
 	apiKeyService := service.NewAPIKeyService(db)
 	usageService := service.NewUsageService(db)
 
-	proxyEngine := proxy.NewEngine(providerService, modelService, usageService, nil)
+	h := hub.New()
+	handlers.SetHub(h)
+	proxyEngine := proxy.NewEngine(providerService, modelService, usageService, h)
 
 	r := gin.Default()
 
@@ -93,6 +96,7 @@ func main() {
 			adminAuth.GET("/stats", handlers.GetStats(usageService, apiKeyService, modelService))
 
 			adminAuth.GET("/users", handlers.ListUsers(authService))
+			adminAuth.GET("/ws", handlers.WebSocketUpgrader(cfg.JWTSecret))
 		}
 	}
 
