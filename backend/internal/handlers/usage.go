@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"omnirelay/internal/apiresponse"
 	"omnirelay/internal/models"
 	"omnirelay/internal/service"
 	"strconv"
@@ -34,7 +35,7 @@ func ListUsage(svc *service.UsageService) gin.HandlerFunc {
 
 		logs, total, err := svc.Query(params, userID)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			apiresponse.AbortAdminInternal(c, err.Error())
 			return
 		}
 		if logs == nil {
@@ -55,18 +56,18 @@ func GetStats(us *service.UsageService, ks *service.APIKeyService, ms *service.M
 		userID := c.GetInt64("user_id")
 		stats, err := us.GetStats(userID)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			apiresponse.AbortAdminInternal(c, err.Error())
 			return
 		}
 
 		stats.ActiveKeys, err = ks.CountActive(userID)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			apiresponse.AbortAdminInternal(c, err.Error())
 			return
 		}
 		stats.ModelsCount, err = ms.CountActive(userID)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			apiresponse.AbortAdminInternal(c, err.Error())
 			return
 		}
 

@@ -1,7 +1,14 @@
 package main
 
 import (
+	"context"
 	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
 	"omnirelay/internal/config"
 	"omnirelay/internal/database"
 	"omnirelay/internal/handlers"
@@ -12,6 +19,8 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 )
+
+const maxBodySize = 32 << 20 // 32MB
 
 func main() {
 	cfg := config.Load()
@@ -33,12 +42,29 @@ func main() {
 
 	r := gin.Default()
 
+	// CORS: allow origins from config, fall back to defaults
+	allowedOrigins := []string{"http://localhost:5173", "http://localhost:3000"}
+	if cfg.CORSOrigins != "" {
+		allowedOrigins = splitAndTrim(cfg.CORSOrigins, ",")
+	}
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:5173", "http://localhost:3000"},
+		AllowOrigins:     allowedOrigins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
 		AllowCredentials: true,
 	}))
+
+	// Health check endpoints
+	r.GET("/health", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	})
+	r.GET("/readyz", func(c *gin.Context) {
+		if err := db.Ping(); err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "not ready", "error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"status": "ready"})
+	})
 
 	admin := r.Group("/admin")
 	{
@@ -71,7 +97,7 @@ func main() {
 	}
 
 	v1 := r.Group("/v1")
-	v1.Use(middleware.APIKeyAuth(apiKeyService))
+	v1.Use(middleware.APIKeyAuth(apiKeyService), bodySizeLimit())
 	{
 		v1.POST("/chat/completions", proxyEngine.HandleChatCompletions)
 		v1.GET("/models", proxyEngine.HandleListModels)
@@ -80,15 +106,85 @@ func main() {
 	}
 
 	// Path-based routing: /:provider_key/v1/*endpoint
-	// Example: POST /openai/v1/chat/completions with model="gpt-4o"
 	pbr := r.Group("/")
-	pbr.Use(middleware.APIKeyAuth(apiKeyService))
+	pbr.Use(middleware.APIKeyAuth(apiKeyService), bodySizeLimit())
 	pbr.Any("/:provider_key/v1/*endpoint", proxyEngine.HandlePathRouted)
 	pbr.Any("/:provider_key/v1beta/*endpoint", proxyEngine.HandlePathRouted)
 	pbr.Any("/:provider_key/api/*endpoint", proxyEngine.HandlePathRouted)
 
-	log.Printf("OmniRelay starting on %s", cfg.ListenAddr)
-	if err := r.Run(cfg.ListenAddr); err != nil {
-		log.Fatalf("failed to start server: %v", err)
+	srv := &http.Server{
+		Addr:    cfg.ListenAddr,
+		Handler: r,
 	}
+
+	go func() {
+		log.Printf("OmniRelay starting on %s", cfg.ListenAddr)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("failed to start server: %v", err)
+		}
+	}()
+
+	// Graceful shutdown
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	sig := <-quit
+	log.Printf("received signal %v, shutting down gracefully...", sig)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Fatalf("server forced to shutdown: %v", err)
+	}
+
+	log.Println("server exited")
+}
+
+// bodySizeLimit returns a middleware that enforces a maximum request body size.
+func bodySizeLimit() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxBodySize)
+		c.Next()
+	}
+}
+
+// splitAndTrim splits a string by a separator and trims whitespace from each part.
+func splitAndTrim(s, sep string) []string {
+	if s == "" {
+		return nil
+	}
+	parts := split(s, sep)
+	result := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if trimmed := trimSpace(p); trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
+}
+
+func split(s, sep string) []string {
+	var result []string
+	start := 0
+	for i := 0; i < len(s); i++ {
+		if string(s[i]) == sep && i >= start {
+			result = append(result, s[start:i])
+			start = i + 1
+		}
+	}
+	if start <= len(s) {
+		result = append(result, s[start:])
+	}
+	return result
+}
+
+func trimSpace(s string) string {
+	start, end := 0, len(s)
+	for start < end && (s[start] == ' ' || s[start] == '\t' || s[start] == '\n' || s[start] == '\r') {
+		start++
+	}
+	for end > start && (s[end-1] == ' ' || s[end-1] == '\t' || s[end-1] == '\n' || s[end-1] == '\r') {
+		end--
+	}
+	return s[start:end]
 }

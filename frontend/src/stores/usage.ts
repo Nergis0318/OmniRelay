@@ -52,12 +52,16 @@ export const useUsageStore = defineStore("usage", () => {
   const logs = ref<UsageLog[]>([]);
   const total = ref(0);
   const loading = ref(false);
+  const error = ref<string | null>(null);
 
   async function fetchStats() {
     loading.value = true;
+    error.value = null;
     try {
       const { data } = await api.get("/stats");
       stats.value = data;
+    } catch (err: any) {
+      error.value = err?.response?.data?.error || err?.message || "Failed to load stats";
     } finally {
       loading.value = false;
     }
@@ -65,14 +69,21 @@ export const useUsageStore = defineStore("usage", () => {
 
   async function fetchLogs(params?: Record<string, any>) {
     loading.value = true;
+    error.value = null;
     try {
       const { data } = await api.get("/usage", { params });
       logs.value = data.usage_logs;
       total.value = data.total;
+    } catch (err: any) {
+      error.value = err?.response?.data?.error || err?.message || "Failed to load logs";
     } finally {
       loading.value = false;
     }
   }
 
-  return { stats, logs, total, loading, fetchStats, fetchLogs };
+  function clearError() {
+    error.value = null;
+  }
+
+  return { stats, logs, total, loading, error, fetchStats, fetchLogs, clearError };
 });

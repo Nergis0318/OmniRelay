@@ -11,6 +11,8 @@ interface User {
 export const useAuthStore = defineStore("auth", () => {
   const token = ref(localStorage.getItem("token") || "");
   const user = ref<User | null>(null);
+  const error = ref<string | null>(null);
+  const loading = ref(false);
 
   const isLoggedIn = computed(() => !!token.value);
 
@@ -23,18 +25,41 @@ export const useAuthStore = defineStore("auth", () => {
   function logout() {
     token.value = "";
     user.value = null;
+    error.value = null;
     localStorage.removeItem("token");
   }
 
   async function login(email: string, password: string) {
-    const { data } = await api.post("/auth/login", { email, password });
-    setSession(data.token, data.user);
+    loading.value = true;
+    error.value = null;
+    try {
+      const { data } = await api.post("/auth/login", { email, password });
+      setSession(data.token, data.user);
+    } catch (err: any) {
+      error.value = err?.response?.data?.error || err?.message || "Login failed";
+      throw err;
+    } finally {
+      loading.value = false;
+    }
   }
 
   async function register(username: string, email: string, password: string) {
-    await api.post("/auth/register", { username, email, password });
-    await login(email, password);
+    loading.value = true;
+    error.value = null;
+    try {
+      await api.post("/auth/register", { username, email, password });
+      await login(email, password);
+    } catch (err: any) {
+      error.value = err?.response?.data?.error || err?.message || "Registration failed";
+      throw err;
+    } finally {
+      loading.value = false;
+    }
   }
 
-  return { token, user, isLoggedIn, login, register, logout };
+  function clearError() {
+    error.value = null;
+  }
+
+  return { token, user, error, loading, isLoggedIn, login, register, logout, clearError };
 });

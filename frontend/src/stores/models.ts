@@ -21,13 +21,17 @@ interface Model {
 export const useModelsStore = defineStore("models", () => {
   const models = ref<Model[]>([]);
   const loading = ref(false);
+  const error = ref<string | null>(null);
 
   async function fetch(providerKey?: string) {
     loading.value = true;
+    error.value = null;
     try {
       const params = providerKey ? `?provider_key=${providerKey}` : "";
       const { data } = await api.get(`/models${params}`);
       models.value = data.models;
+    } catch (err: any) {
+      error.value = err?.response?.data?.error || err?.message || "Failed to load models";
     } finally {
       loading.value = false;
     }
@@ -44,19 +48,41 @@ export const useModelsStore = defineStore("models", () => {
     cache_read_price_per_1mtok: number;
     context_window: number;
   }) {
-    await api.post("/models", payload);
-    await fetch();
+    error.value = null;
+    try {
+      await api.post("/models", payload);
+      await fetch();
+    } catch (err: any) {
+      error.value = err?.response?.data?.error || err?.message || "Failed to create model";
+      throw err;
+    }
   }
 
   async function update(id: number, payload: any) {
-    await api.put(`/models/${id}`, payload);
-    await fetch();
+    error.value = null;
+    try {
+      await api.put(`/models/${id}`, payload);
+      await fetch();
+    } catch (err: any) {
+      error.value = err?.response?.data?.error || err?.message || "Failed to update model";
+      throw err;
+    }
   }
 
   async function remove(id: number) {
-    await api.delete(`/models/${id}`);
-    await fetch();
+    error.value = null;
+    try {
+      await api.delete(`/models/${id}`);
+      await fetch();
+    } catch (err: any) {
+      error.value = err?.response?.data?.error || err?.message || "Failed to delete model";
+      throw err;
+    }
   }
 
-  return { models, loading, fetch, create, update, remove };
+  function clearError() {
+    error.value = null;
+  }
+
+  return { models, loading, error, fetch, create, update, remove, clearError };
 });

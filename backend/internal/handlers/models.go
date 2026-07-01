@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"omnirelay/internal/apiresponse"
 	"omnirelay/internal/models"
 	"omnirelay/internal/service"
 	"strconv"
@@ -16,7 +17,7 @@ func ListModels(svc *service.ModelService) gin.HandlerFunc {
 
 		modelList, err := svc.List(providerKey, userID)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			apiresponse.AbortAdminInternal(c, err.Error())
 			return
 		}
 		if modelList == nil {
@@ -31,13 +32,13 @@ func CreateModel(svc *service.ModelService) gin.HandlerFunc {
 		userID := c.GetInt64("user_id")
 		var req models.CreateModelRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			apiresponse.AbortAdminBadRequest(c, err.Error())
 			return
 		}
 
 		model, err := svc.Create(req, userID)
 		if err != nil {
-			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+			apiresponse.AbortAdminConflict(c, err.Error())
 			return
 		}
 
@@ -50,19 +51,19 @@ func UpdateModel(svc *service.ModelService) gin.HandlerFunc {
 		userID := c.GetInt64("user_id")
 		id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid model ID"})
+			apiresponse.AbortAdminBadRequest(c, "invalid model ID")
 			return
 		}
 
 		var req models.UpdateModelRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			apiresponse.AbortAdminBadRequest(c, err.Error())
 			return
 		}
 
 		model, err := svc.Update(id, userID, req)
 		if err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+			apiresponse.AbortAdminNotFound(c, err.Error())
 			return
 		}
 
@@ -75,12 +76,12 @@ func DeleteModel(svc *service.ModelService) gin.HandlerFunc {
 		userID := c.GetInt64("user_id")
 		id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid model ID"})
+			apiresponse.AbortAdminBadRequest(c, "invalid model ID")
 			return
 		}
 
 		if err := svc.Delete(id, userID); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			apiresponse.AbortAdminInternal(c, err.Error())
 			return
 		}
 

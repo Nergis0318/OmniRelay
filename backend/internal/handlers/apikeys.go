@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"omnirelay/internal/apiresponse"
 	"omnirelay/internal/models"
 	"omnirelay/internal/service"
 	"strconv"
@@ -14,7 +15,7 @@ func ListAPIKeys(svc *service.APIKeyService) gin.HandlerFunc {
 		userID := c.GetInt64("user_id")
 		keys, err := svc.List(userID)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			apiresponse.AbortAdminInternal(c, err.Error())
 			return
 		}
 		if keys == nil {
@@ -28,7 +29,7 @@ func CreateAPIKey(svc *service.APIKeyService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req models.CreateAPIKeyRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			apiresponse.AbortAdminBadRequest(c, err.Error())
 			return
 		}
 
@@ -36,7 +37,7 @@ func CreateAPIKey(svc *service.APIKeyService) gin.HandlerFunc {
 
 		resp, err := svc.Create(req, userID)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			apiresponse.AbortAdminInternal(c, err.Error())
 			return
 		}
 
@@ -49,12 +50,12 @@ func DeleteAPIKey(svc *service.APIKeyService) gin.HandlerFunc {
 		userID := c.GetInt64("user_id")
 		id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid API key ID"})
+			apiresponse.AbortAdminBadRequest(c, "invalid API key ID")
 			return
 		}
 
 		if err := svc.Delete(id, userID); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			apiresponse.AbortAdminInternal(c, err.Error())
 			return
 		}
 

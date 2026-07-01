@@ -17,10 +17,6 @@ func NewUsageService(db *sql.DB) *UsageService {
 	return &UsageService{db: db}
 }
 
-func scanUsageRow(db *sql.DB, query string, args []interface{}, dest ...interface{}) error {
-	return db.QueryRow(query, args...).Scan(dest...)
-}
-
 func (s *UsageService) resolveLogUserID(log models.UsageLog) *int64 {
 	if log.UserID != nil && *log.UserID > 0 {
 		return log.UserID
@@ -92,7 +88,7 @@ func (s *UsageService) Query(params models.UsageQueryParams, userID int64) ([]mo
 
 	var total int64
 	countQuery := "SELECT COUNT(*) FROM usage_logs u WHERE " + whereClause
-	if err := scanUsageRow(s.db, countQuery, args, &total); err != nil {
+	if err := s.db.QueryRow(countQuery, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 
@@ -123,43 +119,44 @@ func (s *UsageService) GetStats(userID int64) (*models.DashboardStats, error) {
 	stats := &models.DashboardStats{}
 	userFilter := " FROM usage_logs WHERE " + usageLogsByUser
 
-	if err := scanUsageRow(s.db,
+	if err := s.db.QueryRow(
 		"SELECT COUNT(*), COALESCE(SUM(total_tokens), 0), COALESCE(SUM(cost), 0), COALESCE(AVG(CASE WHEN is_error = 0 THEN latency_ms END), 0), COALESCE(SUM(cache_write_5m_tokens), 0), COALESCE(SUM(cache_write_1h_tokens), 0), COALESCE(SUM(cache_read_tokens), 0)"+userFilter,
-		[]interface{}{userID},
+		userID,
+	).Scan(
 		&stats.TotalRequests, &stats.TotalTokens, &stats.TotalCost, &stats.AvgLatencyMs,
 		&stats.TotalCacheWrite5M, &stats.TotalCacheWrite1H, &stats.TotalCacheRead,
 	); err != nil {
 		return nil, err
 	}
 
-	if err := scanUsageRow(s.db,
+	if err := s.db.QueryRow(
 		"SELECT COUNT(*) FROM providers WHERE is_active = 1 AND (user_id = ? OR user_id IS NULL)",
-		[]interface{}{userID},
+		userID,
+	).Scan(
 		&stats.ProvidersCount,
 	); err != nil {
 		return nil, err
 	}
 
 	todayFilter := userFilter + " AND DATE(created_at) = DATE('now')"
-	if err := scanUsageRow(s.db,
+	if err := s.db.QueryRow(
 		"SELECT COALESCE(SUM(cost), 0), COUNT(*), COALESCE(SUM(total_tokens), 0)"+todayFilter,
-		[]interface{}{userID},
-		&stats.TodayCost, &stats.TodayRequests, &stats.TodayTokens,
-	); err != nil {
+		userID,
+	).Scan(&stats.TodayCost, &stats.TodayRequests, &stats.TodayTokens); err != nil {
 		return nil, err
 	}
 
-	if err := scanUsageRow(s.db, `
+	if err := s.db.QueryRow(`
 		SELECT COALESCE(COUNT(*) * 60.0 / MAX(1, CAST((julianday('now') - julianday(MIN(created_at))) * 24 * 60 AS INTEGER)), 0)
 		FROM usage_logs WHERE `+usageLogsByUser+` AND created_at >= datetime('now', '-5 minutes')
-	`, []interface{}{userID}, &stats.RPM); err != nil {
+	`, userID).Scan(&stats.RPM); err != nil {
 		return nil, err
 	}
 
-	if err := scanUsageRow(s.db, `
+	if err := s.db.QueryRow(`
 		SELECT COALESCE(SUM(total_tokens) * 60.0 / MAX(1, CAST((julianday('now') - julianday(MIN(created_at))) * 24 * 60 AS INTEGER)), 0)
 		FROM usage_logs WHERE `+usageLogsByUser+` AND created_at >= datetime('now', '-5 minutes')
-	`, []interface{}{userID}, &stats.TPM); err != nil {
+	`, userID).Scan(&stats.TPM); err != nil {
 		return nil, err
 	}
 

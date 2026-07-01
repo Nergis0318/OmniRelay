@@ -7,6 +7,7 @@ type Config struct {
 	DatabasePath string
 	JWTSecret    string
 	EncryptKey   string
+	CORSOrigins  string
 }
 
 func Load() *Config {
@@ -15,6 +16,7 @@ func Load() *Config {
 		DatabasePath: getEnv("DATABASE_PATH", "data/omnirelay.db"),
 		JWTSecret:    getEnv("JWT_SECRET", "omnirelay-dev-secret-change-me"),
 		EncryptKey:   getEnv("ENCRYPT_KEY", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"),
+		CORSOrigins:  getEnv("CORS_ORIGINS", ""),
 	}
 }
 

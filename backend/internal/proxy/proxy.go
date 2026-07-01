@@ -491,16 +491,18 @@ func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapt
 	latencyMs := time.Since(start).Milliseconds()
 	completedAt := time.Now()
 	cacheWrite5m := int64State(state, "cache_write_5m_tokens", 0)
+	cacheWrite1h := int64State(state, "cache_write_1h_tokens", 0)
 	cacheReadTokens := int64State(state, "cache_read_tokens", 0)
 	var cost float64
 	if dbModel != nil && (totalInputTokens > 0 || totalOutputTokens > 0) {
-		cost = calculateCost(dbModel, totalInputTokens, totalOutputTokens, cacheWrite5m, 0, cacheReadTokens)
+		cost = calculateCost(dbModel, totalInputTokens, totalOutputTokens, cacheWrite5m, cacheWrite1h, cacheReadTokens)
 	}
 
 	e.logTokenUsage(u, tokenUsage{
 		requestTokens:  totalInputTokens,
 		responseTokens: totalOutputTokens,
 		cacheWrite5m:   cacheWrite5m,
+		cacheWrite1h:   cacheWrite1h,
 		cacheRead:      cacheReadTokens,
 		cost:           cost,
 		startedAt:      &start,
@@ -605,16 +607,18 @@ func (e *Engine) handleMessagesStreamResponse(c *gin.Context, resp *http.Respons
 	completedAt := time.Now()
 	latencyMs := time.Since(start).Milliseconds()
 	cacheWrite5m := int64State(state, "cache_write_5m_tokens", 0)
+	cacheWrite1h := int64State(state, "cache_write_1h_tokens", 0)
 	cacheReadTokens := int64State(state, "cache_read_tokens", 0)
 	var cost float64
 	if dbModel != nil && (totalInputTokens > 0 || totalOutputTokens > 0) {
-		cost = calculateCost(dbModel, totalInputTokens, totalOutputTokens, cacheWrite5m, 0, cacheReadTokens)
+		cost = calculateCost(dbModel, totalInputTokens, totalOutputTokens, cacheWrite5m, cacheWrite1h, cacheReadTokens)
 	}
 
 	e.logTokenUsage(u, tokenUsage{
 		requestTokens:  totalInputTokens,
 		responseTokens: totalOutputTokens,
 		cacheWrite5m:   cacheWrite5m,
+		cacheWrite1h:   cacheWrite1h,
 		cacheRead:      cacheReadTokens,
 		cost:           cost,
 		startedAt:      &start,

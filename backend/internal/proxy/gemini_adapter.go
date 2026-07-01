@@ -495,9 +495,7 @@ func convertAnthropicContentToGeminiParts(content interface{}) []map[string]inte
 func (a *GeminiAdapter) ParseMessagesResponse(body map[string]interface{}) (map[string]interface{}, error) {
 	response := make(map[string]interface{})
 
-	if id := fmt.Sprintf("msg_%d", time.Now().UnixNano()); true {
-		response["id"] = id
-	}
+	response["id"] = fmt.Sprintf("msg_%d", time.Now().UnixNano())
 	response["type"] = "message"
 
 	var textContent string

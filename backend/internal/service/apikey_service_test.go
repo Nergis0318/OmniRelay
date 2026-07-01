@@ -162,3 +162,48 @@ func TestCountActiveReflectsDeletes(t *testing.T) {
 		t.Errorf("after delete count = %d, want 1", count)
 	}
 }
+
+func TestValidateWithTotalTokenLimit(t *testing.T) {
+	svc := newTestAPIKeyService(t)
+	created, err := svc.Create(models.CreateAPIKeyRequest{Name: "token-limited", RateLimitRPM: 0, TotalTokenLimit: 100}, 1)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	// Validate should pass initially (0 tokens used)
+	if _, err := svc.Validate(created.PlainKey); err != nil {
+		t.Fatalf("validate before usage: %v", err)
+	}
+
+	// Seed usage logs to exceed the limit
+	svc.db.Exec("INSERT INTO usage_logs (api_key_id, model, total_tokens, user_id) VALUES (?, ?, ?, ?)",
+		created.APIKey.ID, "openai/test", 80, 1)
+	svc.db.Exec("INSERT INTO usage_logs (api_key_id, model, total_tokens, user_id) VALUES (?, ?, ?, ?)",
+		created.APIKey.ID, "openai/test", 30, 1)
+
+	// Invalidate cache so the next check re-reads from DB
+	svc.InvalidateTokenCache(created.APIKey.ID)
+
+	// Now validation should fail
+	_, err = svc.Validate(created.PlainKey)
+	if !errors.Is(err, ErrTokenLimitExceeded) {
+		t.Fatalf("expected token limit error, got %v", err)
+	}
+}
+
+func TestTokenLimitZeroMeansUnlimited(t *testing.T) {
+	svc := newTestAPIKeyService(t)
+	created, err := svc.Create(models.CreateAPIKeyRequest{Name: "unlimited-tokens", RateLimitRPM: 0, TotalTokenLimit: 0}, 1)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	// With TotalTokenLimit=0, even high usage should pass
+	svc.db.Exec("INSERT INTO usage_logs (api_key_id, model, total_tokens, user_id) VALUES (?, ?, ?, ?)",
+		created.APIKey.ID, "openai/test", 999999, 1)
+	svc.InvalidateTokenCache(created.APIKey.ID)
+
+	if _, err := svc.Validate(created.PlainKey); err != nil {
+		t.Fatalf("validate with TotalTokenLimit=0 should pass, got %v", err)
+	}
+}

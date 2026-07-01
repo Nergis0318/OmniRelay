@@ -140,3 +140,49 @@ func AbortForbidden(c *gin.Context, format Format, message string) {
 		Abort(c, http.StatusForbidden, format, "permission_denied", message, "permission_denied", "")
 	}
 }
+
+// --- Admin (dashboard) API error helpers ---
+
+// adminErrorBody returns a consistent JSON body for admin API errors.
+func adminErrorBody(message, code string) gin.H {
+	body := gin.H{"error": message}
+	if code != "" {
+		body["code"] = code
+	}
+	return body
+}
+
+// AbortAdminError writes a standardized admin API error response.
+func AbortAdminError(c *gin.Context, status int, message, code string) {
+	c.AbortWithStatusJSON(status, adminErrorBody(message, code))
+}
+
+// AbortAdminBadRequest writes a 400 admin error.
+func AbortAdminBadRequest(c *gin.Context, message string) {
+	AbortAdminError(c, http.StatusBadRequest, message, "bad_request")
+}
+
+// AbortAdminNotFound writes a 404 admin error.
+func AbortAdminNotFound(c *gin.Context, message string) {
+	AbortAdminError(c, http.StatusNotFound, message, "not_found")
+}
+
+// AbortAdminConflict writes a 409 admin error.
+func AbortAdminConflict(c *gin.Context, message string) {
+	AbortAdminError(c, http.StatusConflict, message, "conflict")
+}
+
+// AbortAdminInternal writes a 500 admin error.
+func AbortAdminInternal(c *gin.Context, message string) {
+	AbortAdminError(c, http.StatusInternalServerError, message, "internal_error")
+}
+
+// AbortAdminBadGateway writes a 502 admin error.
+func AbortAdminBadGateway(c *gin.Context, message string) {
+	AbortAdminError(c, http.StatusBadGateway, message, "bad_gateway")
+}
+
+// AbortAdminUnauthorized writes a 401 admin error.
+func AbortAdminUnauthorized(c *gin.Context, message string) {
+	AbortAdminError(c, http.StatusUnauthorized, message, "unauthorized")
+}

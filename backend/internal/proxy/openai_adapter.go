@@ -65,6 +65,12 @@ func (a *OpenAIAdapter) ParseMessagesStreamChunk(data []byte, state map[string]i
 	w := newMessagesStreamWriter(state)
 	var inputTokens, outputTokens int64
 
+	// Track tool call indexes we've already started for this stream
+	toolStarted := make(map[int]bool)
+	if existing, ok := state["tool_call_indexes"].(map[int]bool); ok {
+		toolStarted = existing
+	}
+
 	scanner := bufio.NewScanner(strings.NewReader(text))
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -99,6 +105,58 @@ func (a *OpenAIAdapter) ParseMessagesStreamChunk(data []byte, state map[string]i
 		for _, rawChoice := range choices {
 			choice, _ := rawChoice.(map[string]interface{})
 			delta, _ := choice["delta"].(map[string]interface{})
+
+			// Handle tool_calls delta for streaming
+			if toolCalls, ok := delta["tool_calls"].([]interface{}); ok {
+				for _, rawTC := range toolCalls {
+					tc, _ := rawTC.(map[string]interface{})
+					tcIndex := int(numberToInt64(tc["index"]))
+					tcID, hasID := tc["id"].(string)
+
+					tcFn, _ := tc["function"].(map[string]interface{})
+					fnName, _ := tcFn["name"].(string)
+					fnArgs, _ := tcFn["arguments"].(string)
+
+					if hasID && tcID != "" && !toolStarted[tcIndex] {
+						toolStarted[tcIndex] = true
+						w.ensureStarted()
+						w.writeEvent(map[string]interface{}{
+							"type":  "content_block_start",
+							"index": tcIndex,
+							"content_block": map[string]interface{}{
+								"type":  "tool_use",
+								"id":    tcID,
+								"name":  fnName,
+								"input": map[string]interface{}{},
+							},
+						})
+						// If this first chunk also has arguments, emit the delta separately
+						if fnArgs != "" {
+							w.writeEvent(map[string]interface{}{
+								"type":  "content_block_delta",
+								"index": tcIndex,
+								"delta": map[string]interface{}{
+									"type":         "input_json_delta",
+									"partial_json": fnArgs,
+								},
+							})
+						}
+					} else if fnArgs != "" && toolStarted[tcIndex] {
+						// Ongoing tool call arguments
+						w.writeEvent(map[string]interface{}{
+							"type":  "content_block_delta",
+							"index": tcIndex,
+							"delta": map[string]interface{}{
+								"type":         "input_json_delta",
+								"partial_json": fnArgs,
+							},
+						})
+					}
+				}
+				state["tool_call_indexes"] = toolStarted
+				continue
+			}
+
 			if content, ok := delta["content"].(string); ok && content != "" {
 				w.textDelta(content)
 			} else if _, ok := delta["role"].(string); ok {
@@ -112,18 +170,6 @@ func (a *OpenAIAdapter) ParseMessagesStreamChunk(data []byte, state map[string]i
 	}
 
 	return w.bytes(), int64State(state, "input_tokens", inputTokens), int64State(state, "output_tokens", outputTokens), nil
-}
-
-func boolState(state map[string]interface{}, key string) bool {
-	v, _ := state[key].(bool)
-	return v
-}
-
-func int64State(state map[string]interface{}, key string, fallback int64) int64 {
-	if v, ok := state[key].(int64); ok {
-		return v
-	}
-	return fallback
 }
 
 func openAIFinishReasonToAnthropic(reason string) string {

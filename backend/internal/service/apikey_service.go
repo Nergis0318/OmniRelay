@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"omnirelay/internal/models"
+	"sync"
 	"time"
 )
 
@@ -17,7 +18,18 @@ var ErrTokenLimitExceeded = errors.New("token limit exceeded")
 
 type APIKeyService struct {
 	db *sql.DB
+
+	// tokenUsageCache caches total_token sum per api_key_id to avoid
+	// repeated SUM queries on every Validate() call.
+	tokenUsageCache sync.Map // key: int64(apiKeyID), value: *cachedTokenUsage
 }
+
+type cachedTokenUsage struct {
+	total  int64
+	expiry time.Time
+}
+
+const tokenCacheTTL = 30 * time.Second
 
 func NewAPIKeyService(db *sql.DB) *APIKeyService {
 	return &APIKeyService{db: db}
@@ -104,6 +116,12 @@ func (s *APIKeyService) Validate(plainKey string) (*models.APIKey, error) {
 	return &k, nil
 }
 
+// InvalidateTokenCache clears the cached token usage for a given API key ID.
+// Called after a usage log entry is persisted to keep the cache eventually consistent.
+func (s *APIKeyService) InvalidateTokenCache(apiKeyID int64) {
+	s.tokenUsageCache.Delete(apiKeyID)
+}
+
 func (s *APIKeyService) Delete(id int64, userID int64) error {
 	_, err := s.db.Exec("UPDATE api_keys SET is_active = 0 WHERE id = ? AND created_by = ?", id, userID)
 	return err
@@ -139,18 +157,39 @@ func (s *APIKeyService) checkTokenLimit(k models.APIKey) error {
 		return nil
 	}
 
-	var totalTokens int64
-	err := s.db.QueryRow(
-		"SELECT COALESCE(SUM(total_tokens), 0) FROM usage_logs WHERE api_key_id = ?",
-		k.ID,
-	).Scan(&totalTokens)
-	if err != nil {
-		return err
-	}
+	totalTokens := s.getCachedTokenTotal(k.ID)
+
 	if totalTokens >= k.TotalTokenLimit {
 		return fmt.Errorf("%w: %d tokens total limit", ErrTokenLimitExceeded, k.TotalTokenLimit)
 	}
 	return nil
+}
+
+func (s *APIKeyService) getCachedTokenTotal(apiKeyID int64) int64 {
+	// Check cache first
+	if cached, ok := s.tokenUsageCache.Load(apiKeyID); ok {
+		ct := cached.(*cachedTokenUsage)
+		if time.Now().Before(ct.expiry) {
+			return ct.total
+		}
+	}
+
+	// Cache miss or expired — query DB
+	var totalTokens int64
+	err := s.db.QueryRow(
+		"SELECT COALESCE(SUM(total_tokens), 0) FROM usage_logs WHERE api_key_id = ?",
+		apiKeyID,
+	).Scan(&totalTokens)
+	if err != nil {
+		totalTokens = 0
+	}
+
+	s.tokenUsageCache.Store(apiKeyID, &cachedTokenUsage{
+		total:  totalTokens,
+		expiry: time.Now().Add(tokenCacheTTL),
+	})
+
+	return totalTokens
 }
 
 func generateAPIKey() (plainKey string, prefix string, hash string, err error) {
