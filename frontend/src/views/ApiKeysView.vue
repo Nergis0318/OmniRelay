@@ -235,11 +235,11 @@ async function handleCreate() {
   creating.value = true;
   dialogError.value = "";
   try {
-    const { data } = await store.create(
+    const result = await store.create(
       form.value.name,
       form.value.rate_limit_rpm,
     );
-    newKey.value = data.plain_key;
+    newKey.value = result.plain_key;
     showKey.value = true;
     await store.fetch();
   } catch (e: any) {
