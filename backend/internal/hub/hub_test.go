@@ -2,7 +2,9 @@ package hub
 
 import (
 	"encoding/json"
+	"sync"
 	"testing"
+	"time"
 )
 
 func TestHubRegisterBroadcast(t *testing.T) {
@@ -86,4 +88,56 @@ func TestHubUnregister(t *testing.T) {
 	if len(conns) != 0 {
 		t.Fatalf("expected 0 connections after unregister, got %d", len(conns))
 	}
+}
+
+func TestHubBroadcastDeadConn(t *testing.T) {
+	h := New()
+	c := h.Register(1)
+
+	for i := 0; i < 20; i++ {
+		h.Broadcast(1, Event{Type: "fill", Data: json.RawMessage(`"x"`)})
+	}
+
+	h.mu.Lock()
+	conns := h.connections[1]
+	h.mu.Unlock()
+
+	if len(conns) != 0 {
+		t.Fatalf("expected 0 connections after dead conn cleanup, got %d", len(conns))
+	}
+	_ = c
+}
+
+func TestHubConcurrentRegisterBroadcast(t *testing.T) {
+	h := New()
+	var wg sync.WaitGroup
+	stop := make(chan struct{})
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			c := h.Register(1)
+			<-stop
+			_ = c
+		}()
+	}
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ticker := time.NewTicker(time.Millisecond)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-stop:
+					return
+				case <-ticker.C:
+					h.Broadcast(1, Event{Type: "x", Data: json.RawMessage(`1`)})
+				}
+			}
+		}()
+	}
+	time.Sleep(100 * time.Millisecond)
+	close(stop)
+	wg.Wait()
 }

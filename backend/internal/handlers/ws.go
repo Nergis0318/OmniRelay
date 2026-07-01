@@ -40,7 +40,13 @@ func WebSocketUpgrader(jwtSecret string) gin.HandlerFunc {
 			return
 		}
 
-		userID := int64(claims["user_id"].(float64))
+		userIDFloat, ok := claims["user_id"].(float64)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token claims"})
+			c.Abort()
+			return
+		}
+		userID := int64(userIDFloat)
 
 		wsConn, err := hub.Upgrader.Upgrade(c.Writer, c.Request, nil)
 		if err != nil {
