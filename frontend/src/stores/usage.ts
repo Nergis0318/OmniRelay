@@ -1,6 +1,7 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
 import api from "../api/client";
+import { createRealtimeConnection, UsageLogEntry, StatsDelta } from "../api/ws";
 
 interface UsageLog {
   id: number;
@@ -54,6 +55,42 @@ export const useUsageStore = defineStore("usage", () => {
   const loading = ref(false);
   const error = ref<string | null>(null);
 
+  let rtConn: ReturnType<typeof createRealtimeConnection> | null = null;
+
+  function connect() {
+    if (rtConn) return;
+    rtConn = createRealtimeConnection();
+    rtConn.onUsageLog((entry: UsageLogEntry) => {
+      logs.value.unshift(entry);
+      if (logs.value.length > 50) logs.value.pop();
+      total.value += 1;
+    });
+    rtConn.onStatsDelta((delta: StatsDelta) => {
+      if (!stats.value) return;
+      stats.value = {
+        ...stats.value,
+        total_requests: delta.total_requests,
+        total_tokens: delta.total_tokens,
+        total_cost: delta.total_cost,
+        avg_latency_ms: delta.avg_latency_ms,
+        today_cost: delta.today_cost,
+        today_requests: delta.today_requests,
+        today_tokens: delta.today_tokens,
+        rpm: delta.rpm,
+        tpm: delta.tpm,
+      };
+    });
+  }
+
+  function disconnect() {
+    rtConn?.close();
+    rtConn = null;
+  }
+
+  function isRealtimeConnected(): boolean {
+    return rtConn?.isConnected() ?? false;
+  }
+
   async function fetchStats() {
     loading.value = true;
     error.value = null;
@@ -85,5 +122,5 @@ export const useUsageStore = defineStore("usage", () => {
     error.value = null;
   }
 
-  return { stats, logs, total, loading, error, fetchStats, fetchLogs, clearError };
+  return { stats, logs, total, loading, error, fetchStats, fetchLogs, clearError, connect, disconnect, isRealtimeConnected };
 });
