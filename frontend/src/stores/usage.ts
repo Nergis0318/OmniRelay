@@ -1,7 +1,7 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
 import api from "../api/client";
-import { createRealtimeConnection, UsageLogEntry, StatsDelta } from "../api/ws";
+import { createRealtimeConnection, StatsDelta } from "../api/ws";
 
 interface UsageLog {
   id: number;
@@ -60,8 +60,8 @@ export const useUsageStore = defineStore("usage", () => {
   function connect() {
     if (rtConn) return;
     rtConn = createRealtimeConnection();
-    rtConn.onUsageLog((entry: UsageLogEntry) => {
-      logs.value.unshift(entry);
+    rtConn.onUsageLog((entry) => {
+      logs.value.unshift(entry as UsageLog);
       if (logs.value.length > 50) logs.value.pop();
       total.value += 1;
     });
