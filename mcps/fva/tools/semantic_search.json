@@ -1,0 +1,24 @@
+{
+  "name": "semantic_search",
+  "description": "Natural language semantic search over code chunks using embeddings. Best for conceptual queries like 'authentication logic' or 'error handling patterns'.",
+  "inputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "properties": {
+      "maxResults": {
+        "format": "double",
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "query": {
+        "description": "Natural language query describing what you're looking for.",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query"
+    ],
+    "type": "object"
+  }
+}

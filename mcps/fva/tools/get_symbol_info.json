@@ -1,0 +1,23 @@
+{
+  "name": "get_symbol_info",
+  "description": "Look up a symbol by name. Returns full AST chunks with source code.",
+  "inputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "properties": {
+      "maxResults": {
+        "format": "double",
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "symbol": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "symbol"
+    ],
+    "type": "object"
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "name": "get_chunks",
+  "description": "Get AST-aware code chunks (functions, classes, methods). Provide 'path' or 'query'.",
+  "inputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "properties": {
+      "includeContent": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      },
+      "maxResults": {
+        "format": "double",
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "offset": {
+        "format": "double",
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "path": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "query": {
+        "type": [
+          "string",
+          "null"
+        ]
+      }
+    },
+    "type": "object"
+  }
+}
