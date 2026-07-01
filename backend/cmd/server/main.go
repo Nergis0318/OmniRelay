@@ -38,7 +38,7 @@ func main() {
 	apiKeyService := service.NewAPIKeyService(db)
 	usageService := service.NewUsageService(db)
 
-	proxyEngine := proxy.NewEngine(providerService, modelService, usageService)
+	proxyEngine := proxy.NewEngine(providerService, modelService, usageService, nil)
 
 	r := gin.Default()
 

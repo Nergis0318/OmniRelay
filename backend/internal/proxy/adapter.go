@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"net/http"
+	"omnirelay/internal/hub"
 	"omnirelay/internal/models"
 	"omnirelay/internal/service"
 )
@@ -24,15 +25,17 @@ type Engine struct {
 	usageService    *service.UsageService
 	httpClient      *http.Client
 	adapters        map[string]Adapter
+	hub             *hub.Hub
 }
 
-func NewEngine(ps *service.ProviderService, ms *service.ModelService, us *service.UsageService) *Engine {
+func NewEngine(ps *service.ProviderService, ms *service.ModelService, us *service.UsageService, h *hub.Hub) *Engine {
 	e := &Engine{
 		providerService: ps,
 		modelService:    ms,
 		usageService:    us,
 		httpClient:      &http.Client{Timeout: upstreamRequestTimeout},
 		adapters:        make(map[string]Adapter),
+		hub:             h,
 	}
 	e.adapters["openai"] = &OpenAIAdapter{}
 	e.adapters["lmstudio"] = &OpenAIAdapter{}

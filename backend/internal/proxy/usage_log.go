@@ -1,7 +1,9 @@
 package proxy
 
 import (
+	"encoding/json"
 	"log"
+	"omnirelay/internal/hub"
 	"omnirelay/internal/models"
 	"time"
 )
@@ -38,6 +40,7 @@ func (e *Engine) logUpstreamError(u usageContext, message string, latencyMs int6
 	entry.ErrorMessage = message
 	entry.LatencyMs = latencyMs
 	e.persistUsage(entry)
+	e.broadcastUsage(u, entry, tokenUsage{})
 }
 
 func (e *Engine) logLatencyOnly(u usageContext, latencyMs int64) {
@@ -77,4 +80,41 @@ func (e *Engine) logTokenUsage(u usageContext, t tokenUsage) {
 	entry.StartedAt = t.startedAt
 	entry.CompletedAt = t.completedAt
 	e.persistUsage(entry)
+	e.broadcastUsage(u, entry, t)
+}
+
+func (e *Engine) broadcastUsage(u usageContext, entry models.UsageLog, t tokenUsage) {
+	if e.hub == nil {
+		return
+	}
+	logData, err := json.Marshal(entry)
+	if err != nil {
+		log.Printf("failed to marshal usage log for broadcast: %v", err)
+		return
+	}
+	e.hub.Broadcast(u.userID, hub.Event{Type: "usage_log", Data: logData})
+
+	go func() {
+		stats, err := e.usageService.GetStats(u.userID)
+		if err != nil {
+			return
+		}
+		statsData := map[string]interface{}{
+			"today_cost":     stats.TodayCost,
+			"today_requests": stats.TodayRequests,
+			"today_tokens":   stats.TodayTokens,
+			"total_cost":     stats.TotalCost,
+			"total_requests": stats.TotalRequests,
+			"total_tokens":   stats.TotalTokens,
+			"rpm":            stats.RPM,
+			"tpm":            stats.TPM,
+			"avg_latency_ms": stats.AvgLatencyMs,
+		}
+		statsJSON, err := json.Marshal(statsData)
+		if err != nil {
+			log.Printf("failed to marshal stats delta for broadcast: %v", err)
+			return
+		}
+		e.hub.Broadcast(u.userID, hub.Event{Type: "stats_delta", Data: statsJSON})
+	}()
 }

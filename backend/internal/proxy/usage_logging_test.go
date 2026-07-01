@@ -72,7 +72,7 @@ func TestExecuteChatLogsUsageForAuthenticatedUser(t *testing.T) {
 	providerSvc := service.NewProviderService(db)
 	modelSvc := service.NewModelService(db)
 	usageSvc := service.NewUsageService(db)
-	engine := NewEngine(providerSvc, modelSvc, usageSvc)
+	engine := NewEngine(providerSvc, modelSvc, usageSvc, nil)
 
 	r := gin.New()
 	r.POST("/v1/chat/completions", func(c *gin.Context) {
@@ -149,7 +149,7 @@ func TestExecuteChatResolvesUserIDFromAPIKeyWhenContextMissing(t *testing.T) {
 	providerSvc := service.NewProviderService(db)
 	modelSvc := service.NewModelService(db)
 	usageSvc := service.NewUsageService(db)
-	engine := NewEngine(providerSvc, modelSvc, usageSvc)
+	engine := NewEngine(providerSvc, modelSvc, usageSvc, nil)
 
 	r := gin.New()
 	r.POST("/v1/chat/completions", func(c *gin.Context) {
@@ -224,7 +224,7 @@ func TestPathRoutedStreamingWithoutModelStillLogs(t *testing.T) {
 	providerSvc := service.NewProviderService(db)
 	modelSvc := service.NewModelService(db)
 	usageSvc := service.NewUsageService(db)
-	engine := NewEngine(providerSvc, modelSvc, usageSvc)
+	engine := NewEngine(providerSvc, modelSvc, usageSvc, nil)
 
 	r := gin.New()
 	r.POST("/:provider_key/v1/*endpoint", func(c *gin.Context) {
