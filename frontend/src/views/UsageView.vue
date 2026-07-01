@@ -60,7 +60,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from "vue";
+import { computed, onMounted, onUnmounted } from "vue";
 import { useI18n } from "vue-i18n";
 import { Line } from "vue-chartjs";
 import {
@@ -157,7 +157,14 @@ const chartOptions = computed(() => ({
   },
 }));
 
-onMounted(() => store.fetchStats());
+onMounted(() => {
+  store.fetchStats();
+  store.connect();
+});
+
+onUnmounted(() => {
+  store.disconnect();
+});
 </script>
 
 <style scoped>

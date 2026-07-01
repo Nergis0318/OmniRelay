@@ -119,7 +119,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { Line } from "vue-chartjs";
 import {
@@ -279,7 +279,14 @@ const chartOptions = {
   },
 };
 
-onMounted(() => usageStore.fetchStats());
+onMounted(() => {
+  usageStore.fetchStats();
+  usageStore.connect();
+});
+
+onUnmounted(() => {
+  usageStore.disconnect();
+});
 </script>
 
 <style scoped>

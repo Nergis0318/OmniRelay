@@ -237,10 +237,12 @@ onMounted(() => {
   checkMobile();
   window.addEventListener("resize", checkMobile);
   loadLogs();
+  store.connect();
 });
 
 onUnmounted(() => {
   window.removeEventListener("resize", checkMobile);
+  store.disconnect();
 });
 </script>
 
