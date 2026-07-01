@@ -5,11 +5,18 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
 
-var upgrader = websocket.Upgrader{
+const (
+	pingInterval = 30 * time.Second
+	pongWait     = 60 * time.Second
+	writeWait    = 10 * time.Second
+)
+
+var Upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 	CheckOrigin: func(r *http.Request) bool {
@@ -76,7 +83,7 @@ func (h *Hub) Register(userID int64) *Conn {
 	c := &Conn{
 		hub:    h,
 		userID: userID,
-		done:   make(chan struct{}, 1),
+		done:   make(chan struct{}),
 		events: make(chan []byte, 16),
 	}
 	h.connections[userID] = append(h.connections[userID], c)
@@ -107,24 +114,29 @@ func (h *Hub) Broadcast(userID int64, event Event) {
 		return
 	}
 	h.mu.Lock()
-	defer h.mu.Unlock()
 	conns := h.connections[userID]
+	var dead []*Conn
 	for _, c := range conns {
 		c.mu.Lock()
 		select {
 		case <-c.done:
 			c.mu.Unlock()
-			go h.Unregister(c)
+			dead = append(dead, c)
 			continue
 		default:
 		}
 		select {
 		case c.events <- data:
+			c.mu.Unlock()
 		default:
 			close(c.done)
-			go h.Unregister(c)
+			c.mu.Unlock()
+			dead = append(dead, c)
 		}
-		c.mu.Unlock()
+	}
+	h.mu.Unlock()
+	for _, c := range dead {
+		h.Unregister(c)
 	}
 }
 
@@ -135,6 +147,11 @@ func (c *Conn) ReadPump(conn *websocket.Conn) {
 		c.hub.Unregister(c)
 		conn.Close()
 	}()
+	conn.SetReadDeadline(time.Now().Add(pongWait))
+	conn.SetPongHandler(func(string) error {
+		conn.SetReadDeadline(time.Now().Add(pongWait))
+		return nil
+	})
 	for {
 		_, _, err := conn.ReadMessage()
 		if err != nil {
@@ -143,15 +160,25 @@ func (c *Conn) ReadPump(conn *websocket.Conn) {
 	}
 }
 
-// WritePump sends queued events to the WebSocket.
-// Returns when done channel is signaled or write fails.
+// WritePump sends queued events and periodic pings to the WebSocket.
+// Closes the connection when done is signaled or a write fails.
 func (c *Conn) WritePump(conn *websocket.Conn) {
+	ticker := time.NewTicker(pingInterval)
+	defer func() {
+		ticker.Stop()
+		conn.Close()
+	}()
 	for {
 		select {
 		case <-c.done:
 			conn.WriteMessage(websocket.CloseMessage, []byte{})
 			return
+		case <-ticker.C:
+			if err := conn.WriteControl(websocket.PingMessage, []byte{}, time.Now().Add(writeWait)); err != nil {
+				return
+			}
 		case payload := <-c.events:
+			conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if err := conn.WriteMessage(websocket.TextMessage, payload); err != nil {
 				c.once.Do(func() { close(c.done) })
 				c.hub.Unregister(c)
