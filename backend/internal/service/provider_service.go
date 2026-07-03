@@ -24,7 +24,7 @@ func NewProviderService(db *sql.DB) *ProviderService {
 
 func (s *ProviderService) List(userID int64) ([]models.Provider, error) {
 	rows, err := s.db.Query(
-		"SELECT id, provider_key, name, api_base_url, provider_type, is_active, COALESCE(user_id, 0), created_at, updated_at FROM providers WHERE (user_id = ? OR user_id IS NULL) ORDER BY created_at",
+		"SELECT id, provider_key, name, api_base_url, provider_type, is_active, show_in_model_list, COALESCE(user_id, 0), created_at, updated_at FROM providers WHERE (user_id = ? OR user_id IS NULL) ORDER BY created_at",
 		userID,
 	)
 	if err != nil {
@@ -35,7 +35,7 @@ func (s *ProviderService) List(userID int64) ([]models.Provider, error) {
 	var providers []models.Provider
 	for rows.Next() {
 		var p models.Provider
-		if err := rows.Scan(&p.ID, &p.ProviderKey, &p.Name, &p.APiBaseURL, &p.ProviderType, &p.IsActive, &p.UserID, &p.CreatedAt, &p.UpdatedAt); err != nil {
+		if err := rows.Scan(&p.ID, &p.ProviderKey, &p.Name, &p.APiBaseURL, &p.ProviderType, &p.IsActive, &p.ShowInModelList, &p.UserID, &p.CreatedAt, &p.UpdatedAt); err != nil {
 			return nil, err
 		}
 		providers = append(providers, p)
@@ -46,9 +46,9 @@ func (s *ProviderService) List(userID int64) ([]models.Provider, error) {
 func (s *ProviderService) GetByKey(providerKey string, userID int64) (*models.Provider, error) {
 	var p models.Provider
 	err := s.db.QueryRow(
-		"SELECT id, provider_key, name, api_base_url, api_key_encrypted, provider_type, is_active, COALESCE(user_id, 0), created_at, updated_at FROM providers WHERE provider_key = ? AND is_active = 1 AND (user_id = ? OR user_id IS NULL)",
+		"SELECT id, provider_key, name, api_base_url, api_key_encrypted, provider_type, is_active, show_in_model_list, COALESCE(user_id, 0), created_at, updated_at FROM providers WHERE provider_key = ? AND is_active = 1 AND (user_id = ? OR user_id IS NULL)",
 		providerKey, userID,
-	).Scan(&p.ID, &p.ProviderKey, &p.Name, &p.APiBaseURL, &p.APIKeyEncrypted, &p.ProviderType, &p.IsActive, &p.UserID, &p.CreatedAt, &p.UpdatedAt)
+	).Scan(&p.ID, &p.ProviderKey, &p.Name, &p.APiBaseURL, &p.APIKeyEncrypted, &p.ProviderType, &p.IsActive, &p.ShowInModelList, &p.UserID, &p.CreatedAt, &p.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -58,9 +58,9 @@ func (s *ProviderService) GetByKey(providerKey string, userID int64) (*models.Pr
 func (s *ProviderService) GetByID(id int64, userID int64) (*models.Provider, error) {
 	var p models.Provider
 	err := s.db.QueryRow(
-		"SELECT id, provider_key, name, api_base_url, api_key_encrypted, provider_type, is_active, COALESCE(user_id, 0), created_at, updated_at FROM providers WHERE id = ? AND (user_id = ? OR user_id IS NULL)",
+		"SELECT id, provider_key, name, api_base_url, api_key_encrypted, provider_type, is_active, show_in_model_list, COALESCE(user_id, 0), created_at, updated_at FROM providers WHERE id = ? AND (user_id = ? OR user_id IS NULL)",
 		id, userID,
-	).Scan(&p.ID, &p.ProviderKey, &p.Name, &p.APiBaseURL, &p.APIKeyEncrypted, &p.ProviderType, &p.IsActive, &p.UserID, &p.CreatedAt, &p.UpdatedAt)
+	).Scan(&p.ID, &p.ProviderKey, &p.Name, &p.APiBaseURL, &p.APIKeyEncrypted, &p.ProviderType, &p.IsActive, &p.ShowInModelList, &p.UserID, &p.CreatedAt, &p.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -70,21 +70,46 @@ func (s *ProviderService) GetByID(id int64, userID int64) (*models.Provider, err
 func (s *ProviderService) Create(req models.CreateProviderRequest, userID int64) (*models.Provider, error) {
 	cfg := config.Load()
 
-	encrypted, err := crypto.Encrypt(req.APIKey, cfg.EncryptKey)
-	if err != nil {
-		return nil, fmt.Errorf("failed to encrypt API key: %w", err)
+	var encrypted string
+	if req.ProviderType == "custom" {
+		encrypted = ""
+	} else {
+		if req.APIKey == "" || req.APiBaseURL == "" {
+			return nil, errors.New("api_key and api_base_url are required for non-custom providers")
+		}
+		var err error
+		encrypted, err = crypto.Encrypt(req.APIKey, cfg.EncryptKey)
+		if err != nil {
+			return nil, fmt.Errorf("failed to encrypt API key: %w", err)
+		}
+	}
+
+	showInModelList := true
+	if req.ShowInModelList != nil {
+		showInModelList = *req.ShowInModelList
 	}
 
 	result, err := s.db.Exec(
-		"INSERT INTO providers (provider_key, name, api_base_url, api_key_encrypted, provider_type, user_id) VALUES (?, ?, ?, ?, ?, ?)",
-		req.ProviderKey, req.Name, req.APiBaseURL, encrypted, req.ProviderType, userID,
+		"INSERT INTO providers (provider_key, name, api_base_url, api_key_encrypted, provider_type, show_in_model_list, user_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+		req.ProviderKey, req.Name, req.APiBaseURL, encrypted, req.ProviderType, showInModelList, userID,
 	)
 	if err != nil {
 		return nil, errors.New("provider_key already exists")
 	}
 
 	id, _ := result.LastInsertId()
-	return s.GetByID(id, userID)
+	provider, err := s.GetByID(id, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	if req.ProviderType == "custom" && len(req.SourceModels) > 0 {
+		if err := s.importSourceModels(provider, req.SourceModels, userID); err != nil {
+			return nil, err
+		}
+	}
+
+	return provider, nil
 }
 
 func (s *ProviderService) Update(id int64, userID int64, req models.UpdateProviderRequest) (*models.Provider, error) {
@@ -97,6 +122,7 @@ func (s *ProviderService) Update(id int64, userID int64, req models.UpdateProvid
 	apiBaseURL := existing.APiBaseURL
 	providerType := existing.ProviderType
 	isActive := existing.IsActive
+	showInModelList := existing.ShowInModelList
 
 	if req.Name != nil {
 		name = *req.Name
@@ -110,6 +136,9 @@ func (s *ProviderService) Update(id int64, userID int64, req models.UpdateProvid
 	if req.IsActive != nil {
 		isActive = *req.IsActive
 	}
+	if req.ShowInModelList != nil {
+		showInModelList = *req.ShowInModelList
+	}
 
 	if req.APIKey != nil && *req.APIKey != "" {
 		cfg := config.Load()
@@ -118,18 +147,29 @@ func (s *ProviderService) Update(id int64, userID int64, req models.UpdateProvid
 			return nil, err
 		}
 		_, err = s.db.Exec(
-			"UPDATE providers SET name=?, api_base_url=?, api_key_encrypted=?, provider_type=?, is_active=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=?",
-			name, apiBaseURL, encrypted, providerType, isActive, id, userID,
+			"UPDATE providers SET name=?, api_base_url=?, api_key_encrypted=?, provider_type=?, is_active=?, show_in_model_list=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=?",
+			name, apiBaseURL, encrypted, providerType, isActive, showInModelList, id, userID,
 		)
 		if err != nil {
 			return nil, err
 		}
 	} else {
 		_, err = s.db.Exec(
-			"UPDATE providers SET name=?, api_base_url=?, provider_type=?, is_active=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=?",
-			name, apiBaseURL, providerType, isActive, id, userID,
+			"UPDATE providers SET name=?, api_base_url=?, provider_type=?, is_active=?, show_in_model_list=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=?",
+			name, apiBaseURL, providerType, isActive, showInModelList, id, userID,
 		)
 		if err != nil {
+			return nil, err
+		}
+	}
+
+	if providerType == "custom" && req.SourceModels != nil {
+		_, err = s.db.Exec("DELETE FROM models WHERE provider_id = ? AND user_id = ?", id, userID)
+		if err != nil {
+			return nil, err
+		}
+		provider, _ := s.GetByID(id, userID)
+		if err := s.importSourceModels(provider, req.SourceModels, userID); err != nil {
 			return nil, err
 		}
 	}
@@ -151,6 +191,42 @@ func (s *ProviderService) DecryptAPIKey(encrypted string) (string, error) {
 	return crypto.Decrypt(encrypted, cfg.EncryptKey)
 }
 
+func (s *ProviderService) importSourceModels(customProvider *models.Provider, sourceModels []string, userID int64) error {
+	for _, fullID := range sourceModels {
+		parts := strings.SplitN(fullID, "/", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		sourceProviderKey := parts[0]
+		sourceModelID := parts[1]
+
+		var sourceModel models.Model
+		err := s.db.QueryRow(
+			`SELECT m.id, m.provider_id, m.model_id, COALESCE(m.display_name,''), m.provider_key,
+				m.is_manual, m.source_provider_key, m.input_price_per_1mtok, m.output_price_per_1mtok, m.cache_write_5m_price_per_1mtok, m.cache_write_1h_price_per_1mtok, m.cache_read_price_per_1mtok, m.context_window, COALESCE(m.user_id, 0), m.created_at
+			FROM models m JOIN providers p ON m.provider_id = p.id
+			WHERE m.provider_key = ? AND m.model_id = ? AND p.is_active = 1 AND (m.user_id = ? OR m.user_id IS NULL)`,
+			sourceProviderKey, sourceModelID, userID,
+		).Scan(&sourceModel.ID, &sourceModel.ProviderID, &sourceModel.ModelID, &sourceModel.DisplayName, &sourceModel.ProviderKey,
+			&sourceModel.IsManual, &sourceModel.SourceProviderKey, &sourceModel.InputPricePer1MTok, &sourceModel.OutputPricePer1MTok, &sourceModel.CacheWrite5mPricePer1MTok, &sourceModel.CacheWrite1hPricePer1MTok, &sourceModel.CacheReadPricePer1MTok, &sourceModel.ContextWindow, &sourceModel.UserID, &sourceModel.CreatedAt)
+		if err != nil {
+			continue
+		}
+
+		_, err = s.db.Exec(
+			"INSERT INTO models (provider_id, model_id, display_name, provider_key, is_manual, source_provider_key, input_price_per_1mtok, output_price_per_1mtok, cache_write_5m_price_per_1mtok, cache_write_1h_price_per_1mtok, cache_read_price_per_1mtok, context_window, user_id) VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?)",
+			customProvider.ID, sourceModelID, sourceModelID, customProvider.ProviderKey, sourceProviderKey,
+			sourceModel.InputPricePer1MTok, sourceModel.OutputPricePer1MTok,
+			sourceModel.CacheWrite5mPricePer1MTok, sourceModel.CacheWrite1hPricePer1MTok,
+			sourceModel.CacheReadPricePer1MTok, sourceModel.ContextWindow, userID,
+		)
+		if err != nil {
+			continue
+		}
+	}
+	return nil
+}
+
 type openaiModelListResponse struct {
 	Data []struct {
 		ID string `json:"id"`
@@ -158,6 +234,10 @@ type openaiModelListResponse struct {
 }
 
 func (s *ProviderService) FetchModelsFromProvider(provider *models.Provider) ([]string, error) {
+	if provider.ProviderType == "custom" {
+		return nil, nil
+	}
+
 	apiKey, err := s.DecryptAPIKey(provider.APIKeyEncrypted)
 	if err != nil {
 		return nil, err
