@@ -50,6 +50,7 @@ docker compose up -d
 The Dockerfile builds a **single container** with Caddy + the Go backend. `compose.yml` at the repo root pulls `ghcr.io/nergis0318/omnirelay:latest` (no local build) and mounts a named volume for the SQLite DB. Backend and Caddy run via shell entrypoint: `/app/omnirelay & caddy run --config /etc/caddy/Caddyfile --adapter caddyfile`.
 
 Environment in container:
+
 - `LISTEN_ADDR=:8080` — backend listen address
 - `DATABASE_PATH=/app/data/omnirelay.db` — SQLite DB location
 
@@ -93,6 +94,7 @@ This is the most error-prone area of the codebase. When modifying proxy code, pa
 ### OpenAI does NOT include usage in streaming by default
 
 OpenAI API omits `usage` from streaming chunks unless `stream_options: { "include_usage": true }` is in the request body. The proxy must inject this option for all OpenAI-compatible providers (openai, lmstudio, ollama) when `stream: true`. This is handled in:
+
 - `executeChat()` (proxy.go) — for `/v1/chat/completions`
 - `executeMessages()` (proxy.go) — for `/v1/messages`
 - `handlePathRoutedProxy()` (proxy.go) — for path-routed requests like `/openai/v1/chat/completions`
@@ -101,11 +103,11 @@ The helper `isOpenAICompat(providerType string) bool` (proxy.go) gates this inje
 
 ### Cache token field names differ per provider
 
-| Provider  | Cache Write (input cache creation)     | Cache Read (cache hits)              |
-|-----------|----------------------------------------|--------------------------------------|
-| Anthropic | `usage.cache_creation_input_tokens`     | `usage.cache_read_input_tokens`      |
-| OpenAI    | — (not applicable)                     | `usage.prompt_tokens_details.cached_tokens` |
-| Gemini    | — (not applicable)                     | `usageMetadata.cached_content_token_count` |
+| Provider  | Cache Write (input cache creation)  | Cache Read (cache hits)                     |
+| --------- | ----------------------------------- | ------------------------------------------- |
+| Anthropic | `usage.cache_creation_input_tokens` | `usage.cache_read_input_tokens`             |
+| OpenAI    | — (not applicable)                  | `usage.prompt_tokens_details.cached_tokens` |
+| Gemini    | — (not applicable)                  | `usageMetadata.cached_content_token_count`  |
 
 For **non-streaming**: `extractCacheTokens()` in proxy.go handles the field-name dispatch.
 
@@ -130,6 +132,7 @@ Default (OpenAI/etc): `extractCacheTokens(usage)` (reads all cache field formats
 ### Path-routed proxy (`handlePathRoutedProxy`)
 
 This handler processes requests like `/openai/v1/chat/completions` where the provider is in the URL path rather than the model ID. Also handles requests where `dbModel == nil` (model not found in DB). Key gotchas:
+
 - Token extraction and logging happens in the final `else` block (not gated by `dbModel != nil`; cost is only calculated when `dbModel != nil`)
 - Must inject `stream_options: { "include_usage": true }` before marshaling when streaming + OpenAI-compatible
 - Must dispatch to `handleStreamResponse` or `handleMessagesStreamResponse` when a known adapter exists, only falling back to `handleRawStreamResponse` for truly unknown formats
@@ -138,6 +141,7 @@ This handler processes requests like `/openai/v1/chat/completions` where the pro
 ## Testing
 
 Go test files:
+
 - `internal/proxy/openai_adapter_test.go` — ParseStreamChunk, ParseMessagesStreamChunk, header forwarding
 - `internal/proxy/anthropic_adapter_test.go` — Anthropic adapter tests
 - `internal/proxy/gemini_adapter_test.go` — Gemini adapter tests

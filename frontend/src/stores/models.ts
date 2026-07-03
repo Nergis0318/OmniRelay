@@ -31,7 +31,8 @@ export const useModelsStore = defineStore("models", () => {
       const { data } = await api.get(`/models${params}`);
       models.value = data.models;
     } catch (err: any) {
-      error.value = err?.response?.data?.error || err?.message || "Failed to load models";
+      error.value =
+        err?.response?.data?.error || err?.message || "Failed to load models";
     } finally {
       loading.value = false;
     }
@@ -53,7 +54,8 @@ export const useModelsStore = defineStore("models", () => {
       await api.post("/models", payload);
       await fetch();
     } catch (err: any) {
-      error.value = err?.response?.data?.error || err?.message || "Failed to create model";
+      error.value =
+        err?.response?.data?.error || err?.message || "Failed to create model";
       throw err;
     }
   }
@@ -64,7 +66,8 @@ export const useModelsStore = defineStore("models", () => {
       await api.put(`/models/${id}`, payload);
       await fetch();
     } catch (err: any) {
-      error.value = err?.response?.data?.error || err?.message || "Failed to update model";
+      error.value =
+        err?.response?.data?.error || err?.message || "Failed to update model";
       throw err;
     }
   }
@@ -75,7 +78,8 @@ export const useModelsStore = defineStore("models", () => {
       await api.delete(`/models/${id}`);
       await fetch();
     } catch (err: any) {
-      error.value = err?.response?.data?.error || err?.message || "Failed to delete model";
+      error.value =
+        err?.response?.data?.error || err?.message || "Failed to delete model";
       throw err;
     }
   }

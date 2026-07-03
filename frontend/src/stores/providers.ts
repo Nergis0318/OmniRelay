@@ -48,7 +48,10 @@ export const useProvidersStore = defineStore("providers", () => {
       const { data } = await api.get("/providers");
       providers.value = data.providers;
     } catch (err: any) {
-      error.value = err?.response?.data?.error || err?.message || "Failed to load providers";
+      error.value =
+        err?.response?.data?.error ||
+        err?.message ||
+        "Failed to load providers";
     } finally {
       loading.value = false;
     }
@@ -61,7 +64,10 @@ export const useProvidersStore = defineStore("providers", () => {
       await fetch();
       return data.provider;
     } catch (err: any) {
-      error.value = err?.response?.data?.error || err?.message || "Failed to create provider";
+      error.value =
+        err?.response?.data?.error ||
+        err?.message ||
+        "Failed to create provider";
       throw err;
     }
   }
@@ -72,7 +78,10 @@ export const useProvidersStore = defineStore("providers", () => {
       await api.put(`/providers/${id}`, payload);
       await fetch();
     } catch (err: any) {
-      error.value = err?.response?.data?.error || err?.message || "Failed to update provider";
+      error.value =
+        err?.response?.data?.error ||
+        err?.message ||
+        "Failed to update provider";
       throw err;
     }
   }
@@ -83,7 +92,10 @@ export const useProvidersStore = defineStore("providers", () => {
       await api.delete(`/providers/${id}`);
       await fetch();
     } catch (err: any) {
-      error.value = err?.response?.data?.error || err?.message || "Failed to delete provider";
+      error.value =
+        err?.response?.data?.error ||
+        err?.message ||
+        "Failed to delete provider";
       throw err;
     }
   }
@@ -93,7 +105,8 @@ export const useProvidersStore = defineStore("providers", () => {
     try {
       return await api.post(`/providers/${id}/sync`);
     } catch (err: any) {
-      error.value = err?.response?.data?.error || err?.message || "Failed to sync models";
+      error.value =
+        err?.response?.data?.error || err?.message || "Failed to sync models";
       throw err;
     }
   }
@@ -111,5 +124,17 @@ export const useProvidersStore = defineStore("providers", () => {
     error.value = null;
   }
 
-  return { providers, loading, error, sourceModels, fetch, fetchSourceModels, create, update, remove, syncModels, clearError };
+  return {
+    providers,
+    loading,
+    error,
+    sourceModels,
+    fetch,
+    fetchSourceModels,
+    create,
+    update,
+    remove,
+    syncModels,
+    clearError,
+  };
 });

@@ -108,7 +108,11 @@
       <v-icon size="20">{{ item.icon }}</v-icon>
       <span class="mobile-tab__label">{{ $t(item.i18nKey) }}</span>
     </router-link>
-    <button class="mobile-tab mobile-tab--logout" @click="handleLogout" :aria-label="$t('common.signOut')">
+    <button
+      class="mobile-tab mobile-tab--logout"
+      @click="handleLogout"
+      :aria-label="$t('common.signOut')"
+    >
       <v-icon size="20">mdi-logout</v-icon>
       <span class="mobile-tab__label">{{ $t("common.signOut") }}</span>
     </button>
@@ -440,6 +444,8 @@ function handleLogout() {
 }
 
 .main--mobile .v-container {
-  padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px) + 16px) !important;
+  padding-bottom: calc(
+    56px + env(safe-area-inset-bottom, 0px) + 16px
+  ) !important;
 }
 </style>

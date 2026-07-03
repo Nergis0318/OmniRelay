@@ -48,14 +48,14 @@ Docker 배포에서는 Caddy가 `:80`에서 프론트엔드를 제공하고 `/ad
 
 ## 기술 스택
 
-| 영역 | 기술 |
-| --- | --- |
-| Backend | Go 1.25, Gin |
-| Database | SQLite, `modernc.org/sqlite` |
-| Frontend | Vue 3, Vuetify 3, Pinia |
-| Charts | Chart.js, vue-chartjs |
-| Runtime | Caddy 2 Alpine |
-| Package Manager | Bun |
+| 영역            | 기술                         |
+| --------------- | ---------------------------- |
+| Backend         | Go 1.25, Gin                 |
+| Database        | SQLite, `modernc.org/sqlite` |
+| Frontend        | Vue 3, Vuetify 3, Pinia      |
+| Charts          | Chart.js, vue-chartjs        |
+| Runtime         | Caddy 2 Alpine               |
+| Package Manager | Bun                          |
 
 ## 빠른 시작
 
@@ -112,12 +112,12 @@ docker run --rm -p 80:80 --env-file .env -v omnirelay-data:/app/data omnirelay
 
 ## 환경 변수
 
-| 변수 | 기본값 | 설명 |
-| --- | --- | --- |
-| `LISTEN_ADDR` | `:8080` | Go 백엔드 listen 주소 |
-| `DATABASE_PATH` | `data/omnirelay.db` | SQLite DB 경로 |
-| `JWT_SECRET` | 개발용 기본값 | 대시보드 JWT 서명 키 |
-| `ENCRYPT_KEY` | 개발용 기본값 | 저장된 제공자 API 키 암호화용 32바이트 hex 키 |
+| 변수            | 기본값              | 설명                                          |
+| --------------- | ------------------- | --------------------------------------------- |
+| `LISTEN_ADDR`   | `:8080`             | Go 백엔드 listen 주소                         |
+| `DATABASE_PATH` | `data/omnirelay.db` | SQLite DB 경로                                |
+| `JWT_SECRET`    | 개발용 기본값       | 대시보드 JWT 서명 키                          |
+| `ENCRYPT_KEY`   | 개발용 기본값       | 저장된 제공자 API 키 암호화용 32바이트 hex 키 |
 
 프로덕션에서는 반드시 `JWT_SECRET`과 `ENCRYPT_KEY`를 강한 값으로 설정하세요. `ENCRYPT_KEY`는 64자리 hex 문자열이어야 합니다.
 
@@ -132,13 +132,13 @@ docker run --rm -p 80:80 --env-file .env -v omnirelay-data:/app/data omnirelay
 
 ## 제공자 설정 예시
 
-| Provider Type | 일반적인 Base URL | 비고 |
-| --- | --- | --- |
-| `openai` | `https://api.openai.com/v1` | OpenAI 호환 응답 형식 |
-| `anthropic` | `https://api.anthropic.com` | `x-api-key`, `anthropic-version` 사용 |
-| `gemini` | `https://generativelanguage.googleapis.com/v1beta` | Gemini native API로 변환 |
-| `ollama` | `http://localhost:11434/v1` | 모델 동기화는 `/api/tags` 사용 |
-| `lmstudio` | `http://localhost:1234/v1` | OpenAI 호환 로컬 서버 |
+| Provider Type | 일반적인 Base URL                                  | 비고                                  |
+| ------------- | -------------------------------------------------- | ------------------------------------- |
+| `openai`      | `https://api.openai.com/v1`                        | OpenAI 호환 응답 형식                 |
+| `anthropic`   | `https://api.anthropic.com`                        | `x-api-key`, `anthropic-version` 사용 |
+| `gemini`      | `https://generativelanguage.googleapis.com/v1beta` | Gemini native API로 변환              |
+| `ollama`      | `http://localhost:11434/v1`                        | 모델 동기화는 `/api/tags` 사용        |
+| `lmstudio`    | `http://localhost:1234/v1`                         | OpenAI 호환 로컬 서버                 |
 
 `provider_key`는 모델 ID와 경로 라우팅에 사용되는 짧은 식별자입니다. 예를 들어 `provider_key`가 `openai`이고 모델이 `gpt-4o`라면 OmniRelay 모델 ID는 `openai/gpt-4o`입니다.
 
@@ -230,13 +230,13 @@ GET  /ollama/api/tags
 
 모델은 자동 동기화 또는 수동 등록으로 관리합니다. 가격은 USD 기준 1M tokens 단위입니다.
 
-| 필드 | 설명 |
-| --- | --- |
-| Input Price | 기본 입력 토큰 단가 |
-| Output Price | 기본 출력 토큰 단가 |
-| 5m Cache Write | 5분 캐시 생성 토큰 단가 |
+| 필드           | 설명                      |
+| -------------- | ------------------------- |
+| Input Price    | 기본 입력 토큰 단가       |
+| Output Price   | 기본 출력 토큰 단가       |
+| 5m Cache Write | 5분 캐시 생성 토큰 단가   |
 | 1h Cache Write | 1시간 캐시 생성 토큰 단가 |
-| Cache Read | 캐시 읽기 토큰 단가 |
+| Cache Read     | 캐시 읽기 토큰 단가       |
 
 비용 계산식은 다음과 같습니다.
 

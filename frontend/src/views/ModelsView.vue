@@ -93,18 +93,40 @@
         v-for="m in store.models"
         :key="m.id"
         :items="[
-          { label: $t('models.model'), value: m.provider_key + '/' + m.model_id },
+          {
+            label: $t('models.model'),
+            value: m.provider_key + '/' + m.model_id,
+          },
           { label: $t('models.provider'), value: m.provider_key },
-          { label: $t('models.source'), value: m.is_manual ? $t('models.manual') : $t('models.auto') },
-          { label: $t('models.pricing'), value: '$' + (m.input_price_per_1mtok ?? 0) + ' / $' + (m.output_price_per_1mtok ?? 0) },
-          { label: $t('models.context'), value: m.context_window ? (m.context_window / 1000).toFixed(0) + 'k' : '—' },
+          {
+            label: $t('models.source'),
+            value: m.is_manual ? $t('models.manual') : $t('models.auto'),
+          },
+          {
+            label: $t('models.pricing'),
+            value:
+              '$' +
+              (m.input_price_per_1mtok ?? 0) +
+              ' / $' +
+              (m.output_price_per_1mtok ?? 0),
+          },
+          {
+            label: $t('models.context'),
+            value: m.context_window
+              ? (m.context_window / 1000).toFixed(0) + 'k'
+              : '—',
+          },
         ]"
       >
         <template #actions>
           <button class="row-btn" title="Edit" @click="openEditDialog(m)">
             <v-icon size="15">mdi-pencil-outline</v-icon>
           </button>
-          <button class="row-btn row-btn--danger" title="Delete" @click="handleDelete(m.id)">
+          <button
+            class="row-btn row-btn--danger"
+            title="Delete"
+            @click="handleDelete(m.id)"
+          >
             <v-icon size="15">mdi-delete-outline</v-icon>
           </button>
         </template>
@@ -115,7 +137,11 @@
       </div>
     </div>
 
-    <v-dialog v-model="dialog" :max-width="isMobile ? undefined : 500" :fullscreen="isMobile">
+    <v-dialog
+      v-model="dialog"
+      :max-width="isMobile ? undefined : 500"
+      :fullscreen="isMobile"
+    >
       <div class="dialog-card">
         <div class="dialog-header">
           <h2 class="dialog-title">

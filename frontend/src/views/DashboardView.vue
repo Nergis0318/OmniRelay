@@ -16,37 +16,62 @@
           <span class="stat-card__label">{{ $t("dashboard.todayCost") }}</span>
         </div>
         <div class="stat-card__value">${{ todayCost.toFixed(4) }}</div>
-        <div class="stat-card__sub">{{ $t("dashboard.total") }}: ${{ (stats?.total_cost ?? 0).toFixed(4) }}</div>
+        <div class="stat-card__sub">
+          {{ $t("dashboard.total") }}: ${{
+            (stats?.total_cost ?? 0).toFixed(4)
+          }}
+        </div>
         <div class="stat-card__bar">
-          <div class="stat-card__bar-fill" :style="{ background: '#e8a020', width: todayCostBarPct + '%' }" />
+          <div
+            class="stat-card__bar-fill"
+            :style="{ background: '#e8a020', width: todayCostBarPct + '%' }"
+          />
         </div>
       </div>
 
       <div class="stat-card" style="--accent: #2ec4b6">
         <div class="stat-card__top">
-          <span class="stat-card__label">{{ $t("dashboard.todayRequests") }}</span>
+          <span class="stat-card__label">{{
+            $t("dashboard.todayRequests")
+          }}</span>
         </div>
         <div class="stat-card__value">{{ todayRequests.toLocaleString() }}</div>
-        <div class="stat-card__sub">{{ $t("dashboard.total") }}: {{ (stats?.total_requests ?? 0).toLocaleString() }}</div>
+        <div class="stat-card__sub">
+          {{ $t("dashboard.total") }}:
+          {{ (stats?.total_requests ?? 0).toLocaleString() }}
+        </div>
         <div class="stat-card__bar">
-          <div class="stat-card__bar-fill" :style="{ background: '#2ec4b6', width: todayRequestsBarPct + '%' }" />
+          <div
+            class="stat-card__bar-fill"
+            :style="{ background: '#2ec4b6', width: todayRequestsBarPct + '%' }"
+          />
         </div>
       </div>
 
       <div class="stat-card" style="--accent: #7b61ff">
         <div class="stat-card__top">
-          <span class="stat-card__label">{{ $t("dashboard.todayTokens") }}</span>
+          <span class="stat-card__label">{{
+            $t("dashboard.todayTokens")
+          }}</span>
         </div>
         <div class="stat-card__value">{{ todayTokens.toLocaleString() }}</div>
-        <div class="stat-card__sub">{{ $t("dashboard.total") }}: {{ (stats?.total_tokens ?? 0).toLocaleString() }}</div>
+        <div class="stat-card__sub">
+          {{ $t("dashboard.total") }}:
+          {{ (stats?.total_tokens ?? 0).toLocaleString() }}
+        </div>
         <div class="stat-card__bar">
-          <div class="stat-card__bar-fill" :style="{ background: '#7b61ff', width: todayTokensBarPct + '%' }" />
+          <div
+            class="stat-card__bar-fill"
+            :style="{ background: '#7b61ff', width: todayTokensBarPct + '%' }"
+          />
         </div>
       </div>
 
       <div class="stat-card" style="--accent: #ff5757">
         <div class="stat-card__top">
-          <span class="stat-card__label">{{ $t("dashboard.performance") }}</span>
+          <span class="stat-card__label">{{
+            $t("dashboard.performance")
+          }}</span>
         </div>
         <div class="stat-card__value stat-card__value--dual">
           <span class="perf-rpm">RPM: {{ rpm.toFixed(0) }}</span>
@@ -54,21 +79,33 @@
         </div>
         <div class="stat-card__sub">&nbsp;</div>
         <div class="stat-card__bar">
-          <div class="stat-card__bar-fill" :style="{ background: '#ff5757', width: perfBarPct + '%' }" />
+          <div
+            class="stat-card__bar-fill"
+            :style="{ background: '#ff5757', width: perfBarPct + '%' }"
+          />
         </div>
       </div>
 
       <div class="stat-card" style="--accent: #e8a020">
         <div class="stat-card__top">
           <span class="stat-card__label">{{ $t("dashboard.avgLatency") }}</span>
-          <div class="stat-card__icon-wrap" :style="{ '--accent': latencySec > 2 ? '#ff5757' : '#e8a020' }">
+          <div
+            class="stat-card__icon-wrap"
+            :style="{ '--accent': latencySec > 2 ? '#ff5757' : '#e8a020' }"
+          >
             <v-icon size="16">mdi-speedometer</v-icon>
           </div>
         </div>
         <div class="stat-card__value">{{ latencySec.toFixed(2) }} s</div>
         <div class="stat-card__sub">&nbsp;</div>
         <div class="stat-card__bar">
-          <div class="stat-card__bar-fill" :style="{ background: latencySec > 2 ? '#ff5757' : '#e8a020', width: latencyBarPct + '%' }" />
+          <div
+            class="stat-card__bar-fill"
+            :style="{
+              background: latencySec > 2 ? '#ff5757' : '#e8a020',
+              width: latencyBarPct + '%',
+            }"
+          />
         </div>
       </div>
     </div>
@@ -182,7 +219,9 @@ const todayTokensBarPct = computed(() => {
   return total > 0 ? Math.min(100, (todayTokens.value / total) * 100) : 0;
 });
 const perfBarPct = computed(() => Math.min(100, (rpm.value / 1000) * 100));
-const latencyBarPct = computed(() => Math.min(100, (latency.value / 5000) * 100));
+const latencyBarPct = computed(() =>
+  Math.min(100, (latency.value / 5000) * 100),
+);
 
 const infoRows = computed(() => [
   {

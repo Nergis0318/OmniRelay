@@ -75,7 +75,12 @@
           { label: $t('providers.key'), value: p.provider_key },
           { label: $t('providers.name'), value: p.name },
           { label: $t('providers.type'), value: p.provider_type },
-          { label: $t('providers.status'), value: p.is_active ? $t('providers.active') : $t('providers.inactive') },
+          {
+            label: $t('providers.status'),
+            value: p.is_active
+              ? $t('providers.active')
+              : $t('providers.inactive'),
+          },
         ]"
       >
         <template #actions>
@@ -85,7 +90,11 @@
           <button class="row-btn" title="Sync Models" @click="handleSync(p.id)">
             <v-icon size="15">mdi-sync</v-icon>
           </button>
-          <button class="row-btn row-btn--danger" title="Delete" @click="handleDelete(p.id)">
+          <button
+            class="row-btn row-btn--danger"
+            title="Delete"
+            @click="handleDelete(p.id)"
+          >
             <v-icon size="15">mdi-delete-outline</v-icon>
           </button>
         </template>
@@ -97,7 +106,11 @@
     </div>
 
     <!-- Dialog -->
-    <v-dialog v-model="dialog" :max-width="isMobile ? undefined : 520" :fullscreen="isMobile">
+    <v-dialog
+      v-model="dialog"
+      :max-width="isMobile ? undefined : 520"
+      :fullscreen="isMobile"
+    >
       <div class="dialog-card">
         <div class="dialog-header">
           <h2 class="dialog-title">
@@ -158,7 +171,9 @@
             </select>
           </div>
           <div v-if="form.provider_type === 'custom'" class="field-group">
-            <label class="field-label">{{ $t("providers.sourceModels") }}</label>
+            <label class="field-label">{{
+              $t("providers.sourceModels")
+            }}</label>
             <p class="field-hint">{{ $t("providers.selectModelsHint") }}</p>
             <div class="source-models-list">
               <div
@@ -168,8 +183,12 @@
               >
                 <div class="source-model-group-header">
                   <span class="source-model-group-name">{{ group.name }}</span>
-                  <span class="source-model-group-type">{{ group.provider_type }}</span>
-                  <span class="source-model-group-key">{{ group.provider_key }}</span>
+                  <span class="source-model-group-type">{{
+                    group.provider_type
+                  }}</span>
+                  <span class="source-model-group-key">{{
+                    group.provider_key
+                  }}</span>
                 </div>
                 <div
                   v-for="model in group.models"
@@ -187,15 +206,24 @@
                   </label>
                 </div>
               </div>
-              <div v-if="!store.sourceModels.length" class="empty-source-models">
+              <div
+                v-if="!store.sourceModels.length"
+                class="empty-source-models"
+              >
                 {{ $t("providers.noSourceModels") }}
               </div>
             </div>
           </div>
           <label class="checkbox-row">
-            <input type="checkbox" v-model="form.show_in_model_list" class="checkbox" />
+            <input
+              type="checkbox"
+              v-model="form.show_in_model_list"
+              class="checkbox"
+            />
             <div>
-              <span class="checkbox-label">{{ $t("providers.showInModelList") }}</span>
+              <span class="checkbox-label">{{
+                $t("providers.showInModelList")
+              }}</span>
               <span class="checkbox-hint">{{
                 $t("providers.showInModelListHint")
               }}</span>
@@ -264,7 +292,14 @@ const editing = ref<any>(null);
 const saving = ref(false);
 const dialogError = ref("");
 const syncResult = ref("");
-const providerTypes = ["custom", "openai", "anthropic", "lmstudio", "ollama", "gemini"];
+const providerTypes = [
+  "custom",
+  "openai",
+  "anthropic",
+  "lmstudio",
+  "ollama",
+  "gemini",
+];
 
 const form = ref({
   provider_key: "",
@@ -328,7 +363,7 @@ async function handleSave() {
       // the model list unless explicitly managed via the Models page.
       const { source_models: _omit, ...rest } = form.value;
       await store.update(editing.value.id, rest);
-      if (form.value.auto_sync && form.value.provider_type !== 'custom') {
+      if (form.value.auto_sync && form.value.provider_type !== "custom") {
         const { data } = await store.syncModels(editing.value.id);
         syncResult.value = t("providers.syncedModels", {
           count: data.model_count,
@@ -336,7 +371,7 @@ async function handleSave() {
       }
     } else {
       const created = await store.create(form.value);
-      if (form.value.auto_sync && form.value.provider_type !== 'custom') {
+      if (form.value.auto_sync && form.value.provider_type !== "custom") {
         const { data } = await store.syncModels(created.id);
         syncResult.value = t("providers.syncedModels", {
           count: data.model_count,
@@ -365,7 +400,6 @@ async function handleDelete(id: number) {
   if (!confirm(t("providers.deleteConfirm"))) return;
   await store.remove(id);
 }
-
 </script>
 
 <style scoped>

@@ -36,7 +36,8 @@ export const useAuthStore = defineStore("auth", () => {
       const { data } = await api.post("/auth/login", { email, password });
       setSession(data.token, data.user);
     } catch (err: any) {
-      error.value = err?.response?.data?.error || err?.message || "Login failed";
+      error.value =
+        err?.response?.data?.error || err?.message || "Login failed";
       throw err;
     } finally {
       loading.value = false;
@@ -50,7 +51,8 @@ export const useAuthStore = defineStore("auth", () => {
       await api.post("/auth/register", { username, email, password });
       await login(email, password);
     } catch (err: any) {
-      error.value = err?.response?.data?.error || err?.message || "Registration failed";
+      error.value =
+        err?.response?.data?.error || err?.message || "Registration failed";
       throw err;
     } finally {
       loading.value = false;
@@ -61,5 +63,15 @@ export const useAuthStore = defineStore("auth", () => {
     error.value = null;
   }
 
-  return { token, user, error, loading, isLoggedIn, login, register, logout, clearError };
+  return {
+    token,
+    user,
+    error,
+    loading,
+    isLoggedIn,
+    login,
+    register,
+    logout,
+    clearError,
+  };
 });

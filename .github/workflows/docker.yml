@@ -87,4 +87,3 @@ jobs:
           docker buildx imagetools create -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:amd64 \
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:arm64
-            

@@ -25,20 +25,32 @@ export const useApiKeysStore = defineStore("apikeys", () => {
       const { data } = await api.get("/api-keys");
       apiKeys.value = data.api_keys;
     } catch (err: any) {
-      error.value = err?.response?.data?.error || err?.message || "Failed to load API keys";
+      error.value =
+        err?.response?.data?.error || err?.message || "Failed to load API keys";
     } finally {
       loading.value = false;
     }
   }
 
-  async function create(name: string, rateLimitRpm: number, totalTokenLimit: number = 0) {
+  async function create(
+    name: string,
+    rateLimitRpm: number,
+    totalTokenLimit: number = 0,
+  ) {
     error.value = null;
     try {
-      const { data } = await api.post("/api-keys", { name, rate_limit_rpm: rateLimitRpm, total_token_limit: totalTokenLimit });
+      const { data } = await api.post("/api-keys", {
+        name,
+        rate_limit_rpm: rateLimitRpm,
+        total_token_limit: totalTokenLimit,
+      });
       await fetch();
       return data;
     } catch (err: any) {
-      error.value = err?.response?.data?.error || err?.message || "Failed to create API key";
+      error.value =
+        err?.response?.data?.error ||
+        err?.message ||
+        "Failed to create API key";
       throw err;
     }
   }
@@ -49,7 +61,10 @@ export const useApiKeysStore = defineStore("apikeys", () => {
       await api.delete(`/api-keys/${id}`);
       await fetch();
     } catch (err: any) {
-      error.value = err?.response?.data?.error || err?.message || "Failed to delete API key";
+      error.value =
+        err?.response?.data?.error ||
+        err?.message ||
+        "Failed to delete API key";
       throw err;
     }
   }

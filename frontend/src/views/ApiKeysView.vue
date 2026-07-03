@@ -79,10 +79,24 @@
         :items="[
           { label: $t('apiKeys.name'), value: k.name },
           { label: $t('apiKeys.keyPrefix'), value: k.key_prefix },
-          { label: $t('apiKeys.status'), value: k.is_active ? $t('apiKeys.active') : $t('apiKeys.revoked') },
-          { label: $t('apiKeys.rateLimit'), value: k.rate_limit_rpm === 0 ? '∞' : String(k.rate_limit_rpm) },
-          { label: $t('apiKeys.lastUsed'), value: k.last_used_at ? new Date(k.last_used_at).toLocaleString() : $t('apiKeys.never') },
-          { label: $t('apiKeys.created'), value: new Date(k.created_at).toLocaleDateString() },
+          {
+            label: $t('apiKeys.status'),
+            value: k.is_active ? $t('apiKeys.active') : $t('apiKeys.revoked'),
+          },
+          {
+            label: $t('apiKeys.rateLimit'),
+            value: k.rate_limit_rpm === 0 ? '∞' : String(k.rate_limit_rpm),
+          },
+          {
+            label: $t('apiKeys.lastUsed'),
+            value: k.last_used_at
+              ? new Date(k.last_used_at).toLocaleString()
+              : $t('apiKeys.never'),
+          },
+          {
+            label: $t('apiKeys.created'),
+            value: new Date(k.created_at).toLocaleDateString(),
+          },
         ]"
       >
         <template #actions>
@@ -103,7 +117,11 @@
     </div>
 
     <!-- Create dialog -->
-    <v-dialog v-model="createDialog" :max-width="isMobile ? undefined : 460" :fullscreen="isMobile">
+    <v-dialog
+      v-model="createDialog"
+      :max-width="isMobile ? undefined : 460"
+      :fullscreen="isMobile"
+    >
       <div class="dialog-card">
         <div class="dialog-header">
           <h2 class="dialog-title">{{ $t("apiKeys.issueNew") }}</h2>
@@ -152,7 +170,11 @@
     </v-dialog>
 
     <!-- Show key dialog -->
-    <v-dialog v-model="showKey" :max-width="isMobile ? undefined : 500" :fullscreen="isMobile">
+    <v-dialog
+      v-model="showKey"
+      :max-width="isMobile ? undefined : 500"
+      :fullscreen="isMobile"
+    >
       <div class="dialog-card">
         <div class="dialog-header">
           <h2 class="dialog-title" style="color: #2ec4b6">

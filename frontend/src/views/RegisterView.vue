@@ -139,7 +139,9 @@
                 }}</v-icon>
               </button>
             </div>
-            <span class="field-hint">{{ $t("auth.passwordRequirements") }}</span>
+            <span class="field-hint">{{
+              $t("auth.passwordRequirements")
+            }}</span>
           </div>
 
           <div class="field-group">

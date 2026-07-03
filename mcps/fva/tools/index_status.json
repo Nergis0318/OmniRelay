@@ -1,8 +1,0 @@
-{
-  "name": "index_status",
-  "description": "Check FVA indexing status: FFF, AST chunks, vectors, call graph.",
-  "inputSchema": {
-    "properties": {},
-    "type": "object"
-  }
-}

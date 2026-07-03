@@ -15,31 +15,45 @@
     <div class="stats-grid">
       <div class="stat-card">
         <p class="stat-label">{{ $t("dashboard.totalRequests") }}</p>
-        <p class="stat-value">{{ stats?.total_requests?.toLocaleString() ?? '-' }}</p>
+        <p class="stat-value">
+          {{ stats?.total_requests?.toLocaleString() ?? "-" }}
+        </p>
       </div>
       <div class="stat-card">
         <p class="stat-label">{{ $t("dashboard.totalTokens") }}</p>
-        <p class="stat-value stat-value--accent">{{ stats?.total_tokens?.toLocaleString() ?? '-' }}</p>
+        <p class="stat-value stat-value--accent">
+          {{ stats?.total_tokens?.toLocaleString() ?? "-" }}
+        </p>
       </div>
       <div class="stat-card">
         <p class="stat-label">{{ $t("dashboard.totalCost") }}</p>
-        <p class="stat-value stat-value--cost">${{ stats?.total_cost?.toFixed(4) ?? '-' }}</p>
+        <p class="stat-value stat-value--cost">
+          ${{ stats?.total_cost?.toFixed(4) ?? "-" }}
+        </p>
       </div>
       <div class="stat-card">
         <p class="stat-label">{{ $t("dashboard.avgLatency") }}</p>
-        <p class="stat-value">{{ stats ? (stats.avg_latency_ms / 1000).toFixed(2) + 's' : '-' }}</p>
+        <p class="stat-value">
+          {{ stats ? (stats.avg_latency_ms / 1000).toFixed(2) + "s" : "-" }}
+        </p>
       </div>
       <div class="stat-card">
         <p class="stat-label">{{ $t("usage.cacheWrite5m") }}</p>
-        <p class="stat-value">{{ stats?.total_cache_write_5m?.toLocaleString() ?? '-' }}</p>
+        <p class="stat-value">
+          {{ stats?.total_cache_write_5m?.toLocaleString() ?? "-" }}
+        </p>
       </div>
       <div class="stat-card">
         <p class="stat-label">{{ $t("usage.cacheWrite1h") }}</p>
-        <p class="stat-value">{{ stats?.total_cache_write_1h?.toLocaleString() ?? '-' }}</p>
+        <p class="stat-value">
+          {{ stats?.total_cache_write_1h?.toLocaleString() ?? "-" }}
+        </p>
       </div>
       <div class="stat-card">
         <p class="stat-label">{{ $t("usage.cacheRead") }}</p>
-        <p class="stat-value stat-value--cache-read">{{ stats?.total_cache_read?.toLocaleString() ?? '-' }}</p>
+        <p class="stat-value stat-value--cache-read">
+          {{ stats?.total_cache_read?.toLocaleString() ?? "-" }}
+        </p>
       </div>
     </div>
 
@@ -75,7 +89,15 @@ import {
 } from "chart.js";
 import { useUsageStore } from "../stores/usage";
 
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, Tooltip, Legend);
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Filler,
+  Tooltip,
+  Legend,
+);
 
 const { t } = useI18n();
 const store = useUsageStore();

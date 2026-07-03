@@ -16,8 +16,6 @@
       "Skill(superpowers:systematic-debugging)",
       "Bash(mkdir -p docs/superpowers/specs)"
     ],
-    "additionalDirectories": [
-      "D:\\Dev\\OmniRelay\\docs\\superpowers"
-    ]
+    "additionalDirectories": ["D:\\Dev\\OmniRelay\\docs\\superpowers"]
   }
 }

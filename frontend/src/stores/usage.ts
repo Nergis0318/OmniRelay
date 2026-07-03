@@ -98,7 +98,8 @@ export const useUsageStore = defineStore("usage", () => {
       const { data } = await api.get("/stats");
       stats.value = data;
     } catch (err: any) {
-      error.value = err?.response?.data?.error || err?.message || "Failed to load stats";
+      error.value =
+        err?.response?.data?.error || err?.message || "Failed to load stats";
     } finally {
       loading.value = false;
     }
@@ -112,7 +113,8 @@ export const useUsageStore = defineStore("usage", () => {
       logs.value = data.usage_logs;
       total.value = data.total;
     } catch (err: any) {
-      error.value = err?.response?.data?.error || err?.message || "Failed to load logs";
+      error.value =
+        err?.response?.data?.error || err?.message || "Failed to load logs";
     } finally {
       loading.value = false;
     }
@@ -122,5 +124,17 @@ export const useUsageStore = defineStore("usage", () => {
     error.value = null;
   }
 
-  return { stats, logs, total, loading, error, fetchStats, fetchLogs, clearError, connect, disconnect, isRealtimeConnected };
+  return {
+    stats,
+    logs,
+    total,
+    loading,
+    error,
+    fetchStats,
+    fetchLogs,
+    clearError,
+    connect,
+    disconnect,
+    isRealtimeConnected,
+  };
 });
