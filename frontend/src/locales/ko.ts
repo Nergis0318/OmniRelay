@@ -45,6 +45,7 @@ export default {
     usage: "사용량",
     logs: "요청 로그",
     gateway: "게이트웨이",
+    users: "사용자",
   },
   dashboard: {
     title: "대시보드",
@@ -157,6 +158,17 @@ export default {
     cacheWrite5m: "캐시 쓰기 5m",
     cacheWrite1h: "캐시 쓰기 1h",
     cacheRead: "캐시 읽기",
+  },
+  users: {
+    title: "사용자",
+    subtitle: "등록된 게이트웨이 사용자",
+    username: "사용자 이름",
+    email: "이메일",
+    role: "권한",
+    admin: "관리자",
+    member: "멤버",
+    created: "생성일",
+    noUsers: "등록된 사용자가 없습니다.",
   },
   logs: {
     title: "요청 로그",

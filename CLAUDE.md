@@ -76,7 +76,7 @@ frontend/       # Vue 3 + Vuetify 3 + Pinia
 | `/:provider/v1beta/*`       | Path-routed beta API   |
 | `/:provider/api/*`          | Path-routed native API |
 
-**Auth**: `Authorization: Bearer om-ni-...` (API key)
+**Auth**: `Authorization: Bearer om-ni-...` 또는 `x-api-key: om-ni-...` (API key)
 
 ## Environment
 
