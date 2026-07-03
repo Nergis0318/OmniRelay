@@ -130,7 +130,7 @@
               placeholder="e.g. OpenAI"
             />
           </div>
-          <div class="field-group">
+          <div v-if="form.provider_type !== 'custom'" class="field-group">
             <label class="field-label">{{ $t("providers.apiBaseUrl") }}</label>
             <input
               v-model="form.api_base_url"
@@ -138,7 +138,7 @@
               placeholder="https://api.openai.com/v1"
             />
           </div>
-          <div class="field-group">
+          <div v-if="form.provider_type !== 'custom'" class="field-group">
             <label class="field-label">{{ $t("providers.apiKey") }}</label>
             <input
               v-model="form.api_key"
@@ -157,7 +157,51 @@
               </option>
             </select>
           </div>
+          <div v-if="form.provider_type === 'custom'" class="field-group">
+            <label class="field-label">{{ $t("providers.sourceModels") }}</label>
+            <p class="field-hint">{{ $t("providers.selectModelsHint") }}</p>
+            <div class="source-models-list">
+              <div
+                v-for="group in store.sourceModels"
+                :key="group.provider_key"
+                class="source-model-group"
+              >
+                <div class="source-model-group-header">
+                  <span class="source-model-group-name">{{ group.name }}</span>
+                  <span class="source-model-group-type">{{ group.provider_type }}</span>
+                  <span class="source-model-group-key">{{ group.provider_key }}</span>
+                </div>
+                <div
+                  v-for="model in group.models"
+                  :key="model.model_id"
+                  class="source-model-item"
+                >
+                  <label class="source-model-label">
+                    <input
+                      type="checkbox"
+                      :value="`${group.provider_key}/${model.model_id}`"
+                      v-model="form.source_models"
+                      class="checkbox"
+                    />
+                    <span class="source-model-id">{{ model.model_id }}</span>
+                  </label>
+                </div>
+              </div>
+              <div v-if="!store.sourceModels.length" class="empty-source-models">
+                {{ $t("providers.noSourceModels") }}
+              </div>
+            </div>
+          </div>
           <label class="checkbox-row">
+            <input type="checkbox" v-model="form.show_in_model_list" class="checkbox" />
+            <div>
+              <span class="checkbox-label">{{ $t("providers.showInModelList") }}</span>
+              <span class="checkbox-hint">{{
+                $t("providers.showInModelListHint")
+              }}</span>
+            </div>
+          </label>
+          <label v-if="form.provider_type !== 'custom'" class="checkbox-row">
             <input type="checkbox" v-model="form.auto_sync" class="checkbox" />
             <div>
               <span class="checkbox-label">{{ $t("providers.autoSync") }}</span>
@@ -209,6 +253,7 @@ onMounted(() => {
   checkMobile();
   window.addEventListener("resize", checkMobile);
   store.fetch();
+  store.fetchSourceModels();
 });
 onUnmounted(() => {
   window.removeEventListener("resize", checkMobile);
@@ -219,7 +264,7 @@ const editing = ref<any>(null);
 const saving = ref(false);
 const dialogError = ref("");
 const syncResult = ref("");
-const providerTypes = ["openai", "anthropic", "lmstudio", "ollama", "gemini"];
+const providerTypes = ["custom", "openai", "anthropic", "lmstudio", "ollama", "gemini"];
 
 const form = ref({
   provider_key: "",
@@ -228,6 +273,8 @@ const form = ref({
   api_key: "",
   provider_type: "openai",
   auto_sync: true,
+  show_in_model_list: true,
+  source_models: [] as string[],
 });
 
 const headers = computed(() => [
@@ -248,7 +295,13 @@ function openDialog(provider?: any) {
   syncResult.value = "";
   if (provider) {
     editing.value = provider;
-    form.value = { ...provider, api_key: "", auto_sync: false };
+    form.value = {
+      ...provider,
+      api_key: "",
+      auto_sync: false,
+      source_models: [],
+      show_in_model_list: provider.show_in_model_list ?? true,
+    };
   } else {
     editing.value = null;
     form.value = {
@@ -258,6 +311,8 @@ function openDialog(provider?: any) {
       api_key: "",
       provider_type: "openai",
       auto_sync: true,
+      show_in_model_list: true,
+      source_models: [],
     };
   }
   dialog.value = true;
@@ -269,8 +324,11 @@ async function handleSave() {
   syncResult.value = "";
   try {
     if (editing.value) {
-      await store.update(editing.value.id, form.value);
-      if (form.value.auto_sync) {
+      // Build update payload — omit source_models to avoid resetting
+      // the model list unless explicitly managed via the Models page.
+      const { source_models: _omit, ...rest } = form.value;
+      await store.update(editing.value.id, rest);
+      if (form.value.auto_sync && form.value.provider_type !== 'custom') {
         const { data } = await store.syncModels(editing.value.id);
         syncResult.value = t("providers.syncedModels", {
           count: data.model_count,
@@ -278,7 +336,7 @@ async function handleSave() {
       }
     } else {
       const created = await store.create(form.value);
-      if (form.value.auto_sync) {
+      if (form.value.auto_sync && form.value.provider_type !== 'custom') {
         const { data } = await store.syncModels(created.id);
         syncResult.value = t("providers.syncedModels", {
           count: data.model_count,
@@ -314,6 +372,62 @@ async function handleDelete(id: number) {
 @import "../styles/page-shared.css";
 .mobile-cards {
   display: none;
+}
+.source-models-list {
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+  margin-top: 4px;
+}
+.source-model-group {
+  margin-bottom: 8px;
+}
+.source-model-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+}
+.source-model-group-name {
+  font-weight: 600;
+  font-size: 13px;
+}
+.source-model-group-type {
+  font-size: 11px;
+  background: var(--chip-bg);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+.source-model-group-key {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.source-model-item {
+  padding: 2px 0 2px 12px;
+}
+.source-model-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.source-model-id {
+  font-size: 12px;
+  font-family: monospace;
+}
+.empty-source-models {
+  padding: 16px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.field-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
 }
 @media (max-width: 768px) {
   .v-data-table {
