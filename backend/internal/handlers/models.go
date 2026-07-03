@@ -71,6 +71,21 @@ func UpdateModel(svc *service.ModelService) gin.HandlerFunc {
 	}
 }
 
+func ListSourceModels(svc *service.ModelService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID := c.GetInt64("user_id")
+		groups, err := svc.ListSourceModels(userID)
+		if err != nil {
+			apiresponse.AbortAdminInternal(c, err.Error())
+			return
+		}
+		if groups == nil {
+			groups = []service.SourceModelGroup{}
+		}
+		c.JSON(http.StatusOK, gin.H{"providers": groups})
+	}
+}
+
 func DeleteModel(svc *service.ModelService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID := c.GetInt64("user_id")

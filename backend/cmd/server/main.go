@@ -82,6 +82,7 @@ func main() {
 			adminAuth.PUT("/providers/:id", handlers.UpdateProvider(providerService))
 			adminAuth.DELETE("/providers/:id", handlers.DeleteProvider(providerService))
 			adminAuth.POST("/providers/:id/sync", handlers.SyncProviderModels(providerService, modelService))
+			adminAuth.GET("/models/source-list", handlers.ListSourceModels(modelService))
 
 			adminAuth.GET("/models", handlers.ListModels(modelService))
 			adminAuth.POST("/models", handlers.CreateModel(modelService))
