@@ -185,6 +185,36 @@ var migrations = []migration{
 			return nil
 		},
 	},
+	{
+		version: 8,
+		up: func(tx *sql.Tx) error {
+			hasColumn, err := hasColumn(tx, "models", "source_provider_key")
+			if err != nil {
+				return err
+			}
+			if !hasColumn {
+				if _, err := tx.Exec(`ALTER TABLE models ADD COLUMN source_provider_key TEXT NOT NULL DEFAULT ''`); err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+	},
+	{
+		version: 9,
+		up: func(tx *sql.Tx) error {
+			hasColumn, err := hasColumn(tx, "providers", "show_in_model_list")
+			if err != nil {
+				return err
+			}
+			if !hasColumn {
+				if _, err := tx.Exec(`ALTER TABLE providers ADD COLUMN show_in_model_list BOOLEAN DEFAULT 1`); err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+	},
 }
 
 func hasColumn(tx *sql.Tx, tableName, columnName string) (bool, error) {
