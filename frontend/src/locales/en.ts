@@ -45,6 +45,7 @@ export default {
     usage: "Usage",
     logs: "Logs",
     gateway: "Gateway",
+    users: "Users",
   },
   dashboard: {
     title: "Dashboard",
@@ -157,6 +158,17 @@ export default {
     cacheWrite5m: "Cache Write 5m",
     cacheWrite1h: "Cache Write 1h",
     cacheRead: "Cache Read",
+  },
+  users: {
+    title: "Users",
+    subtitle: "Registered gateway users",
+    username: "Username",
+    email: "Email",
+    role: "Role",
+    admin: "Admin",
+    member: "Member",
+    created: "Created",
+    noUsers: "No users registered yet.",
   },
   logs: {
     title: "Request Logs",

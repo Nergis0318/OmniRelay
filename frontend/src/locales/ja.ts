@@ -45,6 +45,7 @@ export default {
     usage: "使用量",
     logs: "ログ",
     gateway: "ゲートウェイ",
+    users: "ユーザー",
   },
   dashboard: {
     title: "ダッシュボード",
@@ -159,6 +160,17 @@ export default {
     cacheWrite5m: "キャッシュ書込 5分",
     cacheWrite1h: "キャッシュ書込 1時間",
     cacheRead: "キャッシュ読取",
+  },
+  users: {
+    title: "ユーザー",
+    subtitle: "登録されたゲートウェイユーザー",
+    username: "ユーザー名",
+    email: "メールアドレス",
+    role: "役割",
+    admin: "管理者",
+    member: "メンバー",
+    created: "作成日",
+    noUsers: "登録されたユーザーがいません。",
   },
   logs: {
     title: "リクエストログ",
