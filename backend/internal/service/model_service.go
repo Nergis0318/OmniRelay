@@ -16,8 +16,8 @@ func NewModelService(db *sql.DB) *ModelService {
 
 func (s *ModelService) List(providerKey string, userID int64) ([]models.Model, error) {
 	query := `SELECT m.id, m.provider_id, m.model_id, COALESCE(m.display_name,''), m.provider_key,
-		m.is_manual, m.input_price_per_1mtok, m.output_price_per_1mtok, m.cache_write_5m_price_per_1mtok, m.cache_write_1h_price_per_1mtok, m.cache_read_price_per_1mtok, m.context_window, COALESCE(m.user_id, 0), m.created_at
-		FROM models m JOIN providers p ON m.provider_id = p.id WHERE p.is_active = 1 AND (m.user_id = ? OR m.user_id IS NULL)`
+		m.is_manual, m.source_provider_key, m.input_price_per_1mtok, m.output_price_per_1mtok, m.cache_write_5m_price_per_1mtok, m.cache_write_1h_price_per_1mtok, m.cache_read_price_per_1mtok, m.context_window, COALESCE(m.user_id, 0), m.created_at
+		FROM models m JOIN providers p ON m.provider_id = p.id WHERE p.is_active = 1 AND p.show_in_model_list = 1 AND (m.user_id = ? OR m.user_id IS NULL)`
 	args := []interface{}{userID}
 
 	if providerKey != "" {
@@ -37,7 +37,7 @@ func (s *ModelService) List(providerKey string, userID int64) ([]models.Model, e
 	for rows.Next() {
 		var m models.Model
 		if err := rows.Scan(&m.ID, &m.ProviderID, &m.ModelID, &m.DisplayName, &m.ProviderKey,
-			&m.IsManual, &m.InputPricePer1MTok, &m.OutputPricePer1MTok, &m.CacheWrite5mPricePer1MTok, &m.CacheWrite1hPricePer1MTok, &m.CacheReadPricePer1MTok, &m.ContextWindow, &m.UserID, &m.CreatedAt); err != nil {
+			&m.IsManual, &m.SourceProviderKey, &m.InputPricePer1MTok, &m.OutputPricePer1MTok, &m.CacheWrite5mPricePer1MTok, &m.CacheWrite1hPricePer1MTok, &m.CacheReadPricePer1MTok, &m.ContextWindow, &m.UserID, &m.CreatedAt); err != nil {
 			return nil, err
 		}
 		result = append(result, m)
@@ -110,7 +110,7 @@ func (s *ModelService) Create(req models.CreateModelRequest, userID int64) (*mod
 	}
 
 	result, err := s.db.Exec(
-		"INSERT INTO models (provider_id, model_id, display_name, provider_key, is_manual, input_price_per_1mtok, output_price_per_1mtok, cache_write_5m_price_per_1mtok, cache_write_1h_price_per_1mtok, cache_read_price_per_1mtok, context_window, user_id) VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)",
+		"INSERT INTO models (provider_id, model_id, display_name, provider_key, is_manual, source_provider_key, input_price_per_1mtok, output_price_per_1mtok, cache_write_5m_price_per_1mtok, cache_write_1h_price_per_1mtok, cache_read_price_per_1mtok, context_window, user_id) VALUES (?, ?, ?, ?, 1, '', ?, ?, ?, ?, ?, ?, ?)",
 		req.ProviderID, req.ModelID, displayName, providerKey, req.InputPricePer1MTok, req.OutputPricePer1MTok, req.CacheWrite5mPricePer1MTok, req.CacheWrite1hPricePer1MTok, req.CacheReadPricePer1MTok, req.ContextWindow, userID,
 	)
 	if err != nil {
@@ -125,10 +125,10 @@ func (s *ModelService) GetByID(id int64, userID int64) (*models.Model, error) {
 	var m models.Model
 	err := s.db.QueryRow(
 		`SELECT id, provider_id, model_id, COALESCE(display_name,''), provider_key,
-			is_manual, input_price_per_1mtok, output_price_per_1mtok, cache_write_5m_price_per_1mtok, cache_write_1h_price_per_1mtok, cache_read_price_per_1mtok, context_window, COALESCE(user_id, 0), created_at FROM models WHERE id = ? AND (user_id = ? OR user_id IS NULL)`,
+			is_manual, source_provider_key, input_price_per_1mtok, output_price_per_1mtok, cache_write_5m_price_per_1mtok, cache_write_1h_price_per_1mtok, cache_read_price_per_1mtok, context_window, COALESCE(user_id, 0), created_at FROM models WHERE id = ? AND (user_id = ? OR user_id IS NULL)`,
 		id, userID,
 	).Scan(&m.ID, &m.ProviderID, &m.ModelID, &m.DisplayName, &m.ProviderKey,
-		&m.IsManual, &m.InputPricePer1MTok, &m.OutputPricePer1MTok, &m.CacheWrite5mPricePer1MTok, &m.CacheWrite1hPricePer1MTok, &m.CacheReadPricePer1MTok, &m.ContextWindow, &m.UserID, &m.CreatedAt)
+		&m.IsManual, &m.SourceProviderKey, &m.InputPricePer1MTok, &m.OutputPricePer1MTok, &m.CacheWrite5mPricePer1MTok, &m.CacheWrite1hPricePer1MTok, &m.CacheReadPricePer1MTok, &m.ContextWindow, &m.UserID, &m.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -141,15 +141,15 @@ func (s *ModelService) FindByFullID(fullModelID string, userID int64) (*models.M
 			providerKey := fullModelID[:i]
 			modelID := fullModelID[i+1:]
 
-			var m models.Model
-			err := s.db.QueryRow(
-				`SELECT m.id, m.provider_id, m.model_id, COALESCE(m.display_name,''), m.provider_key,
-					m.is_manual, m.input_price_per_1mtok, m.output_price_per_1mtok, m.cache_write_5m_price_per_1mtok, m.cache_write_1h_price_per_1mtok, m.cache_read_price_per_1mtok, m.context_window, COALESCE(m.user_id, 0), m.created_at
-				FROM models m JOIN providers p ON m.provider_id = p.id
-				WHERE m.provider_key = ? AND m.model_id = ? AND p.is_active = 1 AND (m.user_id = ? OR m.user_id IS NULL)`,
-				providerKey, modelID, userID,
-			).Scan(&m.ID, &m.ProviderID, &m.ModelID, &m.DisplayName, &m.ProviderKey,
-				&m.IsManual, &m.InputPricePer1MTok, &m.OutputPricePer1MTok, &m.CacheWrite5mPricePer1MTok, &m.CacheWrite1hPricePer1MTok, &m.CacheReadPricePer1MTok, &m.ContextWindow, &m.UserID, &m.CreatedAt)
+		var m models.Model
+		err := s.db.QueryRow(
+			`SELECT m.id, m.provider_id, m.model_id, COALESCE(m.display_name,''), m.provider_key,
+				m.is_manual, m.source_provider_key, m.input_price_per_1mtok, m.output_price_per_1mtok, m.cache_write_5m_price_per_1mtok, m.cache_write_1h_price_per_1mtok, m.cache_read_price_per_1mtok, m.context_window, COALESCE(m.user_id, 0), m.created_at
+			FROM models m JOIN providers p ON m.provider_id = p.id
+			WHERE m.provider_key = ? AND m.model_id = ? AND p.is_active = 1 AND (m.user_id = ? OR m.user_id IS NULL)`,
+			providerKey, modelID, userID,
+		).Scan(&m.ID, &m.ProviderID, &m.ModelID, &m.DisplayName, &m.ProviderKey,
+			&m.IsManual, &m.SourceProviderKey, &m.InputPricePer1MTok, &m.OutputPricePer1MTok, &m.CacheWrite5mPricePer1MTok, &m.CacheWrite1hPricePer1MTok, &m.CacheReadPricePer1MTok, &m.ContextWindow, &m.UserID, &m.CreatedAt)
 			if err != nil {
 				return nil, err
 			}
@@ -218,4 +218,60 @@ func (s *ModelService) CountActive(userID int64) (int64, error) {
 		userID,
 	).Scan(&count)
 	return count, err
+}
+
+type SourceModelInfo struct {
+	ModelID     string `json:"model_id"`
+	DisplayName string `json:"display_name"`
+}
+
+type SourceModelGroup struct {
+	ProviderKey  string           `json:"provider_key"`
+	ProviderType string           `json:"provider_type"`
+	Name         string           `json:"name"`
+	Models       []SourceModelInfo `json:"models"`
+}
+
+func (s *ModelService) ListSourceModels(userID int64) ([]SourceModelGroup, error) {
+	rows, err := s.db.Query(`
+		SELECT p.provider_key, p.provider_type, p.name, m.model_id, COALESCE(m.display_name, '')
+		FROM models m
+		JOIN providers p ON m.provider_id = p.id
+		WHERE p.is_active = 1 AND p.provider_type <> 'custom' AND (m.user_id = ? OR m.user_id IS NULL)
+		ORDER BY p.provider_key, m.model_id
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	groupMap := make(map[string]*SourceModelGroup)
+	var order []string
+
+	for rows.Next() {
+		var pk, ptype, name, mid, dname string
+		if err := rows.Scan(&pk, &ptype, &name, &mid, &dname); err != nil {
+			return nil, err
+		}
+		group, ok := groupMap[pk]
+		if !ok {
+			group = &SourceModelGroup{
+				ProviderKey:  pk,
+				ProviderType: ptype,
+				Name:         name,
+			}
+			groupMap[pk] = group
+			order = append(order, pk)
+		}
+		group.Models = append(group.Models, SourceModelInfo{
+			ModelID:     mid,
+			DisplayName: dname,
+		})
+	}
+
+	var result []SourceModelGroup
+	for _, pk := range order {
+		result = append(result, *groupMap[pk])
+	}
+	return result, nil
 }
