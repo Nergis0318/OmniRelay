@@ -157,6 +157,14 @@ func (e *Engine) HandlePathRouted(c *gin.Context) {
 	}
 
 	dbModel, _ := e.resolveModel(fullModelID, userID)
+
+	// Route to real upstream if model has source_provider_key
+	if dbModel != nil && dbModel.SourceProviderKey != "" {
+		if sourceProvider, serr := e.providerService.GetByKey(dbModel.SourceProviderKey, userID); serr == nil {
+			provider = sourceProvider
+		}
+	}
+
 	adapter := e.getAdapter(provider.ProviderType)
 
 	u := usageContext{
@@ -214,7 +222,12 @@ func (e *Engine) resolveDispatch(c *gin.Context, fullModelID string, userID int6
 		return nil, nil, nil, "", false
 	}
 
-	provider, err := e.providerService.GetByID(dbModel.ProviderID, userID)
+	var provider *models.Provider
+	if dbModel.SourceProviderKey != "" {
+		provider, err = e.providerService.GetByKey(dbModel.SourceProviderKey, userID)
+	} else {
+		provider, err = e.providerService.GetByID(dbModel.ProviderID, userID)
+	}
 	if err != nil {
 		apiresponse.AbortInvalidRequest(c, errFmt, "provider not found or inactive", "model")
 		return nil, nil, nil, "", false
