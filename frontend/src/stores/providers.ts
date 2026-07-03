@@ -9,21 +9,37 @@ interface Provider {
   api_base_url: string;
   provider_type: string;
   is_active: boolean;
+  show_in_model_list: boolean;
   created_at: string;
+}
+
+interface SourceModel {
+  model_id: string;
+  display_name: string;
+}
+
+interface SourceModelGroup {
+  provider_key: string;
+  provider_type: string;
+  name: string;
+  models: SourceModel[];
 }
 
 interface CreateProviderPayload {
   provider_key: string;
   name: string;
-  api_base_url: string;
-  api_key: string;
+  api_base_url?: string;
+  api_key?: string;
   provider_type: string;
+  source_models?: string[];
+  show_in_model_list?: boolean;
 }
 
 export const useProvidersStore = defineStore("providers", () => {
   const providers = ref<Provider[]>([]);
   const loading = ref(false);
   const error = ref<string | null>(null);
+  const sourceModels = ref<SourceModelGroup[]>([]);
 
   async function fetch() {
     loading.value = true;
@@ -82,9 +98,18 @@ export const useProvidersStore = defineStore("providers", () => {
     }
   }
 
+  async function fetchSourceModels() {
+    try {
+      const { data } = await api.get("/models/source-list");
+      sourceModels.value = data.providers;
+    } catch (_err: any) {
+      sourceModels.value = [];
+    }
+  }
+
   function clearError() {
     error.value = null;
   }
 
-  return { providers, loading, error, fetch, create, update, remove, syncModels, clearError };
+  return { providers, loading, error, sourceModels, fetch, fetchSourceModels, create, update, remove, syncModels, clearError };
 });
