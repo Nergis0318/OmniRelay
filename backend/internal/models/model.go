@@ -9,6 +9,7 @@ type Model struct {
 	DisplayName               string    `json:"display_name"`
 	ProviderKey               string    `json:"provider_key"`
 	IsManual                  bool      `json:"is_manual"`
+	SourceProviderKey         string    `json:"source_provider_key"`
 	InputPricePer1MTok        float64   `json:"input_price_per_1mtok"`
 	OutputPricePer1MTok       float64   `json:"output_price_per_1mtok"`
 	CacheWrite5mPricePer1MTok float64   `json:"cache_write_5m_price_per_1mtok"`
