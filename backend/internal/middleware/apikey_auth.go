@@ -28,7 +28,7 @@ func APIKeyAuth(svc *service.APIKeyService) gin.HandlerFunc {
 		errFmt := apiresponse.FormatFromContext(c)
 
 		if apiKeyValue == "" {
-			apiresponse.AbortUnauthorized(c, errFmt, "missing Authorization header")
+			apiresponse.AbortUnauthorized(c, errFmt, "missing credentials: use Authorization: Bearer <key> or x-api-key: <key> header")
 			return
 		}
 

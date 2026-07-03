@@ -129,6 +129,10 @@ docker run --rm -p 80:80 --env-file .env -v omnirelay-data:/app/data omnirelay
 4. 필요하면 모델 자동 동기화를 실행하거나 Models에서 수동으로 모델을 추가합니다.
 5. API Keys에서 클라이언트용 키를 발급합니다.
 6. 클라이언트 요청의 `Authorization` 헤더에 발급된 `om-ni-...` 키를 사용합니다.
+   `x-api-key` 헤더로도 인증이 가능합니다:
+   ```
+   x-api-key: om-ni-<key>
+   ```
 
 ## 제공자 설정 예시
 
