@@ -16,6 +16,14 @@ func calculateCost(m *models.Model, inputTokens, outputTokens, cacheWrite5mToken
 func extractCacheTokens(usage map[string]interface{}) (cacheWrite5m, cacheWrite1h, cacheRead int64) {
 	cacheWrite5m = numberToInt64(usage["cache_creation_input_tokens"])
 	cacheRead = numberToInt64(usage["cache_read_input_tokens"])
+	if cacheRead == 0 {
+		cacheRead = numberToInt64(usage["cached_content_token_count"])
+	}
+	if cacheRead == 0 {
+		if details, ok := usage["prompt_tokens_details"].(map[string]interface{}); ok {
+			cacheRead = numberToInt64(details["cached_tokens"])
+		}
+	}
 	return
 }
 
@@ -45,12 +53,14 @@ func extractUsageFromRawResponse(providerType string, body map[string]interface{
 		if usage, ok := body["usage"].(map[string]interface{}); ok {
 			requestTokens = numberToInt64(usage["input_tokens"])
 			responseTokens = numberToInt64(usage["output_tokens"])
+			cacheWrite5m, cacheWrite1h, cacheRead = extractCacheTokens(usage)
 		}
 	case "gemini":
 		if usage, ok := body["usageMetadata"].(map[string]interface{}); ok {
 			requestTokens = numberToInt64(usage["promptTokenCount"])
 			responseTokens = numberToInt64(usage["candidatesTokenCount"])
 			totalTokens = numberToInt64(usage["totalTokenCount"])
+			cacheRead = numberToInt64(usage["cached_content_token_count"])
 		}
 	default:
 		if usage, ok := body["usage"].(map[string]interface{}); ok {

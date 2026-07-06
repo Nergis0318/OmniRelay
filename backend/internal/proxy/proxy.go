@@ -29,17 +29,12 @@ func (e *Engine) HandleChatCompletions(c *gin.Context) {
 
 	fullModelID := body["model"].(string)
 
-	dbModel, provider, adapter, apiKey, ok := e.resolveDispatch(c, fullModelID, userID, apiresponse.FormatOpenAI)
+	dbModel, provider, adapter, _, ok := e.resolveDispatch(c, fullModelID, userID, apiresponse.FormatOpenAI)
 	if !ok {
 		return
 	}
 
-	e.executeChat(c, body, fullModelID, dbModel, provider, adapter, apiKey, usageContext{
-		apiKeyID:    apiKeyID,
-		providerID:  provider.ID,
-		userID:      userID,
-		fullModelID: fullModelID,
-	})
+	e.executeChat(c, provider, dbModel, adapter, body, fullModelID, apiKeyID, userID)
 }
 
 func (e *Engine) HandleMessages(c *gin.Context) {
@@ -191,12 +186,7 @@ func (e *Engine) HandlePathRouted(c *gin.Context) {
 	}
 
 	if isChatCompletions && adapter != nil && dbModel != nil {
-		apiKey, err := e.providerService.DecryptAPIKey(provider.APIKeyEncrypted)
-		if err != nil {
-			apiresponse.AbortInternal(c, apiresponse.FormatOpenAI, "failed to decrypt provider key")
-			return
-		}
-		e.executeChat(c, body, fullModelID, dbModel, provider, adapter, apiKey, u)
+		e.executeChat(c, provider, dbModel, adapter, body, fullModelID, u.apiKeyID, u.userID)
 		return
 	}
 
@@ -263,92 +253,6 @@ func readJSONBody(c *gin.Context) (map[string]interface{}, bool) {
 	return body, true
 }
 
-// executeChat handles the OpenAI-style /chat/completions request lifecycle for both the direct and path-routed entries.
-func (e *Engine) executeChat(c *gin.Context, body map[string]interface{}, fullModelID string, dbModel *models.Model, provider *models.Provider, adapter Adapter, apiKey string, u usageContext) {
-	if dbModel.ContextWindow > 0 {
-		body["_context_window"] = dbModel.ContextWindow
-	}
-
-	endpoint, adaptedBody, err := adapter.BuildChatRequest(body)
-	if err != nil {
-		apiresponse.AbortInvalidRequest(c, apiresponse.FormatOpenAI, err.Error(), "")
-		return
-	}
-
-	isStream, _ := body["stream"].(bool)
-	if isStream && isOpenAICompat(provider.ProviderType) {
-		if _, ok := adaptedBody["stream_options"]; !ok {
-			adaptedBody["stream_options"] = map[string]interface{}{"include_usage": true}
-		}
-	}
-	endpoint = applyGeminiStreamingURL(provider.ProviderType, endpoint, isStream)
-	upstreamURL := joinUpstreamURL(provider.APiBaseURL, endpoint)
-
-	resp, startTime, ok := e.proxyJSONRequest(c, u, provider.ProviderType, apiKey, upstreamURL, adaptedBody, true)
-	if !ok {
-		return
-	}
-	defer resp.Body.Close()
-
-	if isStream {
-		e.handleStreamResponse(c, resp, adapter, dbModel, startTime, u)
-		return
-	}
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		e.logUpstreamError(u, "failed to read upstream response", time.Since(startTime).Milliseconds())
-		apiresponse.AbortBadGateway(c, apiresponse.FormatOpenAI, "failed to read upstream response")
-		return
-	}
-
-	latencyMs := time.Since(startTime).Milliseconds()
-
-	var upstreamResponse map[string]interface{}
-	if err := json.Unmarshal(respBody, &upstreamResponse); err != nil {
-		e.logLatencyOnly(u, latencyMs)
-		c.Data(resp.StatusCode, contentTypeOrDefault(resp.Header), respBody)
-		return
-	}
-
-	finalResponse, err := adapter.ParseChatResponse(upstreamResponse)
-	if err != nil {
-		e.logLatencyOnly(u, latencyMs)
-		c.Data(resp.StatusCode, contentTypeOrDefault(resp.Header), respBody)
-		return
-	}
-
-	finalResponse["model"] = fullModelID
-
-	if usage, ok := finalResponse["usage"].(map[string]interface{}); ok {
-		requestTokens := numberToInt64(usage["prompt_tokens"])
-		responseTokens := numberToInt64(usage["completion_tokens"])
-		totalTokens := numberToInt64(usage["total_tokens"])
-		cacheWrite5m, cacheWrite1h, cacheReadTokens := extractCacheTokens(usage)
-
-		cost := calculateCost(dbModel, requestTokens, responseTokens, cacheWrite5m, cacheWrite1h, cacheReadTokens)
-		completedAt := time.Now()
-
-		e.logTokenUsage(u, tokenUsage{
-			requestTokens:  requestTokens,
-			responseTokens: responseTokens,
-			totalTokens:    totalTokens,
-			cacheWrite5m:   cacheWrite5m,
-			cacheWrite1h:   cacheWrite1h,
-			cacheRead:      cacheReadTokens,
-			cost:           cost,
-			startedAt:      &startTime,
-			completedAt:    &completedAt,
-			latencyMs:      latencyMs,
-		})
-	} else {
-		e.logLatencyOnly(u, latencyMs)
-	}
-
-	c.JSON(http.StatusOK, finalResponse)
-}
-
-// executeMessages handles the Anthropic-style /messages request lifecycle for both the direct and path-routed entries.
 func (e *Engine) executeMessages(c *gin.Context, body map[string]interface{}, fullModelID string, dbModel *models.Model, provider *models.Provider, adapter Adapter, apiKey string, u usageContext) {
 	endpoint, adaptedBody, err := adapter.BuildMessagesRequest(body)
 	if err != nil {
@@ -372,7 +276,7 @@ func (e *Engine) executeMessages(c *gin.Context, body map[string]interface{}, fu
 	defer resp.Body.Close()
 
 	if isStream {
-		e.handleMessagesStreamResponse(c, resp, adapter, dbModel, startTime, u)
+		e.handleMessagesStreamResponse(c, resp, adapter, u.apiKeyID, u.providerID, u.fullModelID, dbModel, startTime, u.userID)
 		return
 	}
 
@@ -434,214 +338,6 @@ func (e *Engine) executeMessages(c *gin.Context, body map[string]interface{}, fu
 	c.JSON(http.StatusOK, finalResponse)
 }
 
-func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapter Adapter, dbModel *models.Model, start time.Time, u usageContext) {
-	c.Status(http.StatusOK)
-	copyResponseHeaders(c, resp.Header)
-	c.Header("Content-Type", "text/event-stream")
-	c.Header("Cache-Control", "no-cache")
-	c.Header("Connection", "keep-alive")
-
-	flusher, ok := c.Writer.(http.Flusher)
-	if !ok {
-		return
-	}
-
-	buf := make([]byte, 4096)
-	var totalInputTokens, totalOutputTokens int64
-	sentDone := false
-	state := make(map[string]interface{})
-
-	for {
-		n, err := resp.Body.Read(buf)
-		if n > 0 {
-			chunk := buf[:n]
-			if strings.Contains(string(chunk), "data: [DONE]") {
-				sentDone = true
-			}
-
-			transformed, inTok, outTok, _ := adapter.ParseStreamChunk(chunk, state)
-			if inTok > 0 {
-				totalInputTokens = inTok
-			}
-			if outTok > 0 {
-				totalOutputTokens = outTok
-			}
-			if transformed != nil {
-				if strings.Contains(string(transformed), "data: [DONE]") {
-					sentDone = true
-				}
-				c.Writer.Write(transformed)
-				flusher.Flush()
-			} else {
-				c.Writer.Write(chunk)
-				flusher.Flush()
-			}
-		}
-		if err != nil {
-			if err != io.EOF {
-				requestID := c.GetString("request_id")
-				errorPayload := map[string]interface{}{
-					"error": map[string]interface{}{
-						"type":       "api_error",
-						"message":    "upstream stream interrupted",
-						"request_id": requestID,
-					},
-				}
-				if errorJSON, e := json.Marshal(errorPayload); e == nil {
-					fmt.Fprintf(c.Writer, "event: error\ndata: %s\n\n", errorJSON)
-					flusher.Flush()
-				}
-			}
-			break
-		}
-	}
-
-	if !sentDone {
-		c.Writer.Write([]byte("data: [DONE]\n\n"))
-		flusher.Flush()
-	}
-
-	latencyMs := time.Since(start).Milliseconds()
-	completedAt := time.Now()
-	cacheWrite5m := int64State(state, "cache_write_5m_tokens", 0)
-	cacheWrite1h := int64State(state, "cache_write_1h_tokens", 0)
-	cacheReadTokens := int64State(state, "cache_read_tokens", 0)
-	var cost float64
-	if dbModel != nil && (totalInputTokens > 0 || totalOutputTokens > 0) {
-		cost = calculateCost(dbModel, totalInputTokens, totalOutputTokens, cacheWrite5m, cacheWrite1h, cacheReadTokens)
-	}
-
-	e.logTokenUsage(u, tokenUsage{
-		requestTokens:  totalInputTokens,
-		responseTokens: totalOutputTokens,
-		cacheWrite5m:   cacheWrite5m,
-		cacheWrite1h:   cacheWrite1h,
-		cacheRead:      cacheReadTokens,
-		cost:           cost,
-		startedAt:      &start,
-		completedAt:    &completedAt,
-		latencyMs:      latencyMs,
-	})
-}
-
-func (e *Engine) handleRawStreamResponse(c *gin.Context, resp *http.Response, start time.Time, u usageContext) {
-	c.Status(http.StatusOK)
-	copyResponseHeaders(c, resp.Header)
-	if resp.Header.Get("Content-Type") == "" {
-		c.Header("Content-Type", "text/event-stream")
-	}
-	c.Header("Cache-Control", "no-cache")
-	c.Header("Connection", "keep-alive")
-
-	flusher, ok := c.Writer.(http.Flusher)
-	if !ok {
-		return
-	}
-
-	buf := make([]byte, 4096)
-	for {
-		n, err := resp.Body.Read(buf)
-		if n > 0 {
-			c.Writer.Write(buf[:n])
-			flusher.Flush()
-		}
-		if err != nil {
-			if err != io.EOF {
-				requestID := c.GetString("request_id")
-				errorPayload := map[string]interface{}{
-					"error": map[string]interface{}{
-						"type":       "api_error",
-						"message":    "upstream stream interrupted",
-						"request_id": requestID,
-					},
-				}
-				if errorJSON, e := json.Marshal(errorPayload); e == nil {
-					fmt.Fprintf(c.Writer, "event: error\ndata: %s\n\n", errorJSON)
-					flusher.Flush()
-				}
-			}
-			break
-		}
-	}
-
-	e.logLatencyOnly(u, time.Since(start).Milliseconds())
-}
-
-func (e *Engine) handleMessagesStreamResponse(c *gin.Context, resp *http.Response, adapter Adapter, dbModel *models.Model, start time.Time, u usageContext) {
-	c.Status(http.StatusOK)
-	copyResponseHeaders(c, resp.Header)
-	c.Header("Content-Type", "text/event-stream")
-	c.Header("Cache-Control", "no-cache")
-	c.Header("Connection", "keep-alive")
-
-	flusher, ok := c.Writer.(http.Flusher)
-	if !ok {
-		return
-	}
-
-	buf := make([]byte, 4096)
-	state := make(map[string]interface{})
-	var totalInputTokens, totalOutputTokens int64
-
-	for {
-		n, err := resp.Body.Read(buf)
-		if n > 0 {
-			transformed, inTok, outTok, _ := adapter.ParseMessagesStreamChunk(buf[:n], state)
-			if inTok > 0 {
-				totalInputTokens = inTok
-			}
-			if outTok > 0 {
-				totalOutputTokens = outTok
-			}
-			if transformed != nil {
-				c.Writer.Write(transformed)
-				flusher.Flush()
-			}
-		}
-		if err != nil {
-			if err != io.EOF {
-				requestID := c.GetString("request_id")
-				errorPayload := map[string]interface{}{
-					"error": map[string]interface{}{
-						"type":       "api_error",
-						"message":    "upstream stream interrupted",
-						"request_id": requestID,
-					},
-				}
-				if errorJSON, e := json.Marshal(errorPayload); e == nil {
-					fmt.Fprintf(c.Writer, "event: error\ndata: %s\n\n", errorJSON)
-					flusher.Flush()
-				}
-			}
-			break
-		}
-	}
-
-	completedAt := time.Now()
-	latencyMs := time.Since(start).Milliseconds()
-	cacheWrite5m := int64State(state, "cache_write_5m_tokens", 0)
-	cacheWrite1h := int64State(state, "cache_write_1h_tokens", 0)
-	cacheReadTokens := int64State(state, "cache_read_tokens", 0)
-	var cost float64
-	if dbModel != nil && (totalInputTokens > 0 || totalOutputTokens > 0) {
-		cost = calculateCost(dbModel, totalInputTokens, totalOutputTokens, cacheWrite5m, cacheWrite1h, cacheReadTokens)
-	}
-
-	e.logTokenUsage(u, tokenUsage{
-		requestTokens:  totalInputTokens,
-		responseTokens: totalOutputTokens,
-		cacheWrite5m:   cacheWrite5m,
-		cacheWrite1h:   cacheWrite1h,
-		cacheRead:      cacheReadTokens,
-		cost:           cost,
-		startedAt:      &start,
-		completedAt:    &completedAt,
-		latencyMs:      latencyMs,
-	})
-}
-
-// handlePathRoutedProxy is the catch-all path-routed request handler used when the request is not
-// a known /chat/completions or /messages call (or when no model record exists in the DB).
 func (e *Engine) handlePathRoutedProxy(c *gin.Context, provider *models.Provider, dbModel *models.Model, body map[string]interface{}, bodyBytes []byte, fullModelID string, endpoint string, apiPrefix string, hasRequestBody bool, contentType string, u usageContext) {
 	errFmt := apiresponse.FormatFromContext(c)
 
@@ -696,9 +392,9 @@ func (e *Engine) handlePathRoutedProxy(c *gin.Context, provider *models.Provider
 	responseContentType := strings.ToLower(resp.Header.Get("Content-Type"))
 	if isSuccessStatus(resp.StatusCode) && (bodyStream || strings.Contains(responseContentType, "text/event-stream") || strings.Contains(responseContentType, "x-ndjson")) {
 		if adapter := e.getAdapter(provider.ProviderType); adapter != nil {
-			e.handleStreamResponse(c, resp, adapter, dbModel, startTime, u)
+			e.handleStreamResponse(c, resp, adapter, u.apiKeyID, u.providerID, u.fullModelID, dbModel, u.userID)
 		} else {
-			e.handleRawStreamResponse(c, resp, startTime, u)
+			e.handleRawStreamResponse(c, resp, u.apiKeyID, u.providerID, u.fullModelID, startTime, u.userID)
 		}
 		return
 	}
@@ -743,29 +439,6 @@ func (e *Engine) handlePathRoutedProxy(c *gin.Context, provider *models.Provider
 
 	copyResponseHeaders(c, resp.Header)
 	c.Data(resp.StatusCode, contentTypeOrDefault(resp.Header), respBody)
-}
-
-func calculateCost(m *models.Model, inputTokens, outputTokens, cacheWrite5mTokens, cacheWrite1hTokens, cacheReadTokens int64) float64 {
-	inputCost := (float64(inputTokens) / 1000000.0) * m.InputPricePer1MTok
-	outputCost := (float64(outputTokens) / 1000000.0) * m.OutputPricePer1MTok
-	cacheWrite5mCost := (float64(cacheWrite5mTokens) / 1000000.0) * m.CacheWrite5mPricePer1MTok
-	cacheWrite1hCost := (float64(cacheWrite1hTokens) / 1000000.0) * m.CacheWrite1hPricePer1MTok
-	cacheReadCost := (float64(cacheReadTokens) / 1000000.0) * m.CacheReadPricePer1MTok
-	return inputCost + outputCost + cacheWrite5mCost + cacheWrite1hCost + cacheReadCost
-}
-
-func extractCacheTokens(usage map[string]interface{}) (cacheWrite5m, cacheWrite1h, cacheRead int64) {
-	cacheWrite5m = numberToInt64(usage["cache_creation_input_tokens"])
-	cacheRead = numberToInt64(usage["cache_read_input_tokens"])
-	if cacheRead == 0 {
-		cacheRead = numberToInt64(usage["cached_content_token_count"])
-	}
-	if cacheRead == 0 {
-		if details, ok := usage["prompt_tokens_details"].(map[string]interface{}); ok {
-			cacheRead = numberToInt64(details["cached_tokens"])
-		}
-	}
-	return
 }
 
 func isOpenAICompat(providerType string) bool {

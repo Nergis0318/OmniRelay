@@ -24,6 +24,7 @@ func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapt
 
 	start := time.Now()
 	buf := make([]byte, 4096)
+	state := make(map[string]interface{})
 
 	var totalInputTokens, totalOutputTokens int64
 	sentDone := false
@@ -36,7 +37,7 @@ func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapt
 				sentDone = true
 			}
 
-			transformed, inTok, outTok, _ := adapter.ParseStreamChunk(chunk)
+			transformed, inTok, outTok, _ := adapter.ParseStreamChunk(chunk, state)
 			if inTok > 0 {
 				totalInputTokens = inTok
 			}
@@ -67,20 +68,29 @@ func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapt
 	latencyMs := time.Since(start).Milliseconds()
 	completedAt := time.Now()
 
-	cost := calculateCost(dbModel, totalInputTokens, totalOutputTokens, 0, 0, 0)
+	cacheWrite5m := int64State(state, "cache_write_5m_tokens", 0)
+	cacheWrite1h := int64State(state, "cache_write_1h_tokens", 0)
+	cacheReadTokens := int64State(state, "cache_read_tokens", 0)
+	var cost float64
+	if dbModel != nil && (totalInputTokens > 0 || totalOutputTokens > 0) {
+		cost = calculateCost(dbModel, totalInputTokens, totalOutputTokens, cacheWrite5m, cacheWrite1h, cacheReadTokens)
+	}
 
 	e.usageService.Log(models.UsageLog{
-		APIKeyID:       &apiKeyID,
-		ProviderID:     &providerID,
-		Model:          fullModelID,
-		RequestTokens:  totalInputTokens,
-		ResponseTokens: totalOutputTokens,
-		TotalTokens:    totalInputTokens + totalOutputTokens,
-		LatencyMs:      latencyMs,
-		Cost:           cost,
-		StartedAt:      &start,
-		CompletedAt:    &completedAt,
-		UserID:         &userID,
+		APIKeyID:           &apiKeyID,
+		ProviderID:         &providerID,
+		Model:              fullModelID,
+		RequestTokens:      totalInputTokens,
+		ResponseTokens:     totalOutputTokens,
+		TotalTokens:        totalInputTokens + totalOutputTokens,
+		CacheWrite5MTokens: cacheWrite5m,
+		CacheWrite1HTokens: cacheWrite1h,
+		CacheReadTokens:    cacheReadTokens,
+		LatencyMs:          latencyMs,
+		Cost:               cost,
+		StartedAt:          &start,
+		CompletedAt:        &completedAt,
+		UserID:             &userID,
 	})
 }
 
@@ -156,20 +166,27 @@ func (e *Engine) handleMessagesStreamResponse(c *gin.Context, resp *http.Respons
 	}
 
 	completedAt := time.Now()
+	cacheWrite5m := int64State(state, "cache_write_5m_tokens", 0)
+	cacheWrite1h := int64State(state, "cache_write_1h_tokens", 0)
+	cacheReadTokens := int64State(state, "cache_read_tokens", 0)
+
 	log := models.UsageLog{
-		APIKeyID:       &apiKeyID,
-		ProviderID:     &providerID,
-		Model:          fullModelID,
-		RequestTokens:  totalInputTokens,
-		ResponseTokens: totalOutputTokens,
-		TotalTokens:    totalInputTokens + totalOutputTokens,
-		LatencyMs:      time.Since(start).Milliseconds(),
-		StartedAt:      &start,
-		CompletedAt:    &completedAt,
-		UserID:         &userID,
+		APIKeyID:           &apiKeyID,
+		ProviderID:         &providerID,
+		Model:              fullModelID,
+		RequestTokens:      totalInputTokens,
+		ResponseTokens:     totalOutputTokens,
+		TotalTokens:        totalInputTokens + totalOutputTokens,
+		CacheWrite5MTokens: cacheWrite5m,
+		CacheWrite1HTokens: cacheWrite1h,
+		CacheReadTokens:    cacheReadTokens,
+		LatencyMs:          time.Since(start).Milliseconds(),
+		StartedAt:          &start,
+		CompletedAt:        &completedAt,
+		UserID:             &userID,
 	}
 	if dbModel != nil && (totalInputTokens > 0 || totalOutputTokens > 0) {
-		log.Cost = calculateCost(dbModel, totalInputTokens, totalOutputTokens, 0, 0, 0)
+		log.Cost = calculateCost(dbModel, totalInputTokens, totalOutputTokens, cacheWrite5m, cacheWrite1h, cacheReadTokens)
 	}
 	e.usageService.Log(log)
 }

@@ -166,5 +166,5 @@ func extractStreamFlag(body map[string]interface{}) bool {
 }
 
 type UsageLogger interface {
-	Log(log models.UsageLog)
+	Log(log models.UsageLog) error
 }
