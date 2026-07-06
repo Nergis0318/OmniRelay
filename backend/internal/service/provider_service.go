@@ -3,7 +3,6 @@ package service
 import (
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,6 +12,17 @@ import (
 	"strings"
 	"time"
 )
+
+
+// ProviderError carries an HTTP status code for provider-related errors.
+type ProviderError struct {
+	Message    string
+	StatusCode int
+}
+
+func (e *ProviderError) Error() string {
+	return e.Message
+}
 
 type ProviderService struct {
 	db *sql.DB
@@ -75,12 +85,12 @@ func (s *ProviderService) Create(req models.CreateProviderRequest, userID int64)
 		encrypted = ""
 	} else {
 		if req.APIKey == "" || req.APiBaseURL == "" {
-			return nil, errors.New("api_key and api_base_url are required for non-custom providers")
+			return nil, &ProviderError{Message: "api_key and api_base_url are required for non-custom providers", StatusCode: 400}
 		}
 		var err error
 		encrypted, err = crypto.Encrypt(req.APIKey, cfg.EncryptKey)
 		if err != nil {
-			return nil, fmt.Errorf("failed to encrypt API key: %w", err)
+			return nil, &ProviderError{Message: fmt.Sprintf("failed to encrypt API key: %s", err), StatusCode: 500}
 		}
 	}
 
@@ -94,7 +104,14 @@ func (s *ProviderService) Create(req models.CreateProviderRequest, userID int64)
 		req.ProviderKey, req.Name, req.APiBaseURL, encrypted, req.ProviderType, showInModelList, userID,
 	)
 	if err != nil {
-		return nil, errors.New("provider_key already exists")
+		errStr := err.Error()
+		if strings.Contains(errStr, "UNIQUE constraint failed") {
+			return nil, &ProviderError{Message: "provider_key already exists", StatusCode: 409}
+		}
+		if strings.Contains(errStr, "CHECK constraint failed") {
+			return nil, &ProviderError{Message: fmt.Sprintf("invalid provider_type: %s", req.ProviderType), StatusCode: 400}
+		}
+		return nil, &ProviderError{Message: fmt.Sprintf("failed to create provider: %s", err), StatusCode: 500}
 	}
 
 	id, _ := result.LastInsertId()

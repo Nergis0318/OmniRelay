@@ -215,6 +215,46 @@ var migrations = []migration{
 			return nil
 		},
 	},
+	{
+		version: 10,
+		up: func(tx *sql.Tx) error {
+			// Add 'custom' to the provider_type CHECK constraint.
+			// SQLite does not support ALTER TABLE for CHECK constraints,
+			// so we recreate the table.
+			if _, err := tx.Exec(`PRAGMA foreign_keys=OFF`); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(`CREATE TABLE providers_v10 (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				provider_key TEXT UNIQUE NOT NULL,
+				name TEXT NOT NULL,
+				api_base_url TEXT NOT NULL,
+				api_key_encrypted TEXT NOT NULL,
+				provider_type TEXT NOT NULL CHECK(provider_type IN ('openai', 'anthropic', 'lmstudio', 'ollama', 'gemini', 'custom')),
+				is_active BOOLEAN DEFAULT 1,
+				show_in_model_list BOOLEAN DEFAULT 1,
+				user_id INTEGER REFERENCES users(id),
+				created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+				updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+			)`); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(`INSERT INTO providers_v10 (id, provider_key, name, api_base_url, api_key_encrypted, provider_type, is_active, show_in_model_list, user_id, created_at, updated_at)
+				SELECT id, provider_key, name, api_base_url, api_key_encrypted, provider_type, is_active, COALESCE(show_in_model_list, 1), user_id, created_at, updated_at FROM providers`); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(`DROP TABLE providers`); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(`ALTER TABLE providers_v10 RENAME TO providers`); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(`PRAGMA foreign_keys=ON`); err != nil {
+				return err
+			}
+			return nil
+		},
+	},
 }
 
 func hasColumn(tx *sql.Tx, tableName, columnName string) (bool, error) {

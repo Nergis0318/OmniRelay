@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"omnirelay/internal/apiresponse"
 	"omnirelay/internal/models"
@@ -36,6 +37,11 @@ func CreateProvider(svc *service.ProviderService) gin.HandlerFunc {
 
 		provider, err := svc.Create(req, userID)
 		if err != nil {
+			var pe *service.ProviderError
+			if errors.As(err, &pe) {
+				apiresponse.AbortAdminError(c, pe.StatusCode, err.Error(), "")
+				return
+			}
 			apiresponse.AbortAdminConflict(c, err.Error())
 			return
 		}
