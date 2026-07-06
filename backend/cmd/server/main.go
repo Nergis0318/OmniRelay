@@ -73,6 +73,7 @@ func main() {
 	{
 		admin.POST("/auth/register", handlers.Register(authService))
 		admin.POST("/auth/login", handlers.Login(authService))
+		admin.GET("/ws", handlers.WebSocketUpgrader(cfg.JWTSecret))
 
 		adminAuth := admin.Group("")
 		adminAuth.Use(middleware.JWTAuth(cfg.JWTSecret))
@@ -97,7 +98,6 @@ func main() {
 			adminAuth.GET("/stats", handlers.GetStats(usageService, apiKeyService, modelService))
 
 			adminAuth.GET("/users", handlers.ListUsers(authService))
-			adminAuth.GET("/ws", handlers.WebSocketUpgrader(cfg.JWTSecret))
 		}
 	}
 
