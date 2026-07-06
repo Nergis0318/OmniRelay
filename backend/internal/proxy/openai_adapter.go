@@ -304,6 +304,9 @@ func (a *OpenAIAdapter) ParseMessagesResponse(body map[string]interface{}) (map[
 		if ct, ok := usage["completion_tokens"]; ok {
 			anthropicUsage["output_tokens"] = ct
 		}
+		if details, ok := usage["prompt_tokens_details"].(map[string]interface{}); ok {
+			anthropicUsage["prompt_tokens_details"] = details
+		}
 		response["usage"] = anthropicUsage
 	}
 

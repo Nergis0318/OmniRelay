@@ -224,9 +224,10 @@ func (a *GeminiAdapter) ParseChatResponse(body map[string]interface{}) (map[stri
 		}
 
 		response["usage"] = map[string]interface{}{
-			"prompt_tokens":     requestTokens,
-			"completion_tokens": responseTokens,
-			"total_tokens":      totalTokens,
+			"prompt_tokens":               requestTokens,
+			"completion_tokens":           responseTokens,
+			"total_tokens":                totalTokens,
+			"cached_content_token_count":  numberToInt64(usage["cached_content_token_count"]),
 		}
 	}
 
@@ -539,8 +540,9 @@ func (a *GeminiAdapter) ParseMessagesResponse(body map[string]interface{}) (map[
 			outputTokens = ct
 		}
 		response["usage"] = map[string]interface{}{
-			"input_tokens":  int64(inputTokens),
-			"output_tokens": int64(outputTokens),
+			"input_tokens":               int64(inputTokens),
+			"output_tokens":              int64(outputTokens),
+			"cached_content_token_count": numberToInt64(usage["cached_content_token_count"]),
 		}
 	}
 

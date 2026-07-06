@@ -324,6 +324,25 @@ func (e *Engine) executeMessages(c *gin.Context, body map[string]interface{}, fu
 	}
 
 	if inputTokens == 0 && outputTokens == 0 {
+		// Even if input/output tokens are 0, check for cache tokens
+		if hasUsage {
+			cacheWrite5m, cacheWrite1h, cacheReadTokens := extractCacheTokens(usage)
+			if cacheWrite5m > 0 || cacheWrite1h > 0 || cacheReadTokens > 0 {
+				completedAt := time.Now()
+				cost := calculateCost(dbModel, 0, 0, cacheWrite5m, cacheWrite1h, cacheReadTokens)
+				e.logTokenUsage(u, tokenUsage{
+					cacheWrite5m: cacheWrite5m,
+					cacheWrite1h: cacheWrite1h,
+					cacheRead:    cacheReadTokens,
+					cost:         cost,
+					startedAt:    &startTime,
+					completedAt:  &completedAt,
+					latencyMs:    latencyMs,
+				})
+				c.JSON(http.StatusOK, finalResponse)
+				return
+			}
+		}
 		e.logLatencyOnly(u, latencyMs)
 		c.JSON(http.StatusOK, finalResponse)
 		return
@@ -441,7 +460,7 @@ func (e *Engine) handlePathRoutedProxy(c *gin.Context, provider *models.Provider
 		}
 		totalTokens := requestTokens + responseTokens
 
-		if requestTokens > 0 || responseTokens > 0 {
+		if requestTokens > 0 || responseTokens > 0 || cacheWrite5m > 0 || cacheWrite1h > 0 || cacheReadTokens > 0 {
 			completedAt := time.Now()
 			var cost float64
 			if dbModel != nil {
