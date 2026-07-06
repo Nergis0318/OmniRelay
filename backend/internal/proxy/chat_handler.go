@@ -23,6 +23,9 @@ func (e *Engine) executeChat(c *gin.Context, provider *models.Provider, dbModel 
 		return
 	}
 
+	// Count input tokens locally before sending to upstream
+	inputTokens := countInputTokens(adaptedBody, fullModelID)
+
 	rc := &requestContext{
 		c:           c,
 		provider:    provider,
@@ -48,7 +51,7 @@ func (e *Engine) executeChat(c *gin.Context, provider *models.Provider, dbModel 
 	}
 
 	if isStream {
-		e.handleStreamResponse(c, resp, adapter, apiKeyID, provider.ID, fullModelID, dbModel, userID)
+		e.handleStreamResponse(c, resp, adapter, apiKeyID, provider.ID, fullModelID, dbModel, userID, provider.ProviderType, inputTokens)
 		return
 	}
 
@@ -59,12 +62,12 @@ func (e *Engine) executeChat(c *gin.Context, provider *models.Provider, dbModel 
 			ProviderID:   &provider.ID,
 			Model:        fullModelID,
 			IsError:      true,
-			ErrorMessage: "failed to read upstream response",
+			ErrorMessage: "failed to read the model response",
 			UserID:       &userID,
 		})
-		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to read upstream response"})
+		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to read the model response"})
 		return
 	}
 
-	handleNonStreamChatResponse(c, respBody, resp.Header, adapter, fullModelID, dbModel, apiKeyID, provider.ID, startTime, userID, e.usageService)
+	handleNonStreamChatResponse(c, respBody, resp.Header, adapter, fullModelID, dbModel, apiKeyID, provider.ID, startTime, userID, e.usageService, provider.ProviderType, inputTokens)
 }

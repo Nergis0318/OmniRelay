@@ -153,7 +153,7 @@ func (e *Engine) HandlePathRouted(c *gin.Context) {
 
 	dbModel, _ := e.resolveModel(fullModelID, userID)
 
-	// Route to real upstream if model has source_provider_key
+	// Route to real model if model has source_provider_key
 	if dbModel != nil && dbModel.SourceProviderKey != "" {
 		if sourceProvider, serr := e.providerService.GetByKey(dbModel.SourceProviderKey, userID); serr == nil {
 			provider = sourceProvider
@@ -260,6 +260,9 @@ func (e *Engine) executeMessages(c *gin.Context, body map[string]interface{}, fu
 		return
 	}
 
+	// Count input tokens locally before sending to upstream
+	localInputTokens := countInputTokens(body, fullModelID)
+
 	isStream, _ := body["stream"].(bool)
 	if isStream && isOpenAICompat(provider.ProviderType) {
 		if _, ok := adaptedBody["stream_options"]; !ok {
@@ -267,30 +270,30 @@ func (e *Engine) executeMessages(c *gin.Context, body map[string]interface{}, fu
 		}
 	}
 	endpoint = applyGeminiStreamingURL(provider.ProviderType, endpoint, isStream)
-	upstreamURL := joinUpstreamURL(provider.APiBaseURL, endpoint)
+	modelURL := joinUpstreamURL(provider.APiBaseURL, endpoint)
 
-	resp, startTime, ok := e.proxyJSONRequest(c, u, provider.ProviderType, apiKey, upstreamURL, adaptedBody, true)
+	resp, startTime, ok := e.proxyJSONRequest(c, u, provider.ProviderType, apiKey, modelURL, adaptedBody, true)
 	if !ok {
 		return
 	}
 	defer resp.Body.Close()
 
 	if isStream {
-		e.handleMessagesStreamResponse(c, resp, adapter, u.apiKeyID, u.providerID, u.fullModelID, dbModel, startTime, u.userID)
+		e.handleMessagesStreamResponse(c, resp, adapter, u.apiKeyID, u.providerID, u.fullModelID, dbModel, startTime, u.userID, provider.ProviderType, localInputTokens)
 		return
 	}
 
 	respBody, _ := io.ReadAll(resp.Body)
 	latencyMs := time.Since(startTime).Milliseconds()
 
-	var upstreamResponse map[string]interface{}
-	if err := json.Unmarshal(respBody, &upstreamResponse); err != nil {
+	var modelResponse map[string]interface{}
+	if err := json.Unmarshal(respBody, &modelResponse); err != nil {
 		e.logLatencyOnly(u, latencyMs)
 		c.Data(resp.StatusCode, contentTypeOrDefault(resp.Header), respBody)
 		return
 	}
 
-	finalResponse, err := adapter.ParseMessagesResponse(upstreamResponse)
+	finalResponse, err := adapter.ParseMessagesResponse(modelResponse)
 	if err != nil {
 		e.logLatencyOnly(u, latencyMs)
 		c.Data(resp.StatusCode, contentTypeOrDefault(resp.Header), respBody)
@@ -299,16 +302,23 @@ func (e *Engine) executeMessages(c *gin.Context, body map[string]interface{}, fu
 
 	finalResponse["model"] = fullModelID
 
-	usage, hasUsage := finalResponse["usage"].(map[string]interface{})
-	if !hasUsage {
-		e.logLatencyOnly(u, latencyMs)
-		c.JSON(http.StatusOK, finalResponse)
-		return
-	}
+	// Count output tokens locally
+	localOutputTokens := countOutputTokens(finalResponse, provider.ProviderType, fullModelID)
 
-	inputTokens := numberToInt64(usage["input_tokens"])
-	outputTokens := numberToInt64(usage["output_tokens"])
-	if inputTokens == 0 && outputTokens == 0 {
+	// Extract upstream token data (for cache tokens and fallback)
+	usage, hasUsage := finalResponse["usage"].(map[string]interface{})
+
+	// Prefer locally counted tokens over upstream values
+	inputTokens := localInputTokens
+	outputTokens := localOutputTokens
+
+	if inputTokens == 0 && hasUsage {
+		inputTokens = numberToInt64(usage["input_tokens"])
+	}
+	if outputTokens == 0 && hasUsage {
+		outputTokens = numberToInt64(usage["output_tokens"])
+	}
+	if inputTokens == 0 && outputTokens == 0 && hasUsage {
 		inputTokens = numberToInt64(usage["prompt_tokens"])
 		outputTokens = numberToInt64(usage["completion_tokens"])
 	}
@@ -347,6 +357,9 @@ func (e *Engine) handlePathRoutedProxy(c *gin.Context, provider *models.Provider
 		return
 	}
 
+	// Count input tokens locally from the request body
+	localInputTokens := countInputTokens(body, fullModelID)
+
 	var reqBodyBytes []byte
 	if hasRequestBody {
 		bodyStream, _ := body["stream"].(bool)
@@ -362,14 +375,14 @@ func (e *Engine) handlePathRoutedProxy(c *gin.Context, provider *models.Provider
 		}
 	}
 
-	upstreamBaseURL := routedBaseURL(provider.ProviderType, apiPrefix, provider.APiBaseURL)
-	upstreamEndpoint := routedEndpoint(apiPrefix, upstreamBaseURL, endpoint)
-	upstreamURL := appendRawQuery(joinUpstreamURL(upstreamBaseURL, upstreamEndpoint), c.Request.URL.RawQuery)
+	modelBaseURL := routedBaseURL(provider.ProviderType, apiPrefix, provider.APiBaseURL)
+	modelEndpoint := routedEndpoint(apiPrefix, modelBaseURL, endpoint)
+	modelURL := appendRawQuery(joinUpstreamURL(modelBaseURL, modelEndpoint), c.Request.URL.RawQuery)
 
-	req, err := buildUpstreamRequest(c, c.Request.Method, upstreamURL, reqBodyBytes, provider.ProviderType, apiKey)
+	req, err := buildUpstreamRequest(c, c.Request.Method, modelURL, reqBodyBytes, provider.ProviderType, apiKey)
 	if err != nil {
 		e.logUpstreamError(u, err.Error(), 0)
-		apiresponse.AbortInternal(c, errFmt, "failed to create upstream request")
+		apiresponse.AbortInternal(c, errFmt, "failed to create the model request")
 		return
 	}
 	if hasRequestBody {
@@ -383,7 +396,7 @@ func (e *Engine) handlePathRoutedProxy(c *gin.Context, provider *models.Provider
 	resp, startTime, err := e.doUpstream(req)
 	if err != nil {
 		e.logUpstreamError(u, err.Error(), 0)
-		apiresponse.AbortBadGateway(c, errFmt, fmt.Sprintf("upstream request failed: %v", err))
+		apiresponse.AbortBadGateway(c, errFmt, fmt.Sprintf("the model request failed: %v", err))
 		return
 	}
 	defer resp.Body.Close()
@@ -392,7 +405,7 @@ func (e *Engine) handlePathRoutedProxy(c *gin.Context, provider *models.Provider
 	responseContentType := strings.ToLower(resp.Header.Get("Content-Type"))
 	if isSuccessStatus(resp.StatusCode) && (bodyStream || strings.Contains(responseContentType, "text/event-stream") || strings.Contains(responseContentType, "x-ndjson")) {
 		if adapter := e.getAdapter(provider.ProviderType); adapter != nil {
-			e.handleStreamResponse(c, resp, adapter, u.apiKeyID, u.providerID, u.fullModelID, dbModel, u.userID)
+			e.handleStreamResponse(c, resp, adapter, u.apiKeyID, u.providerID, u.fullModelID, dbModel, u.userID, provider.ProviderType, localInputTokens)
 		} else {
 			e.handleRawStreamResponse(c, resp, u.apiKeyID, u.providerID, u.fullModelID, startTime, u.userID)
 		}
@@ -401,7 +414,7 @@ func (e *Engine) handlePathRoutedProxy(c *gin.Context, provider *models.Provider
 
 	if !isSuccessStatus(resp.StatusCode) {
 		latencyMs := time.Since(startTime).Milliseconds()
-		e.logUpstreamError(u, fmt.Sprintf("upstream returned %d", resp.StatusCode), latencyMs)
+		e.logUpstreamError(u, fmt.Sprintf("the model returned %d", resp.StatusCode), latencyMs)
 		writeUpstreamErrorBody(c, resp, provider.ProviderType)
 		return
 	}
@@ -411,7 +424,23 @@ func (e *Engine) handlePathRoutedProxy(c *gin.Context, provider *models.Provider
 
 	var respJSON map[string]interface{}
 	if json.Unmarshal(respBody, &respJSON) == nil {
-		requestTokens, responseTokens, totalTokens, cacheWrite5m, cacheWrite1h, cacheReadTokens := extractUsageFromRawResponse(provider.ProviderType, respJSON)
+		// Count output tokens locally
+		localOutputTokens := countOutputTokens(respJSON, provider.ProviderType, fullModelID)
+
+		// Extract upstream token data (for cache tokens and fallback)
+		upstreamReq, upstreamResp, _, cacheWrite5m, cacheWrite1h, cacheReadTokens := extractUsageFromRawResponse(provider.ProviderType, respJSON)
+
+		// Prefer locally counted tokens
+		requestTokens := localInputTokens
+		if requestTokens == 0 {
+			requestTokens = upstreamReq
+		}
+		responseTokens := localOutputTokens
+		if responseTokens == 0 && upstreamResp > 0 {
+			responseTokens = upstreamResp
+		}
+		totalTokens := requestTokens + responseTokens
+
 		if requestTokens > 0 || responseTokens > 0 {
 			completedAt := time.Now()
 			var cost float64

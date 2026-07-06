@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"encoding/json"
 	"net/http"
 	"strings"
 	"time"
@@ -10,7 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapter Adapter, apiKeyID, providerID int64, fullModelID string, dbModel *models.Model, userID int64) {
+func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapter Adapter, apiKeyID, providerID int64, fullModelID string, dbModel *models.Model, userID int64, providerType string, inputTokens int64) {
 	c.Status(http.StatusOK)
 	copyResponseHeaders(c, resp.Header)
 	c.Header("Content-Type", "text/event-stream")
@@ -27,15 +28,20 @@ func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapt
 	state := make(map[string]interface{})
 
 	var totalInputTokens, totalOutputTokens int64
+	var outputTextAccum strings.Builder
 	sentDone := false
 
 	for {
 		n, err := resp.Body.Read(buf)
 		if n > 0 {
 			chunk := buf[:n]
-			if strings.Contains(string(chunk), "data: [DONE]") {
+			chunkStr := string(chunk)
+			if strings.Contains(chunkStr, "data: [DONE]") {
 				sentDone = true
 			}
+
+			// Track output text for local token counting
+			extractDeltaContent(chunkStr, providerType, &outputTextAccum)
 
 			transformed, inTok, outTok, _ := adapter.ParseStreamChunk(chunk, state)
 			if inTok > 0 {
@@ -67,6 +73,15 @@ func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapt
 
 	latencyMs := time.Since(start).Milliseconds()
 	completedAt := time.Now()
+
+	// Prefer locally counted output tokens over upstream values
+	if totalOutputTokens == 0 && outputTextAccum.Len() > 0 {
+		totalOutputTokens = countTextTokens(outputTextAccum.String(), fullModelID)
+	}
+	// Prefer locally counted input tokens over upstream values
+	if inputTokens > 0 {
+		totalInputTokens = inputTokens
+	}
 
 	cacheWrite5m := int64State(state, "cache_write_5m_tokens", 0)
 	cacheWrite1h := int64State(state, "cache_write_1h_tokens", 0)
@@ -129,7 +144,7 @@ func (e *Engine) handleRawStreamResponse(c *gin.Context, resp *http.Response, ap
 	})
 }
 
-func (e *Engine) handleMessagesStreamResponse(c *gin.Context, resp *http.Response, adapter Adapter, apiKeyID, providerID int64, fullModelID string, dbModel *models.Model, start time.Time, userID int64) {
+func (e *Engine) handleMessagesStreamResponse(c *gin.Context, resp *http.Response, adapter Adapter, apiKeyID, providerID int64, fullModelID string, dbModel *models.Model, start time.Time, userID int64, providerType string, inputTokens int64) {
 	c.Status(http.StatusOK)
 	copyResponseHeaders(c, resp.Header)
 	c.Header("Content-Type", "text/event-stream")
@@ -144,11 +159,16 @@ func (e *Engine) handleMessagesStreamResponse(c *gin.Context, resp *http.Respons
 	buf := make([]byte, 4096)
 	state := make(map[string]interface{})
 	var totalInputTokens, totalOutputTokens int64
+	var outputTextAccum strings.Builder
 
 	for {
 		n, err := resp.Body.Read(buf)
 		if n > 0 {
-			transformed, inTok, outTok, _ := adapter.ParseMessagesStreamChunk(buf[:n], state)
+			chunk := buf[:n]
+			// Track output text for local token counting
+			extractDeltaContent(string(chunk), providerType, &outputTextAccum)
+
+			transformed, inTok, outTok, _ := adapter.ParseMessagesStreamChunk(chunk, state)
 			if inTok > 0 {
 				totalInputTokens = inTok
 			}
@@ -166,6 +186,16 @@ func (e *Engine) handleMessagesStreamResponse(c *gin.Context, resp *http.Respons
 	}
 
 	completedAt := time.Now()
+
+	// Prefer locally counted output tokens over upstream values
+	if totalOutputTokens == 0 && outputTextAccum.Len() > 0 {
+		totalOutputTokens = countTextTokens(outputTextAccum.String(), fullModelID)
+	}
+	// Prefer locally counted input tokens over upstream values
+	if inputTokens > 0 {
+		totalInputTokens = inputTokens
+	}
+
 	cacheWrite5m := int64State(state, "cache_write_5m_tokens", 0)
 	cacheWrite1h := int64State(state, "cache_write_1h_tokens", 0)
 	cacheReadTokens := int64State(state, "cache_read_tokens", 0)
@@ -189,4 +219,59 @@ func (e *Engine) handleMessagesStreamResponse(c *gin.Context, resp *http.Respons
 		log.Cost = calculateCost(dbModel, totalInputTokens, totalOutputTokens, cacheWrite5m, cacheWrite1h, cacheReadTokens)
 	}
 	e.usageService.Log(log)
+}
+
+// extractDeltaContent parses SSE chunk data to extract incremental text content
+// and appends it to the accumulator. Works for both OpenAI and Anthropic SSE formats.
+func extractDeltaContent(chunk string, providerType string, acc *strings.Builder) {
+	if acc == nil {
+		return
+	}
+	// Only process SSE data lines
+	if !strings.Contains(chunk, "data: ") {
+		return
+	}
+
+	// If it looks like a message_delta or done marker, skip
+	if strings.Contains(chunk, "[DONE]") || strings.Contains(chunk, "message_stop") ||
+		strings.Contains(chunk, "content_block_stop") || strings.Contains(chunk, "message_delta") {
+		return
+	}
+
+	// Try to find and extract text content from JSON inside "data: ..."
+	for _, line := range strings.Split(chunk, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		payload := strings.TrimPrefix(line, "data: ")
+
+		var data map[string]interface{}
+		if err := json.Unmarshal([]byte(payload), &data); err != nil {
+			continue
+		}
+
+		// OpenAI delta format: choices[0].delta.content
+		if choices, ok := data["choices"].([]interface{}); ok && len(choices) > 0 {
+			if choice, ok := choices[0].(map[string]interface{}); ok {
+				if delta, ok := choice["delta"].(map[string]interface{}); ok {
+					if content, ok := delta["content"].(string); ok && content != "" {
+						acc.WriteString(content)
+					}
+				}
+			}
+			continue
+		}
+
+		// Anthropic delta format: type=content_block_delta, delta.type=text_delta, delta.text
+		if dataType, ok := data["type"].(string); ok && dataType == "content_block_delta" {
+			if delta, ok := data["delta"].(map[string]interface{}); ok {
+				if deltaType, ok := delta["type"].(string); ok && deltaType == "text_delta" {
+					if text, ok := delta["text"].(string); ok && text != "" {
+						acc.WriteString(text)
+					}
+				}
+			}
+		}
+	}
 }

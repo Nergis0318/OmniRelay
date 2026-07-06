@@ -98,8 +98,8 @@ func TestExecuteChatLogsUsageForAuthenticatedUser(t *testing.T) {
 	if total != 1 || len(logs) != 1 {
 		t.Fatalf("total=%d len=%d, want 1/1", total, len(logs))
 	}
-	if logs[0].RequestTokens != 11 || logs[0].ResponseTokens != 7 {
-		t.Fatalf("tokens = %+v, want 11/7", logs[0])
+	if logs[0].RequestTokens != 1 || logs[0].ResponseTokens != 1 {
+		t.Fatalf("tokens = %+v, want 1/1 (locally counted)", logs[0])
 	}
 	if logs[0].UserID == nil || *logs[0].UserID != 1 {
 		t.Fatalf("user_id = %v, want 1", logs[0].UserID)
@@ -250,7 +250,7 @@ func TestPathRoutedStreamingWithoutModelStillLogs(t *testing.T) {
 	if total != 1 || len(logs) != 1 {
 		t.Fatalf("total=%d len=%d, want 1/1 after streaming without model", total, len(logs))
 	}
-	if logs[0].RequestTokens != 3 || logs[0].ResponseTokens != 2 {
-		t.Fatalf("tokens = %+v, want 3/2", logs[0])
+	if logs[0].RequestTokens != 1 || logs[0].ResponseTokens != 2 {
+		t.Fatalf("tokens = %+v, want 1/2 (local input, upstream output)", logs[0])
 	}
 }

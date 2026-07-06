@@ -39,8 +39,8 @@ func (rc *requestContext) executeUpstream(adaptedBody map[string]interface{}, en
 	}
 
 	adaptedJSON, _ := json.Marshal(adaptedBody)
-	upstreamURL := joinUpstreamURL(provider.APiBaseURL, endpoint)
-	req, err := http.NewRequest("POST", upstreamURL, bytes.NewReader(adaptedJSON))
+	modelURL := joinUpstreamURL(provider.APiBaseURL, endpoint)
+	req, err := http.NewRequest("POST", modelURL, bytes.NewReader(adaptedJSON))
 	if err != nil {
 		e.usageService.Log(models.UsageLog{
 			APIKeyID:     &rc.apiKeyID,
@@ -50,7 +50,7 @@ func (rc *requestContext) executeUpstream(adaptedBody map[string]interface{}, en
 			ErrorMessage: err.Error(),
 			UserID:       &rc.userID,
 		})
-		rc.c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create upstream request"})
+		rc.c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create the model request"})
 		return nil, time.Time{}, true
 	}
 
@@ -70,7 +70,7 @@ func (rc *requestContext) executeUpstream(adaptedBody map[string]interface{}, en
 			ErrorMessage: err.Error(),
 			UserID:       &rc.userID,
 		})
-		rc.c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("upstream request failed: %v", err)})
+		rc.c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("the model request failed: %v", err)})
 		return nil, startTime, true
 	}
 	return resp, startTime, false
@@ -92,20 +92,20 @@ func logErrorResponse(e *Engine, apiKeyID, providerID int64, fullModelID string,
 		ProviderID:   &providerID,
 		Model:        fullModelID,
 		IsError:      true,
-		ErrorMessage: fmt.Sprintf("upstream returned %d", statusCode),
+		ErrorMessage: fmt.Sprintf("the model returned %d", statusCode),
 		LatencyMs:    latencyMs,
 		UserID:       &userID,
 	})
 }
 
-func handleNonStreamChatResponse(c *gin.Context, respBody []byte, respHeader http.Header, adapter Adapter, fullModelID string, dbModel *models.Model, apiKeyID, providerID int64, startTime time.Time, userID int64, usageService UsageLogger) {
-	var upstreamResponse map[string]interface{}
-	if err := json.Unmarshal(respBody, &upstreamResponse); err != nil {
+func handleNonStreamChatResponse(c *gin.Context, respBody []byte, respHeader http.Header, adapter Adapter, fullModelID string, dbModel *models.Model, apiKeyID, providerID int64, startTime time.Time, userID int64, usageService UsageLogger, providerType string, inputTokens int64) {
+	var modelResponse map[string]interface{}
+	if err := json.Unmarshal(respBody, &modelResponse); err != nil {
 		c.Data(http.StatusOK, contentTypeOrDefault(respHeader), respBody)
 		return
 	}
 
-	finalResponse, err := adapter.ParseChatResponse(upstreamResponse)
+	finalResponse, err := adapter.ParseChatResponse(modelResponse)
 	if err != nil {
 		c.Data(http.StatusOK, contentTypeOrDefault(respHeader), respBody)
 		return
@@ -113,22 +113,40 @@ func handleNonStreamChatResponse(c *gin.Context, respBody []byte, respHeader htt
 
 	finalResponse["model"] = fullModelID
 
-	if usage, ok := finalResponse["usage"].(map[string]interface{}); ok {
-		requestTokens := numberToInt64(usage["prompt_tokens"])
-		responseTokens := numberToInt64(usage["completion_tokens"])
-		totalTokens := numberToInt64(usage["total_tokens"])
-		cacheWrite5m, cacheWrite1h, cacheReadTokens := extractCacheTokens(usage)
+	// Count output tokens locally from the response content
+	localOutput := countOutputTokens(finalResponse, providerType, fullModelID)
+	latencyMs := time.Since(startTime).Milliseconds()
+	completedAt := time.Now()
 
-		cost := calculateCost(dbModel, requestTokens, responseTokens, cacheWrite5m, cacheWrite1h, cacheReadTokens)
-		latencyMs := time.Since(startTime).Milliseconds()
-		completedAt := time.Now()
+	// Extract upstream token data for cache tokens which we can't count locally
+	var cacheWrite5m, cacheWrite1h, cacheReadTokens int64
+	var upstreamReqTokens, upstreamRespTokens int64
+	if usage, ok := finalResponse["usage"].(map[string]interface{}); ok {
+		upstreamReqTokens = numberToInt64(usage["prompt_tokens"])
+		upstreamRespTokens = numberToInt64(usage["completion_tokens"])
+		cacheWrite5m, cacheWrite1h, cacheReadTokens = extractCacheTokens(usage)
+	}
+
+	// Prefer locally counted tokens over upstream values
+	reqTokens := inputTokens
+	if reqTokens == 0 {
+		reqTokens = upstreamReqTokens
+	}
+	respTokens := localOutput
+	if respTokens == 0 {
+		respTokens = upstreamRespTokens
+	}
+	totalTokens := reqTokens + respTokens
+
+	if reqTokens > 0 || respTokens > 0 || cacheWrite5m > 0 || cacheWrite1h > 0 || cacheReadTokens > 0 {
+		cost := calculateCost(dbModel, reqTokens, respTokens, cacheWrite5m, cacheWrite1h, cacheReadTokens)
 
 		usageService.Log(models.UsageLog{
 			APIKeyID:           &apiKeyID,
 			ProviderID:         &providerID,
 			Model:              fullModelID,
-			RequestTokens:      requestTokens,
-			ResponseTokens:     responseTokens,
+			RequestTokens:      reqTokens,
+			ResponseTokens:     respTokens,
 			TotalTokens:        totalTokens,
 			CacheWrite5MTokens: cacheWrite5m,
 			CacheWrite1HTokens: cacheWrite1h,
