@@ -46,7 +46,7 @@ func (w *messagesStreamWriter) ensureStarted() {
 				"stop_reason":   nil,
 				"stop_sequence": nil,
 				"usage": map[string]interface{}{
-					"input_tokens": 0,
+					"input_tokens": int64State(w.state, "input_tokens", 0),
 				},
 			},
 		})

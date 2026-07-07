@@ -23,6 +23,13 @@ func (e *Engine) executeChat(c *gin.Context, provider *models.Provider, dbModel 
 		return
 	}
 
+	// Inject stream_options for OpenAI-compatible streaming to get usage data
+	if isStream && isOpenAICompat(provider.ProviderType) {
+		if _, ok := adaptedBody["stream_options"]; !ok {
+			adaptedBody["stream_options"] = map[string]interface{}{"include_usage": true}
+		}
+	}
+
 	// Count input tokens locally before sending to upstream
 	inputTokens := countInputTokens(adaptedBody, fullModelID)
 

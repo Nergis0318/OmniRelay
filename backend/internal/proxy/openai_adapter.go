@@ -49,11 +49,7 @@ func (a *OpenAIAdapter) ParseStreamChunk(data []byte, state map[string]interface
 			outputTokens = numberToInt64(usage["completion_tokens"])
 			state["input_tokens"] = inputTokens
 			state["output_tokens"] = outputTokens
-			if details, ok := usage["prompt_tokens_details"].(map[string]interface{}); ok {
-				if cached := numberToInt64(details["cached_tokens"]); cached > 0 {
-					state["cache_read_tokens"] = cached
-				}
-			}
+			extractAndStoreCacheTokens(usage, state)
 		}
 	}
 
@@ -94,11 +90,7 @@ func (a *OpenAIAdapter) ParseMessagesStreamChunk(data []byte, state map[string]i
 			outputTokens = numberToInt64(usage["completion_tokens"])
 			state["input_tokens"] = inputTokens
 			state["output_tokens"] = outputTokens
-			if details, ok := usage["prompt_tokens_details"].(map[string]interface{}); ok {
-				if cached := numberToInt64(details["cached_tokens"]); cached > 0 {
-					state["cache_read_tokens"] = cached
-				}
-			}
+			extractAndStoreCacheTokens(usage, state)
 		}
 
 		choices, _ := chunk["choices"].([]interface{})
