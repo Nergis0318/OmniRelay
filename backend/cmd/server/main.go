@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -34,7 +35,7 @@ func main() {
 
 	authService := service.NewAuthService(db)
 	authService.SetJWTSecret(cfg.JWTSecret)
-	providerService := service.NewProviderService(db)
+	providerService := service.NewProviderService(db, cfg)
 	modelService := service.NewModelService(db)
 	apiKeyService := service.NewAPIKeyService(db)
 	usageService := service.NewUsageService(db)
@@ -158,38 +159,12 @@ func splitAndTrim(s, sep string) []string {
 	if s == "" {
 		return nil
 	}
-	parts := split(s, sep)
+	parts := strings.Split(s, sep)
 	result := make([]string, 0, len(parts))
 	for _, p := range parts {
-		if trimmed := trimSpace(p); trimmed != "" {
+		if trimmed := strings.TrimSpace(p); trimmed != "" {
 			result = append(result, trimmed)
 		}
 	}
 	return result
-}
-
-func split(s, sep string) []string {
-	var result []string
-	start := 0
-	for i := 0; i < len(s); i++ {
-		if string(s[i]) == sep && i >= start {
-			result = append(result, s[start:i])
-			start = i + 1
-		}
-	}
-	if start <= len(s) {
-		result = append(result, s[start:])
-	}
-	return result
-}
-
-func trimSpace(s string) string {
-	start, end := 0, len(s)
-	for start < end && (s[start] == ' ' || s[start] == '\t' || s[start] == '\n' || s[start] == '\r') {
-		start++
-	}
-	for end > start && (s[end-1] == ' ' || s[end-1] == '\t' || s[end-1] == '\n' || s[end-1] == '\r') {
-		end--
-	}
-	return s[start:end]
 }

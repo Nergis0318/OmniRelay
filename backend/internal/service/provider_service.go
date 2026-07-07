@@ -26,10 +26,11 @@ func (e *ProviderError) Error() string {
 
 type ProviderService struct {
 	db *sql.DB
+	cfg *config.Config
 }
 
-func NewProviderService(db *sql.DB) *ProviderService {
-	return &ProviderService{db: db}
+func NewProviderService(db *sql.DB, cfg *config.Config) *ProviderService {
+	return &ProviderService{db: db, cfg: cfg}
 }
 
 func (s *ProviderService) List(userID int64) ([]models.Provider, error) {
@@ -78,7 +79,6 @@ func (s *ProviderService) GetByID(id int64, userID int64) (*models.Provider, err
 }
 
 func (s *ProviderService) Create(req models.CreateProviderRequest, userID int64) (*models.Provider, error) {
-	cfg := config.Load()
 
 	var encrypted string
 	if req.ProviderType == "custom" {
@@ -88,7 +88,7 @@ func (s *ProviderService) Create(req models.CreateProviderRequest, userID int64)
 			return nil, &ProviderError{Message: "api_key and api_base_url are required for non-custom providers", StatusCode: 400}
 		}
 		var err error
-		encrypted, err = crypto.Encrypt(req.APIKey, cfg.EncryptKey)
+		encrypted, err = crypto.Encrypt(req.APIKey, s.cfg.EncryptKey)
 		if err != nil {
 			return nil, &ProviderError{Message: fmt.Sprintf("failed to encrypt API key: %s", err), StatusCode: 500}
 		}
@@ -158,8 +158,7 @@ func (s *ProviderService) Update(id int64, userID int64, req models.UpdateProvid
 	}
 
 	if req.APIKey != nil && *req.APIKey != "" {
-		cfg := config.Load()
-		encrypted, err := crypto.Encrypt(*req.APIKey, cfg.EncryptKey)
+		encrypted, err := crypto.Encrypt(*req.APIKey, s.cfg.EncryptKey)
 		if err != nil {
 			return nil, err
 		}
@@ -204,8 +203,7 @@ func (s *ProviderService) Delete(id int64, userID int64) error {
 }
 
 func (s *ProviderService) DecryptAPIKey(encrypted string) (string, error) {
-	cfg := config.Load()
-	return crypto.Decrypt(encrypted, cfg.EncryptKey)
+	return crypto.Decrypt(encrypted, s.cfg.EncryptKey)
 }
 
 func (s *ProviderService) importSourceModels(customProvider *models.Provider, sourceModels []string, userID int64) error {

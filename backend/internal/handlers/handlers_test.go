@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"omnirelay/internal/config"
 	"omnirelay/internal/database"
 	"omnirelay/internal/service"
 
@@ -35,7 +36,12 @@ func setupTest(t *testing.T) (*sql.DB, *service.ProviderService, *service.ModelS
 	})
 	tokenStr, _ := token.SignedString([]byte("test-secret"))
 
-	providerSvc := service.NewProviderService(db)
+	testCfg := &config.Config{
+		EncryptKey: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+		JWTSecret:  "test-secret",
+	}
+
+	providerSvc := service.NewProviderService(db, testCfg)
 	modelSvc := service.NewModelService(db)
 	apiKeySvc := service.NewAPIKeyService(db)
 	usageSvc := service.NewUsageService(db)

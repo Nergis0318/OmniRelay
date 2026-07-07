@@ -1,6 +1,8 @@
 package proxy
 
 import (
+	"encoding/json"
+
 	"omnirelay/internal/models"
 )
 
@@ -21,16 +23,12 @@ func numberToInt64(v interface{}) int64 {
 		return n
 	case float64:
 		return int64(n)
-	case jsonNumber:
+	case json.Number:
 		i, _ := n.Int64()
 		return i
 	default:
 		return 0
 	}
-}
-
-type jsonNumber interface {
-	Int64() (int64, error)
 }
 
 func extractUsageFromRawResponse(providerType string, body map[string]interface{}) (requestTokens, responseTokens, totalTokens, cacheWrite5m, cacheWrite1h, cacheRead int64) {

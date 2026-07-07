@@ -55,17 +55,6 @@ func (c *Conn) Send(payload []byte) error {
 	}
 }
 
-func (c *Conn) Ping() error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	select {
-	case <-c.done:
-		return fmt.Errorf("connection closed")
-	default:
-		return nil
-	}
-}
-
 // Hub maintains active connections per user and routes events.
 type Hub struct {
 	mu          sync.Mutex

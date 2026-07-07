@@ -2,7 +2,6 @@ package proxy
 
 import (
 	"strings"
-	"unicode/utf8"
 
 	"github.com/pkoukk/tiktoken-go"
 )
@@ -244,18 +243,4 @@ func countInputTokens(body map[string]interface{}, fullModelID string) int64 {
 func countOutputTokens(resp map[string]interface{}, providerType, fullModelID string) int64 {
 	text := extractOutputText(resp, providerType)
 	return countTextTokens(text, fullModelID)
-}
-
-// utf8TokenCount is a fast O(n) estimator when even the heuristic is
-// too heavy (e.g. for extremely large texts).  Not exported – use
-// countTextTokens instead.
-func utf8TokenCount(text string) int64 {
-	if text == "" {
-		return 0
-	}
-	n := utf8.RuneCountInString(text)
-	if n < 4 {
-		return 1
-	}
-	return int64(n/4 + 1)
 }

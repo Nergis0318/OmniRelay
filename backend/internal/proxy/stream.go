@@ -83,9 +83,9 @@ func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapt
 		totalInputTokens = inputTokens
 	}
 
-	cacheWrite5m := int64State(state, "cache_write_5m_tokens", 0)
-	cacheWrite1h := int64State(state, "cache_write_1h_tokens", 0)
-	cacheReadTokens := int64State(state, "cache_read_tokens", 0)
+	cacheWrite5m, _ := state["cache_write_5m_tokens"].(int64)
+	cacheWrite1h, _ := state["cache_write_1h_tokens"].(int64)
+	cacheReadTokens, _ := state["cache_read_tokens"].(int64)
 	var cost float64
 	if dbModel != nil && (totalInputTokens > 0 || totalOutputTokens > 0) {
 		cost = calculateCost(dbModel, totalInputTokens, totalOutputTokens, cacheWrite5m, cacheWrite1h, cacheReadTokens)
@@ -196,9 +196,9 @@ func (e *Engine) handleMessagesStreamResponse(c *gin.Context, resp *http.Respons
 		totalInputTokens = inputTokens
 	}
 
-	cacheWrite5m := int64State(state, "cache_write_5m_tokens", 0)
-	cacheWrite1h := int64State(state, "cache_write_1h_tokens", 0)
-	cacheReadTokens := int64State(state, "cache_read_tokens", 0)
+	cacheWrite5m, _ := state["cache_write_5m_tokens"].(int64)
+	cacheWrite1h, _ := state["cache_write_1h_tokens"].(int64)
+	cacheReadTokens, _ := state["cache_read_tokens"].(int64)
 
 	log := models.UsageLog{
 		APIKeyID:           &apiKeyID,

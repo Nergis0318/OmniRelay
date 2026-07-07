@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"omnirelay/internal/config"
 	"omnirelay/internal/crypto"
 	"omnirelay/internal/database"
 	"omnirelay/internal/models"
@@ -17,6 +18,8 @@ import (
 )
 
 const testEncryptKey = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+var testConfig = &config.Config{EncryptKey: testEncryptKey}
 
 func encryptTestAPIKey(t *testing.T, plain string) string {
 	t.Helper()
@@ -69,7 +72,7 @@ func TestExecuteChatLogsUsageForAuthenticatedUser(t *testing.T) {
 		t.Fatalf("seed api key: %v", err)
 	}
 
-	providerSvc := service.NewProviderService(db)
+	providerSvc := service.NewProviderService(db, testConfig)
 	modelSvc := service.NewModelService(db)
 	usageSvc := service.NewUsageService(db)
 	engine := NewEngine(providerSvc, modelSvc, usageSvc, nil)
@@ -146,7 +149,7 @@ func TestExecuteChatResolvesUserIDFromAPIKeyWhenContextMissing(t *testing.T) {
 		t.Fatalf("seed api key: %v", err)
 	}
 
-	providerSvc := service.NewProviderService(db)
+	providerSvc := service.NewProviderService(db, testConfig)
 	modelSvc := service.NewModelService(db)
 	usageSvc := service.NewUsageService(db)
 	engine := NewEngine(providerSvc, modelSvc, usageSvc, nil)
@@ -221,7 +224,7 @@ func TestPathRoutedStreamingWithoutModelStillLogs(t *testing.T) {
 		t.Fatalf("seed api key: %v", err)
 	}
 
-	providerSvc := service.NewProviderService(db)
+	providerSvc := service.NewProviderService(db, testConfig)
 	modelSvc := service.NewModelService(db)
 	usageSvc := service.NewUsageService(db)
 	engine := NewEngine(providerSvc, modelSvc, usageSvc, nil)

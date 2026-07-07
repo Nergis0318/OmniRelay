@@ -35,7 +35,7 @@ func (w *messagesStreamWriter) writeEvent(event map[string]interface{}) {
 
 // ensureStarted emits message_start + content_block_start exactly once each across all chunks for a stream.
 func (w *messagesStreamWriter) ensureStarted() {
-	if !boolState(w.state, "started") {
+	if started, _ := w.state["started"].(bool); !started {
 		w.writeEvent(map[string]interface{}{
 			"type": "message_start",
 			"message": map[string]interface{}{
@@ -46,13 +46,13 @@ func (w *messagesStreamWriter) ensureStarted() {
 				"stop_reason":   nil,
 				"stop_sequence": nil,
 				"usage": map[string]interface{}{
-					"input_tokens": int64State(w.state, "input_tokens", 0),
+					"input_tokens": int64(0),
 				},
 			},
 		})
 		w.state["started"] = true
 	}
-	if !boolState(w.state, "content_started") {
+	if contentStarted, _ := w.state["content_started"].(bool); !contentStarted {
 		w.writeEvent(map[string]interface{}{
 			"type":  "content_block_start",
 			"index": 0,
@@ -85,11 +85,15 @@ func (w *messagesStreamWriter) textDelta(text string) {
 // finish emits content_block_stop + message_delta (with output_tokens) + message_stop
 // exactly once across the lifetime of the stream.
 func (w *messagesStreamWriter) finish(stopReason string, outputTokens int64) {
-	if boolState(w.state, "stopped") {
+	if stopped, _ := w.state["stopped"].(bool); stopped {
 		return
 	}
 	w.ensureStarted()
 	w.writeEvent(map[string]interface{}{"type": "content_block_stop", "index": 0})
+	outTok := outputTokens
+	if v, ok := w.state["output_tokens"].(int64); ok {
+		outTok = v
+	}
 	w.writeEvent(map[string]interface{}{
 		"type": "message_delta",
 		"delta": map[string]interface{}{
@@ -97,7 +101,7 @@ func (w *messagesStreamWriter) finish(stopReason string, outputTokens int64) {
 			"stop_sequence": nil,
 		},
 		"usage": map[string]interface{}{
-			"output_tokens": int64State(w.state, "output_tokens", outputTokens),
+			"output_tokens": outTok,
 		},
 	})
 	w.writeEvent(map[string]interface{}{"type": "message_stop"})
