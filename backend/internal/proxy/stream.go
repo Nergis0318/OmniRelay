@@ -2,14 +2,57 @@ package proxy
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"omnirelay/internal/models"
 
 	"github.com/gin-gonic/gin"
 )
+
+const streamKeepAliveInterval = 15 * time.Second
+
+// streamWriter serializes SSE writes so the keepalive pinger and the main
+// reader can share c.Writer / flusher without races. Write always flushes.
+type streamWriter struct {
+	w       io.Writer
+	flusher http.Flusher
+	mu      sync.Mutex
+}
+
+func newStreamWriter(w io.Writer, flusher http.Flusher) *streamWriter {
+	return &streamWriter{w: w, flusher: flusher}
+}
+
+func (s *streamWriter) Write(p []byte) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, _ = s.w.Write(p)
+	s.flusher.Flush()
+}
+
+// startKeepAlive launches a goroutine that writes SSE comment lines to keep
+// intermediaries (Cloudflare, Caddy) from timing out during upstream silence.
+// done is closed when the stream ends. Returns nothing — the goroutine exits
+// on its own when done is closed. Both the pinger and the main thread use the
+// same *streamWriter to avoid concurrent access to c.Writer.
+func startKeepAlive(sw *streamWriter, done <-chan struct{}) {
+	go func() {
+		ticker := time.NewTicker(streamKeepAliveInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				sw.Write([]byte(": keepalive\n\n"))
+			}
+		}
+	}()
+}
 
 func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapter Adapter, apiKeyID, providerID int64, fullModelID string, dbModel *models.Model, userID int64, providerType string, inputTokens int64) {
 	c.Status(http.StatusOK)
@@ -22,6 +65,11 @@ func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapt
 	if !ok {
 		return
 	}
+
+	done := make(chan struct{})
+	defer close(done)
+	sw := newStreamWriter(c.Writer, flusher)
+	startKeepAlive(sw, done)
 
 	start := time.Now()
 	buf := make([]byte, 4096)
@@ -40,7 +88,6 @@ func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapt
 				sentDone = true
 			}
 
-			// Track output text for local token counting
 			extractDeltaContent(chunkStr, providerType, &outputTextAccum)
 
 			transformed, inTok, outTok, _ := adapter.ParseStreamChunk(chunk, state)
@@ -54,11 +101,9 @@ func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapt
 				if strings.Contains(string(transformed), "data: [DONE]") {
 					sentDone = true
 				}
-				c.Writer.Write(transformed)
-				flusher.Flush()
+				sw.Write(transformed)
 			} else {
-				c.Writer.Write(chunk)
-				flusher.Flush()
+				sw.Write(chunk)
 			}
 		}
 		if err != nil {
@@ -67,18 +112,15 @@ func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapt
 	}
 
 	if !sentDone {
-		c.Writer.Write([]byte("data: [DONE]\n\n"))
-		flusher.Flush()
+		sw.Write([]byte("data: [DONE]\n\n"))
 	}
 
 	latencyMs := time.Since(start).Milliseconds()
 	completedAt := time.Now()
 
-	// Prefer locally counted output tokens over upstream values
 	if totalOutputTokens == 0 && outputTextAccum.Len() > 0 {
 		totalOutputTokens = countTextTokens(outputTextAccum.String(), fullModelID)
 	}
-	// Prefer locally counted input tokens over upstream values
 	if inputTokens > 0 {
 		totalInputTokens = inputTokens
 	}
@@ -123,12 +165,16 @@ func (e *Engine) handleRawStreamResponse(c *gin.Context, resp *http.Response, ap
 		return
 	}
 
+	done := make(chan struct{})
+	defer close(done)
+	sw := newStreamWriter(c.Writer, flusher)
+	startKeepAlive(sw, done)
+
 	buf := make([]byte, 4096)
 	for {
 		n, err := resp.Body.Read(buf)
 		if n > 0 {
-			c.Writer.Write(buf[:n])
-			flusher.Flush()
+			sw.Write(buf[:n])
 		}
 		if err != nil {
 			break
@@ -156,6 +202,11 @@ func (e *Engine) handleMessagesStreamResponse(c *gin.Context, resp *http.Respons
 		return
 	}
 
+	done := make(chan struct{})
+	defer close(done)
+	sw := newStreamWriter(c.Writer, flusher)
+	startKeepAlive(sw, done)
+
 	buf := make([]byte, 4096)
 	state := make(map[string]interface{})
 	var totalInputTokens, totalOutputTokens int64
@@ -165,7 +216,6 @@ func (e *Engine) handleMessagesStreamResponse(c *gin.Context, resp *http.Respons
 		n, err := resp.Body.Read(buf)
 		if n > 0 {
 			chunk := buf[:n]
-			// Track output text for local token counting
 			extractDeltaContent(string(chunk), providerType, &outputTextAccum)
 
 			transformed, inTok, outTok, _ := adapter.ParseMessagesStreamChunk(chunk, state)
@@ -176,8 +226,7 @@ func (e *Engine) handleMessagesStreamResponse(c *gin.Context, resp *http.Respons
 				totalOutputTokens = outTok
 			}
 			if transformed != nil {
-				c.Writer.Write(transformed)
-				flusher.Flush()
+				sw.Write(transformed)
 			}
 		}
 		if err != nil {
