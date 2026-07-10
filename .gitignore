@@ -178,3 +178,4 @@ go.work.sum
 # .vscode/
 
 *.db
+.fva/
