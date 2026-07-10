@@ -18,7 +18,9 @@
       >
         <template #item.username="{ item }">
           <span class="username-cell">
-            <v-icon size="16" class="user-icon">mdi-account-circle-outline</v-icon>
+            <v-icon size="16" class="user-icon"
+              >mdi-account-circle-outline</v-icon
+            >
             {{ item.username }}
           </span>
         </template>

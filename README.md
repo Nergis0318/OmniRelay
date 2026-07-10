@@ -54,16 +54,16 @@ Upstream Providers                        ← 각 제공자 원본 API
 
 ## 기술 스택
 
-| 영역 | 기술 |
-|---|---|
-| Backend | Go 1.25, Gin |
-| Database | SQLite (`modernc.org/sqlite`, CGO 불필요) |
-| Frontend | Vue 3, Vuetify 3, Pinia, vue-router, vue-i18n |
-| Charts | Chart.js, vue-chartjs |
-| Realtime | gorilla/websocket |
-| Runtime | Caddy 2 Alpine (single container) |
-| 패키지 관리자 | Bun |
-| CI/CD | GitHub Actions + Blacksmith (multi-arch build) |
+| 영역          | 기술                                           |
+| ------------- | ---------------------------------------------- |
+| Backend       | Go 1.25, Gin                                   |
+| Database      | SQLite (`modernc.org/sqlite`, CGO 불필요)      |
+| Frontend      | Vue 3, Vuetify 3, Pinia, vue-router, vue-i18n  |
+| Charts        | Chart.js, vue-chartjs                          |
+| Realtime      | gorilla/websocket                              |
+| Runtime       | Caddy 2 Alpine (single container)              |
+| 패키지 관리자 | Bun                                            |
+| CI/CD         | GitHub Actions + Blacksmith (multi-arch build) |
 
 ---
 
@@ -115,13 +115,13 @@ docker run --rm -p 80:80 --env-file .env -v omnirelay-data:/app/data omnirelay
 
 ## 환경 변수
 
-| 변수 | 기본값 | 설명 |
-|---|---|---|
-| `LISTEN_ADDR` | `:8080` | Go 백엔드 listen 주소 |
-| `DATABASE_PATH` | `data/omnirelay.db` | SQLite DB 경로 |
-| `JWT_SECRET` | (개발용 기본값) | 대시보드 JWT 서명 키 |
-| `ENCRYPT_KEY` | (개발용 기본값) | 제공자 API 키 암호화용 32바이트 hex 키 |
-| `CORS_ORIGINS` | `http://localhost:5173,http://localhost:3000` | 허용할 CORS 출처 (쉼표 구분) |
+| 변수            | 기본값                                        | 설명                                   |
+| --------------- | --------------------------------------------- | -------------------------------------- |
+| `LISTEN_ADDR`   | `:8080`                                       | Go 백엔드 listen 주소                  |
+| `DATABASE_PATH` | `data/omnirelay.db`                           | SQLite DB 경로                         |
+| `JWT_SECRET`    | (개발용 기본값)                               | 대시보드 JWT 서명 키                   |
+| `ENCRYPT_KEY`   | (개발용 기본값)                               | 제공자 API 키 암호화용 32바이트 hex 키 |
+| `CORS_ORIGINS`  | `http://localhost:5173,http://localhost:3000` | 허용할 CORS 출처 (쉼표 구분)           |
 
 > **프로덕션**에서는 반드시 `JWT_SECRET`과 `ENCRYPT_KEY`를 강력한 값으로 설정하세요. `ENCRYPT_KEY`는 64자리 hex 문자열이어야 합니다 (`openssl rand -hex 32`).
 
@@ -140,13 +140,13 @@ docker run --rm -p 80:80 --env-file .env -v omnirelay-data:/app/data omnirelay
 
 ## 제공자 설정
 
-| Provider Type | 일반적인 Base URL | 비고 |
-|---|---|---|
-| `openai` | `https://api.openai.com/v1` | OpenAI 호환 응답 형식 |
-| `anthropic` | `https://api.anthropic.com` | `x-api-key`, `anthropic-version` 자동 설정 |
-| `gemini` | `https://generativelanguage.googleapis.com/v1beta` | Gemini Native API로 변환 |
-| `ollama` | `http://localhost:11434/v1` | 모델 동기화는 `/api/tags` 사용 |
-| `lmstudio` | `http://localhost:1234/v1` | OpenAI 호환 로컬 서버 |
+| Provider Type | 일반적인 Base URL                                  | 비고                                       |
+| ------------- | -------------------------------------------------- | ------------------------------------------ |
+| `openai`      | `https://api.openai.com/v1`                        | OpenAI 호환 응답 형식                      |
+| `anthropic`   | `https://api.anthropic.com`                        | `x-api-key`, `anthropic-version` 자동 설정 |
+| `gemini`      | `https://generativelanguage.googleapis.com/v1beta` | Gemini Native API로 변환                   |
+| `ollama`      | `http://localhost:11434/v1`                        | 모델 동기화는 `/api/tags` 사용             |
+| `lmstudio`    | `http://localhost:1234/v1`                         | OpenAI 호환 로컬 서버                      |
 
 > **provider_key**는 모델 ID와 경로 라우팅에 사용되는 짧은 식별자입니다. 예: `provider_key: openai`, 모델 `gpt-4o` → OmniRelay 모델 ID: `openai/gpt-4o`
 
@@ -197,11 +197,11 @@ curl http://localhost:8080/openai/v1/chat/completions \
 
 지원 패턴:
 
-| 패턴 | 예시 | 용도 |
-|---|---|---|
-| `/:provider/v1/*` | `/openai/v1/chat/completions` | OpenAI 호환 API |
-| `/:provider/v1beta/*` | `/gemini/v1beta/models` | Gemini beta API |
-| `/:provider/api/*` | `/ollama/api/chat` | Native API (Ollama 등) |
+| 패턴                  | 예시                          | 용도                   |
+| --------------------- | ----------------------------- | ---------------------- |
+| `/:provider/v1/*`     | `/openai/v1/chat/completions` | OpenAI 호환 API        |
+| `/:provider/v1beta/*` | `/gemini/v1beta/models`       | Gemini beta API        |
+| `/:provider/api/*`    | `/ollama/api/chat`            | Native API (Ollama 등) |
 
 > Caddy가 `:80`에서 위 패턴들을 내부 Go 서버 `:8080`으로 프록시합니다.
 
@@ -247,13 +247,13 @@ curl http://localhost:8080/readyz     # {"status":"ready"} (DB 연결 확인)
 
 모델은 자동 동기화 또는 수동 등록으로 관리합니다. 가격은 USD 기준 **1M tokens** 단위입니다.
 
-| 필드 | 설명 |
-|---|---|
-| Input Price | 기본 입력 토큰 단가 |
-| Output Price | 기본 출력 토큰 단가 |
+| 필드           | 설명                                |
+| -------------- | ----------------------------------- |
+| Input Price    | 기본 입력 토큰 단가                 |
+| Output Price   | 기본 출력 토큰 단가                 |
 | 5m Cache Write | 5분 캐시 생성 토큰 단가 (Anthropic) |
-| 1h Cache Write | 1시간 캐시 생성 토큰 단가 |
-| Cache Read | 캐시 읽기 토큰 단가 |
+| 1h Cache Write | 1시간 캐시 생성 토큰 단가           |
+| Cache Read     | 캐시 읽기 토큰 단가                 |
 
 ```text
 cost = (tokens / 1,000,000) * price
@@ -275,14 +275,14 @@ cost = (tokens / 1,000,000) * price
 
 ## 대시보드
 
-| 페이지 | 설명 |
-|---|---|
+| 페이지    | 설명                                             |
+| --------- | ------------------------------------------------ |
 | Dashboard | 오늘 비용/요청/토큰, 30일 추이 차트, 시스템 상태 |
-| Providers | 제공자 CRUD, API 키 관리, 모델 동기화 |
-| Models | 모델 등록/수정, 가격 설정, 소스 모델 가져오기 |
-| API Keys | 키 발급/취소, RPM 및 토큰 한도 설정 |
-| Usage | 통합 사용량 통계 및 30일 차트 (캐시 토큰 포함) |
-| Logs | 요청별 상세 내역 (토큰, 지연 시간, 비용, 오류) |
+| Providers | 제공자 CRUD, API 키 관리, 모델 동기화            |
+| Models    | 모델 등록/수정, 가격 설정, 소스 모델 가져오기    |
+| API Keys  | 키 발급/취소, RPM 및 토큰 한도 설정              |
+| Usage     | 통합 사용량 통계 및 30일 차트 (캐시 토큰 포함)   |
+| Logs      | 요청별 상세 내역 (토큰, 지연 시간, 비용, 오류)   |
 
 > Dashboard는 WebSocket을 통해 사용량과 로그를 **실시간**으로 업데이트합니다. 재연결 및 백오프를 지원합니다.
 
@@ -351,14 +351,14 @@ bun run preview              # 빌드 결과물 미리보기
 
 SQLite (`modernc.org/sqlite`, CGO 불필요). 시작 시 자동 마이그레이션 (v9).
 
-| 테이블 | 설명 |
-|---|---|
-| `users` | 사용자 계정 (이메일 기반 인증) |
-| `providers` | 업스트림 제공자 연결 정보 |
-| `models` | 등록된 모델 및 가격 |
-| `api_keys` | API 키 (SHA-256 해시, RPM/토큰 제한) |
-| `usage_logs` | 요청별 사용량 로그 (캐시 토큰 포함) |
-| `schema_migrations` | 마이그레이션 버전 관리 |
+| 테이블              | 설명                                 |
+| ------------------- | ------------------------------------ |
+| `users`             | 사용자 계정 (이메일 기반 인증)       |
+| `providers`         | 업스트림 제공자 연결 정보            |
+| `models`            | 등록된 모델 및 가격                  |
+| `api_keys`          | API 키 (SHA-256 해시, RPM/토큰 제한) |
+| `usage_logs`        | 요청별 사용량 로그 (캐시 토큰 포함)  |
+| `schema_migrations` | 마이그레이션 버전 관리               |
 
 기본 경로: 로컬 `data/omnirelay.db`, Docker `/app/data/omnirelay.db`
 
