@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -8,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"omnirelay/internal/apiresponse"
 	"omnirelay/internal/models"
 
 	"github.com/gin-gonic/gin"
@@ -191,6 +193,44 @@ func (e *Engine) handleRawStreamResponse(c *gin.Context, resp *http.Response, ap
 }
 
 func (e *Engine) handleMessagesStreamResponse(c *gin.Context, resp *http.Response, adapter Adapter, apiKeyID, providerID int64, fullModelID string, dbModel *models.Model, start time.Time, userID int64, providerType string, inputTokens int64) {
+	state := make(map[string]interface{})
+	var totalInputTokens, totalOutputTokens int64
+	var outputTextAccum strings.Builder
+	var streamBuf bytes.Buffer
+	readBuf := make([]byte, 4096)
+
+	for {
+		n, err := resp.Body.Read(readBuf)
+		if n > 0 {
+			chunk := readBuf[:n]
+			extractDeltaContent(string(chunk), providerType, &outputTextAccum)
+
+			transformed, inTok, outTok, _ := adapter.ParseMessagesStreamChunk(chunk, state)
+			if inTok > 0 {
+				totalInputTokens = inTok
+			}
+			if outTok > 0 {
+				totalOutputTokens = outTok
+			}
+			if transformed != nil {
+				streamBuf.Write(transformed)
+			}
+		}
+		if err != nil {
+			break
+		}
+	}
+
+	if isUpstreamErrorContent(outputTextAccum.String()) {
+		errFmt := apiresponse.FormatFromContext(c)
+		requestID := c.GetString("request_id")
+		c.Status(http.StatusBadGateway)
+		c.Header("Content-Type", "application/json")
+		c.Writer.Write(reformatError(upstreamError{ErrType: "api_error", Message: outputTextAccum.String()}, errFmt, requestID))
+		e.logUpstreamError(usageContext{apiKeyID: apiKeyID, providerID: providerID, userID: userID, fullModelID: fullModelID}, outputTextAccum.String(), time.Since(start).Milliseconds())
+		return
+	}
+
 	c.Status(http.StatusOK)
 	copyResponseHeaders(c, resp.Header)
 	c.Header("Content-Type", "text/event-stream")
@@ -207,32 +247,7 @@ func (e *Engine) handleMessagesStreamResponse(c *gin.Context, resp *http.Respons
 	sw := newStreamWriter(c.Writer, flusher)
 	startKeepAlive(sw, done)
 
-	buf := make([]byte, 4096)
-	state := make(map[string]interface{})
-	var totalInputTokens, totalOutputTokens int64
-	var outputTextAccum strings.Builder
-
-	for {
-		n, err := resp.Body.Read(buf)
-		if n > 0 {
-			chunk := buf[:n]
-			extractDeltaContent(string(chunk), providerType, &outputTextAccum)
-
-			transformed, inTok, outTok, _ := adapter.ParseMessagesStreamChunk(chunk, state)
-			if inTok > 0 {
-				totalInputTokens = inTok
-			}
-			if outTok > 0 {
-				totalOutputTokens = outTok
-			}
-			if transformed != nil {
-				sw.Write(transformed)
-			}
-		}
-		if err != nil {
-			break
-		}
-	}
+	sw.Write(streamBuf.Bytes())
 
 	completedAt := time.Now()
 

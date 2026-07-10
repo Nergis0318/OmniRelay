@@ -15,6 +15,45 @@ import (
 
 const upstreamRequestTimeout = 5 * time.Minute
 
+// isUpstreamErrorContent checks if the response text is a known error sent by
+// an upstream that does not follow standard error reporting.
+func isUpstreamErrorContent(text string) bool {
+	return strings.TrimSpace(text) == "Request failed."
+}
+
+// extractErrorContent checks a parsed response for non-standard error text embedded in content.
+// Returns the error message if found, empty string otherwise.
+func extractErrorContent(response map[string]interface{}) string {
+	if content, ok := response["content"].([]interface{}); ok {
+		for _, c := range content {
+			if block, ok := c.(map[string]interface{}); ok {
+				if block["type"] == "text" {
+					if text, ok := block["text"].(string); ok && isUpstreamErrorContent(text) {
+						return text
+					}
+				}
+			}
+		}
+	}
+	if choices, ok := response["choices"].([]interface{}); ok {
+		for _, c := range choices {
+			if choice, ok := c.(map[string]interface{}); ok {
+				if msg, ok := choice["message"].(map[string]interface{}); ok {
+					if text, ok := msg["content"].(string); ok && isUpstreamErrorContent(text) {
+						return text
+					}
+				}
+				if delta, ok := choice["delta"].(map[string]interface{}); ok {
+					if text, ok := delta["content"].(string); ok && isUpstreamErrorContent(text) {
+						return text
+					}
+				}
+			}
+		}
+	}
+	return ""
+}
+
 // applyGeminiStreamingURL rewrites a Gemini endpoint for streaming SSE responses.
 // It is a no-op for any non-Gemini provider or when isStream is false.
 func applyGeminiStreamingURL(providerType, endpoint string, isStream bool) string {

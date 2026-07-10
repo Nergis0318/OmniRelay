@@ -300,6 +300,13 @@ func (e *Engine) executeMessages(c *gin.Context, body map[string]interface{}, fu
 		return
 	}
 
+	if errMsg := extractErrorContent(finalResponse); errMsg != "" {
+		e.logUpstreamError(u, errMsg, latencyMs)
+		errFmt := apiresponse.FormatFromContext(c)
+		apiresponse.Abort(c, resp.StatusCode, errFmt, "api_error", errMsg, "", "")
+		return
+	}
+
 	finalResponse["model"] = fullModelID
 
 	// Count output tokens locally
@@ -443,6 +450,12 @@ func (e *Engine) handlePathRoutedProxy(c *gin.Context, provider *models.Provider
 
 	var respJSON map[string]interface{}
 	if json.Unmarshal(respBody, &respJSON) == nil {
+		if errMsg := extractErrorContent(respJSON); errMsg != "" {
+			e.logUpstreamError(u, errMsg, latencyMs)
+			apiresponse.Abort(c, resp.StatusCode, errFmt, "api_error", errMsg, "", "")
+			return
+		}
+
 		// Count output tokens locally
 		localOutputTokens := countOutputTokens(respJSON, provider.ProviderType, fullModelID)
 
