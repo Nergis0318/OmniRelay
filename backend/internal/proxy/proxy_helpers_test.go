@@ -227,3 +227,108 @@ func TestWriteUpstreamErrorBodyForwardsStatusAndPayload(t *testing.T) {
 		t.Errorf("type = %v, want 'rate_limit_error'", errObj["type"])
 	}
 }
+
+func TestWriteUpstreamErrorBody_UnparseableBody_Anthropic(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	resp := &http.Response{
+		StatusCode: http.StatusBadGateway,
+		Header:     http.Header{"Content-Type": []string{"text/plain"}},
+		Body:       io.NopCloser(strings.NewReader("Request failed.")),
+	}
+
+	writeUpstreamErrorBody(c, resp, "anthropic")
+
+	if w.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusBadGateway)
+	}
+	if got := w.Header().Get("Content-Type"); got != "application/json" {
+		t.Fatalf("Content-Type = %q, want application/json", got)
+	}
+	var respBody map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &respBody); err != nil {
+		t.Fatalf("body not valid JSON: %v", err)
+	}
+	if respBody["type"] != "error" {
+		t.Fatalf("type = %v, want 'error'", respBody["type"])
+	}
+	errObj, ok := respBody["error"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("error object missing: %v", respBody)
+	}
+	if errObj["message"] != "Request failed." {
+		t.Errorf("message = %v, want 'Request failed.'", errObj["message"])
+	}
+	if errObj["type"] != "api_error" {
+		t.Errorf("error.type = %v, want 'api_error'", errObj["type"])
+	}
+}
+
+func TestWriteUpstreamErrorBody_UnparseableBody_OpenAI(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+
+	resp := &http.Response{
+		StatusCode: http.StatusInternalServerError,
+		Header:     http.Header{"Content-Type": []string{"text/plain"}},
+		Body:       io.NopCloser(strings.NewReader("Request failed.")),
+	}
+
+	writeUpstreamErrorBody(c, resp, "openai")
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusInternalServerError)
+	}
+	var respBody map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &respBody); err != nil {
+		t.Fatalf("body not valid JSON: %v", err)
+	}
+	errObj, ok := respBody["error"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("error object missing: %v", respBody)
+	}
+	if errObj["message"] != "Request failed." {
+		t.Errorf("message = %v, want 'Request failed.'", errObj["message"])
+	}
+	if errObj["type"] != "server_error" {
+		t.Errorf("error.type = %v, want 'server_error'", errObj["type"])
+	}
+}
+
+func TestWriteUpstreamErrorBody_EmptyBody(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	resp := &http.Response{
+		StatusCode: http.StatusBadGateway,
+		Header:     http.Header{"Content-Type": []string{"text/plain"}},
+		Body:       io.NopCloser(strings.NewReader("")),
+	}
+
+	writeUpstreamErrorBody(c, resp, "anthropic")
+
+	if w.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusBadGateway)
+	}
+	var respBody map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &respBody); err != nil {
+		t.Fatalf("body not valid JSON: %v", err)
+	}
+	if respBody["type"] != "error" {
+		t.Fatalf("type = %v, want 'error'", respBody["type"])
+	}
+	errObj, ok := respBody["error"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("error object missing: %v", respBody)
+	}
+	if errObj["message"] != "upstream error (HTTP 502)" {
+		t.Errorf("message = %v, want 'upstream error (HTTP 502)'", errObj["message"])
+	}
+}

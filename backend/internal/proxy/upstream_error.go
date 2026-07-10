@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"encoding/json"
+	"net/http"
 	"omnirelay/internal/apiresponse"
 	"strconv"
 
@@ -152,6 +153,45 @@ func ensureRequestID(c *gin.Context) string {
 	id := uuid.New().String()
 	c.Set("request_id", id)
 	return id
+}
+
+// errorTypeForFormat maps an HTTP status to a provider-native error type string
+// for use when the upstream error body can't be parsed into a structured error.
+func errorTypeForFormat(status int, format apiresponse.Format) string {
+	if format == apiresponse.FormatAnthropic {
+		switch {
+		case status >= 500:
+			return "api_error"
+		case status == http.StatusTooManyRequests:
+			return "rate_limit_error"
+		case status == http.StatusUnauthorized:
+			return "authentication_error"
+		case status == http.StatusForbidden:
+			return "permission_error"
+		case status == http.StatusNotFound:
+			return "not_found_error"
+		case status >= 400:
+			return "invalid_request_error"
+		default:
+			return "api_error"
+		}
+	}
+	switch {
+	case status >= 500:
+		return "server_error"
+	case status == http.StatusTooManyRequests:
+		return "rate_limit_exceeded"
+	case status == http.StatusUnauthorized:
+		return "invalid_request_error"
+	case status == http.StatusForbidden:
+		return "permission_denied"
+	case status == http.StatusNotFound:
+		return "model_not_found"
+	case status >= 400:
+		return "invalid_request_error"
+	default:
+		return "server_error"
+	}
 }
 
 // vstr safely extracts a string value from a map.

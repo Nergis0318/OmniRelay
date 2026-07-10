@@ -50,10 +50,9 @@ func (e *Engine) executeChat(c *gin.Context, provider *models.Provider, dbModel 
 	defer resp.Body.Close()
 
 	if !isSuccessStatus(resp.StatusCode) {
-		respBody, _ := io.ReadAll(resp.Body)
 		latencyMs := time.Since(startTime).Milliseconds()
 		logErrorResponse(e, apiKeyID, provider.ID, fullModelID, resp.StatusCode, latencyMs, userID)
-		c.Data(resp.StatusCode, contentTypeOrDefault(resp.Header), respBody)
+		writeUpstreamErrorBody(c, resp, provider.ProviderType)
 		return
 	}
 

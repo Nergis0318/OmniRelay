@@ -58,7 +58,7 @@ func (e *Engine) doUpstream(req *http.Request) (*http.Response, time.Time, error
 
 // writeUpstreamErrorBody reads the upstream error body and writes it back to the client,
 // normalizing to the client's expected format (OpenAI or Anthropic) and including request_id.
-// Falls back to raw passthrough if the error body cannot be parsed.
+// Falls back to wrapping the raw body as a structured error if it cannot be parsed.
 func writeUpstreamErrorBody(c *gin.Context, resp *http.Response, providerType string) {
 	respBody, _ := io.ReadAll(resp.Body)
 
@@ -69,7 +69,15 @@ func writeUpstreamErrorBody(c *gin.Context, resp *http.Response, providerType st
 		c.Data(resp.StatusCode, "application/json", normalized)
 		return
 	}
-	c.Data(resp.StatusCode, contentTypeOrDefault(resp.Header), respBody)
+
+	errFmt := apiresponse.FormatFromContext(c)
+	requestID := c.GetString("request_id")
+	msg := strings.TrimSpace(string(respBody))
+	if msg == "" {
+		msg = fmt.Sprintf("upstream error (HTTP %d)", resp.StatusCode)
+	}
+	wrapped := reformatError(upstreamError{ErrType: errorTypeForFormat(resp.StatusCode, errFmt), Message: msg}, errFmt, requestID)
+	c.Data(resp.StatusCode, "application/json", wrapped)
 }
 
 // proxyJSONRequest is a common scaffolding for "marshal adapted body → POST → status check".
