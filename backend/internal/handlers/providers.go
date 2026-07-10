@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"omnirelay/internal/apiresponse"
 	"omnirelay/internal/models"
+	"omnirelay/internal/proxy"
 	"omnirelay/internal/service"
 	"strconv"
 
@@ -90,6 +91,48 @@ func DeleteProvider(svc *service.ProviderService) gin.HandlerFunc {
 		}
 
 		c.JSON(http.StatusOK, gin.H{"message": "provider deleted"})
+	}
+}
+
+func TestProvider(ps *service.ProviderService, proxyEngine *proxy.Engine) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID := c.GetInt64("user_id")
+		id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+		if err != nil {
+			apiresponse.AbortAdminBadRequest(c, "invalid provider ID")
+			return
+		}
+
+		provider, err := ps.GetByID(id, userID)
+		if err != nil {
+			apiresponse.AbortAdminNotFound(c, "provider not found")
+			return
+		}
+
+		if provider.ProviderType == "custom" {
+			apiresponse.AbortAdminError(c, 400, "cannot test custom provider", "")
+			return
+		}
+
+		apiKey, err := ps.DecryptAPIKey(provider.APIKeyEncrypted)
+		if err != nil {
+			apiresponse.AbortAdminInternal(c, "failed to decrypt provider key")
+			return
+		}
+
+		modelID, err := ps.FirstModelID(id, userID)
+		if err != nil {
+			apiresponse.AbortAdminInternal(c, "failed to find a model for this provider")
+			return
+		}
+
+		if modelID == "" {
+			apiresponse.AbortAdminError(c, 400, "no models available. Sync models first.", "")
+			return
+		}
+
+		result := proxyEngine.TestProvider(provider, apiKey, modelID)
+		c.JSON(http.StatusOK, result)
 	}
 }
 

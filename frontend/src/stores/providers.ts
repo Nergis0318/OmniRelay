@@ -111,6 +111,11 @@ export const useProvidersStore = defineStore("providers", () => {
     }
   }
 
+  async function testProvider(id: number) {
+    const { data } = await api.post(`/providers/${id}/test`);
+    return data as { ok: boolean; latency_ms: number; error?: string };
+  }
+
   async function fetchSourceModels() {
     try {
       const { data } = await api.get("/models/source-list");
@@ -135,6 +140,7 @@ export const useProvidersStore = defineStore("providers", () => {
     update,
     remove,
     syncModels,
+    testProvider,
     clearError,
   };
 });

@@ -11,6 +11,15 @@
       </button>
     </div>
 
+    <div v-if="testResult && testResult.ok" class="alert alert--success alert--page">
+      <v-icon size="14">mdi-check-circle-outline</v-icon>
+      {{ $t("providers.testSuccess", { latency: testResult.latency_ms }) }}
+    </div>
+    <div v-if="testResult && !testResult.ok" class="alert alert--error alert--page">
+      <v-icon size="14">mdi-alert-circle-outline</v-icon>
+      {{ testResult.error || $t("providers.testFailed") }}
+    </div>
+
     <div class="table-card">
       <v-data-table
         :headers="headers"
@@ -38,6 +47,15 @@
         </template>
         <template #item.actions="{ item }">
           <div class="row-actions">
+            <button
+              class="row-btn"
+              :title="$t('providers.test')"
+              :disabled="testingId === item.id"
+              @click="handleTest(item.id)"
+            >
+              <v-icon v-if="testingId !== item.id" size="15">mdi-connection</v-icon>
+              <span v-else class="btn-spinner btn-spinner--sm" />
+            </button>
             <button class="row-btn" title="Edit" @click="openDialog(item)">
               <v-icon size="15">mdi-pencil-outline</v-icon>
             </button>
@@ -84,6 +102,15 @@
         ]"
       >
         <template #actions>
+          <button
+            class="row-btn"
+            :title="$t('providers.test')"
+            :disabled="testingId === p.id"
+            @click="handleTest(p.id)"
+          >
+            <v-icon v-if="testingId !== p.id" size="15">mdi-connection</v-icon>
+            <span v-else class="btn-spinner btn-spinner--sm" />
+          </button>
           <button class="row-btn" title="Edit" @click="openDialog(p)">
             <v-icon size="15">mdi-pencil-outline</v-icon>
           </button>
@@ -292,6 +319,8 @@ const editing = ref<any>(null);
 const saving = ref(false);
 const dialogError = ref("");
 const syncResult = ref("");
+const testingId = ref<number | null>(null);
+const testResult = ref<{ ok: boolean; latency_ms: number; error?: string } | null>(null);
 const providerTypes = [
   "custom",
   "openai",
@@ -387,14 +416,29 @@ async function handleSave() {
 }
 
 async function handleSync(id: number) {
-  syncResult.value = "";
-  try {
-    const { data } = await store.syncModels(id);
-    syncResult.value = t("providers.syncedModels", { count: data.model_count });
-  } catch (e: any) {
-    dialogError.value = e.response?.data?.error || t("providers.syncFailed");
+    syncResult.value = "";
+    testResult.value = null;
+    try {
+      const { data } = await store.syncModels(id);
+      syncResult.value = t("providers.syncedModels", { count: data.model_count });
+    } catch (e: any) {
+      dialogError.value = e.response?.data?.error || t("providers.syncFailed");
+    }
   }
-}
+
+  async function handleTest(id: number) {
+    testResult.value = null;
+    syncResult.value = "";
+    testingId.value = id;
+    try {
+      const result = await store.testProvider(id);
+      testResult.value = result;
+    } catch (e: any) {
+      dialogError.value = e.response?.data?.error || t("providers.testFailed");
+    } finally {
+      testingId.value = null;
+    }
+  }
 
 async function handleDelete(id: number) {
   if (!confirm(t("providers.deleteConfirm"))) return;

@@ -242,6 +242,18 @@ func (s *ProviderService) importSourceModels(customProvider *models.Provider, so
 	return nil
 }
 
+func (s *ProviderService) FirstModelID(providerID int64, userID int64) (string, error) {
+	var modelID string
+	err := s.db.QueryRow(
+		"SELECT model_id FROM models WHERE provider_id = ? AND (user_id = ? OR user_id IS NULL) ORDER BY created_at LIMIT 1",
+		providerID, userID,
+	).Scan(&modelID)
+	if err != nil {
+		return "", err
+	}
+	return modelID, nil
+}
+
 type openaiModelListResponse struct {
 	Data []struct {
 		ID string `json:"id"`

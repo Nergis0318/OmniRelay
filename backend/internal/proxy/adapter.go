@@ -52,3 +52,7 @@ func (e *Engine) getAdapter(providerType string) Adapter {
 func (e *Engine) resolveModel(fullModelID string, userID int64) (*models.Model, error) {
 	return e.modelService.FindByFullID(fullModelID, userID)
 }
+
+func (e *Engine) TestProvider(provider *models.Provider, apiKey, modelID string) TestProviderResult {
+	return TestProvider(provider, apiKey, modelID, e.adapters, e.httpClient)
+}
