@@ -358,6 +358,15 @@ func (a *AnthropicAdapter) ParseMessagesStreamChunk(data []byte, state map[strin
 					extractAndStoreCacheTokens(usage, state)
 				}
 			}
+		case "content_block_delta":
+			if delta, ok := event["delta"].(map[string]interface{}); ok {
+				if deltaType, _ := delta["type"].(string); deltaType == "text_delta" {
+					if text, _ := delta["text"].(string); text == "Request failed." {
+						state["upstream_error"] = text
+						return nil, inputTokens, outputTokens, nil
+					}
+				}
+			}
 		case "message_delta":
 			if usage, ok := event["usage"].(map[string]interface{}); ok {
 				if v, ok := usage["output_tokens"].(float64); ok {

@@ -221,13 +221,14 @@ func (e *Engine) handleMessagesStreamResponse(c *gin.Context, resp *http.Respons
 		}
 	}
 
-	if isUpstreamErrorContent(outputTextAccum.String()) {
+	if _, ok := state["upstream_error"]; ok {
+		errMsg, _ := state["upstream_error"].(string)
 		errFmt := apiresponse.FormatFromContext(c)
 		requestID := c.GetString("request_id")
+		e.logUpstreamError(usageContext{apiKeyID: apiKeyID, providerID: providerID, userID: userID, fullModelID: fullModelID}, errMsg, time.Since(start).Milliseconds())
 		c.Status(http.StatusBadGateway)
 		c.Header("Content-Type", "application/json")
-		c.Writer.Write(reformatError(upstreamError{ErrType: "api_error", Message: outputTextAccum.String()}, errFmt, requestID))
-		e.logUpstreamError(usageContext{apiKeyID: apiKeyID, providerID: providerID, userID: userID, fullModelID: fullModelID}, outputTextAccum.String(), time.Since(start).Milliseconds())
+		c.Writer.Write(reformatError(upstreamError{ErrType: "api_error", Message: errMsg}, errFmt, requestID))
 		return
 	}
 
@@ -250,6 +251,7 @@ func (e *Engine) handleMessagesStreamResponse(c *gin.Context, resp *http.Respons
 	sw.Write(streamBuf.Bytes())
 
 	completedAt := time.Now()
+	latencyMs := time.Since(start).Milliseconds()
 
 	// Prefer locally counted output tokens over upstream values
 	if totalOutputTokens == 0 && outputTextAccum.Len() > 0 {
@@ -274,7 +276,7 @@ func (e *Engine) handleMessagesStreamResponse(c *gin.Context, resp *http.Respons
 		CacheWrite5MTokens: cacheWrite5m,
 		CacheWrite1HTokens: cacheWrite1h,
 		CacheReadTokens:    cacheReadTokens,
-		LatencyMs:          time.Since(start).Milliseconds(),
+		LatencyMs:          latencyMs,
 		StartedAt:          &start,
 		CompletedAt:        &completedAt,
 		UserID:             &userID,
