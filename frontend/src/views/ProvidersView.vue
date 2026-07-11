@@ -388,9 +388,11 @@ async function handleSave() {
   syncResult.value = "";
   try {
     if (editing.value) {
-      // Build update payload — omit source_models to avoid resetting
-      // the model list unless explicitly managed via the Models page.
-      const { source_models: _omit, ...rest } = form.value;
+      // For custom providers, include source_models so model selections persist.
+      // For non-custom providers, omit it — models are managed via sync.
+      const rest = form.value.provider_type === "custom"
+        ? (({ auto_sync: _s, ...r }) => r)(form.value)
+        : (({ source_models: _o, auto_sync: _s, ...r }) => r)(form.value);
       await store.update(editing.value.id, rest);
       if (form.value.auto_sync && form.value.provider_type !== "custom") {
         const { data } = await store.syncModels(editing.value.id);

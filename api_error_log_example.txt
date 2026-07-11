@@ -1,0 +1,33 @@
+event: message_start
+data: {"type":"message_start","message":{"id":"msg_2198dae8a73f27ebf9c3c0b7","type":"message","role":"assistant","content":[],"model":"claude-opus-4-8","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":0,"output_tokens":0}}}
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}
+
+event: ping
+data: {"type":"ping"}
+
+event: ping
+data: {"type":"ping"}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"rSt+dkJzeY/Bf0UNLFPlqZPavMcwpTCZptu3zWPwA+05Qoduvj1EFBEKg1NXh318lA4fQypeiDAcqf7r3Vy/IXAJ7//UxV8130n1+TbUiG3oMJeO5KTScIaZSCiTC/aR1wkMYBsk4V4ZLU5sJS/TV3Q4LdKoTEuQUwzUxbxv4eJmYeMIct9GCeHXcjg+Hs2yp7qAbT2/o37uZsH50ePQ3ISow9qgYvM3vE2Pz9z1zUmCBFhCcx+XePRZh1al+nhb"}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0}
+
+event: content_block_start
+data: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"Request failed."}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":1}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":4}}
+
+event: message_stop
+data: {"type":"message_stop"}
+

@@ -32,6 +32,6 @@ type UpdateProviderRequest struct {
 	APIKey          *string  `json:"api_key"`
 	ProviderType    *string  `json:"provider_type" binding:"omitempty,oneof=openai anthropic lmstudio ollama gemini custom"`
 	IsActive        *bool    `json:"is_active"`
-	SourceModels    []string `json:"source_models"`
+	SourceModels    *[]string `json:"source_models"`
 	ShowInModelList *bool    `json:"show_in_model_list"`
 }

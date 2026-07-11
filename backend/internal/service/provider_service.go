@@ -185,7 +185,7 @@ func (s *ProviderService) Update(id int64, userID int64, req models.UpdateProvid
 			return nil, err
 		}
 		provider, _ := s.GetByID(id, userID)
-		if err := s.importSourceModels(provider, req.SourceModels, userID); err != nil {
+		if err := s.importSourceModels(provider, *req.SourceModels, userID); err != nil {
 			return nil, err
 		}
 	}
