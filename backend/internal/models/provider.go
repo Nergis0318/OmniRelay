@@ -3,17 +3,18 @@ package models
 import "time"
 
 type Provider struct {
-	ID              int64     `json:"id"`
-	ProviderKey     string    `json:"provider_key"`
-	Name            string    `json:"name"`
-	APiBaseURL      string    `json:"api_base_url"`
-	APIKeyEncrypted string    `json:"-"`
-	ProviderType    string    `json:"provider_type"`
-	IsActive        bool      `json:"is_active"`
-	ShowInModelList bool      `json:"show_in_model_list"`
-	UserID          int64     `json:"user_id"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	ID                int64     `json:"id"`
+	ProviderKey       string    `json:"provider_key"`
+	Name              string    `json:"name"`
+	APiBaseURL        string    `json:"api_base_url"`
+	APIKeyEncrypted   string    `json:"-"`
+	ProviderType      string    `json:"provider_type"`
+	IsActive          bool      `json:"is_active"`
+	ShowInModelList   bool      `json:"show_in_model_list"`
+	SourceModels      []string  `json:"source_models,omitempty"`
+	UserID            int64     `json:"user_id"`
+	CreatedAt         time.Time `json:"created_at"`
+	UpdatedAt         time.Time `json:"updated_at"`
 }
 
 type CreateProviderRequest struct {

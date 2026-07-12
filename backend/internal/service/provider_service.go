@@ -51,6 +51,11 @@ func (s *ProviderService) List(userID int64) ([]models.Provider, error) {
 		}
 		providers = append(providers, p)
 	}
+	for i := range providers {
+		if providers[i].ProviderType == "custom" {
+			s.loadSourceModels(&providers[i])
+		}
+	}
 	return providers, nil
 }
 
@@ -75,7 +80,32 @@ func (s *ProviderService) GetByID(id int64, userID int64) (*models.Provider, err
 	if err != nil {
 		return nil, err
 	}
+	if p.ProviderType == "custom" {
+		s.loadSourceModels(&p)
+	}
 	return &p, nil
+}
+
+func (s *ProviderService) loadSourceModels(p *models.Provider) error {
+	if p.ProviderType != "custom" {
+		return nil
+	}
+	rows, err := s.db.Query(
+		"SELECT source_provider_key || '/' || model_id FROM models WHERE provider_id = ? AND source_provider_key IS NOT NULL AND source_provider_key != ''",
+		p.ID,
+	)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var fullID string
+		if err := rows.Scan(&fullID); err != nil {
+			return err
+		}
+		p.SourceModels = append(p.SourceModels, fullID)
+	}
+	return rows.Err()
 }
 
 func (s *ProviderService) Create(req models.CreateProviderRequest, userID int64) (*models.Provider, error) {

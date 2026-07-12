@@ -10,6 +10,7 @@ interface Provider {
   provider_type: string;
   is_active: boolean;
   show_in_model_list: boolean;
+  source_models: string[];
   created_at: string;
 }
 

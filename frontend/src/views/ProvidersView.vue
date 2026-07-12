@@ -363,7 +363,7 @@ function openDialog(provider?: any) {
       ...provider,
       api_key: "",
       auto_sync: false,
-      source_models: [],
+      source_models: provider.source_models ?? [],
       show_in_model_list: provider.show_in_model_list ?? true,
     };
   } else {
