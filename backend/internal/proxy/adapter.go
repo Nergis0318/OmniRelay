@@ -23,16 +23,18 @@ type Engine struct {
 	providerService *service.ProviderService
 	modelService    *service.ModelService
 	usageService    *service.UsageService
+	authService     *service.AuthService
 	httpClient      *http.Client
 	adapters        map[string]Adapter
 	hub             *hub.Hub
 }
 
-func NewEngine(ps *service.ProviderService, ms *service.ModelService, us *service.UsageService, h *hub.Hub) *Engine {
+func NewEngine(ps *service.ProviderService, ms *service.ModelService, us *service.UsageService, as *service.AuthService, h *hub.Hub) *Engine {
 	e := &Engine{
 		providerService: ps,
 		modelService:    ms,
 		usageService:    us,
+		authService:     as,
 		httpClient:      &http.Client{Timeout: upstreamRequestTimeout},
 		adapters:        make(map[string]Adapter),
 		hub:             h,

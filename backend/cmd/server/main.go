@@ -42,7 +42,7 @@ func main() {
 
 	h := hub.New()
 	handlers.SetHub(h)
-	proxyEngine := proxy.NewEngine(providerService, modelService, usageService, h)
+	proxyEngine := proxy.NewEngine(providerService, modelService, usageService, authService, h)
 
 	r := gin.Default()
 
@@ -74,6 +74,7 @@ func main() {
 	{
 		admin.POST("/auth/register", handlers.Register(authService))
 		admin.POST("/auth/login", handlers.Login(authService))
+		admin.POST("/auth/reset-password", handlers.ResetPassword(authService))
 		admin.GET("/ws", handlers.WebSocketUpgrader(cfg.JWTSecret))
 
 		adminAuth := admin.Group("")
@@ -100,6 +101,11 @@ func main() {
 			adminAuth.GET("/stats", handlers.GetStats(usageService, apiKeyService, modelService))
 
 			adminAuth.GET("/users", handlers.ListUsers(authService))
+			adminAuth.DELETE("/users/:id", handlers.DeleteUser(authService))
+			adminAuth.PUT("/users/:id/role", handlers.SetUserRole(authService))
+			adminAuth.POST("/users/:id/reset-password", handlers.GenerateResetCode(authService))
+			adminAuth.GET("/users/:id/providers", handlers.GetUserProviders(authService))
+			adminAuth.PUT("/users/:id/providers", handlers.SetUserProviders(authService))
 		}
 	}
 

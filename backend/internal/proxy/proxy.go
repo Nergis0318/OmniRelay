@@ -119,6 +119,13 @@ func (e *Engine) HandlePathRouted(c *gin.Context) {
 		return
 	}
 
+	if e.authService != nil {
+		if allowed, _ := e.authService.CanAccessProvider(userID, provider.ID); !allowed {
+			apiresponse.AbortForbidden(c, errFmt, "access to this provider is not permitted for your account")
+			return
+		}
+	}
+
 	bodyBytes, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		apiresponse.AbortInvalidRequest(c, errFmt, "failed to read request body", "")
@@ -221,6 +228,13 @@ func (e *Engine) resolveDispatch(c *gin.Context, fullModelID string, userID int6
 	if err != nil {
 		apiresponse.AbortInvalidRequest(c, errFmt, "provider not found or inactive", "model")
 		return nil, nil, nil, "", false
+	}
+
+	if e.authService != nil {
+		if allowed, _ := e.authService.CanAccessProvider(userID, provider.ID); !allowed {
+			apiresponse.AbortForbidden(c, errFmt, "access to this provider is not permitted for your account")
+			return nil, nil, nil, "", false
+		}
 	}
 
 	adapter := e.getAdapter(provider.ProviderType)

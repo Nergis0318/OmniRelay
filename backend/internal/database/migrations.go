@@ -255,6 +255,32 @@ var migrations = []migration{
 			return nil
 		},
 	},
+	{
+		version: 11,
+		up: func(tx *sql.Tx) error {
+			stmts := []string{
+				`CREATE TABLE IF NOT EXISTS password_reset_codes (
+					id INTEGER PRIMARY KEY AUTOINCREMENT,
+					user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+					code TEXT UNIQUE NOT NULL,
+					expires_at DATETIME NOT NULL,
+					used BOOLEAN DEFAULT 0,
+					created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+				)`,
+				`CREATE TABLE IF NOT EXISTS user_providers (
+					user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+					provider_id INTEGER NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
+					PRIMARY KEY (user_id, provider_id)
+				)`,
+			}
+			for _, s := range stmts {
+				if _, err := tx.Exec(s); err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+	},
 }
 
 func hasColumn(tx *sql.Tx, tableName, columnName string) (bool, error) {

@@ -26,3 +26,16 @@ type LoginResponse struct {
 	Token string `json:"token"`
 	User  User   `json:"user"`
 }
+
+type SetRoleRequest struct {
+	IsAdmin bool `json:"is_admin"`
+}
+
+type ResetPasswordRequest struct {
+	Code        string `json:"code" binding:"required"`
+	NewPassword string `json:"new_password" binding:"required,min=6,max=128"`
+}
+
+type SetUserProvidersRequest struct {
+	ProviderIDs []int64 `json:"provider_ids"`
+}
