@@ -3,8 +3,8 @@ package service
 import (
 	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"errors"
-	"math/big"
 	"omnirelay/internal/models"
 	"time"
 
@@ -18,7 +18,7 @@ type AuthService struct {
 }
 
 func NewAuthService(db *sql.DB) *AuthService {
-	return &AuthService{db: db, jwtSecret: "omnirelay-jwt-secret-change-me"}
+	return &AuthService{db: db}
 }
 
 func (s *AuthService) SetJWTSecret(secret string) {
@@ -167,12 +167,12 @@ func (s *AuthService) GenerateResetCode(userID int64) (string, error) {
 		return "", errors.New("user not found")
 	}
 
-	code, err := generateCode(6)
+	code, err := generateResetToken()
 	if err != nil {
 		return "", err
 	}
 
-	expiresAt := time.Now().Add(24 * time.Hour)
+	expiresAt := time.Now().Add(15 * time.Minute)
 	_, err = s.db.Exec(
 		"INSERT INTO password_reset_codes (user_id, code, expires_at) VALUES (?, ?, ?)",
 		userID, code, expiresAt,
@@ -272,15 +272,10 @@ func (s *AuthService) CanAccessProvider(userID, providerID int64) (bool, error) 
 	return allowed > 0, nil
 }
 
-func generateCode(length int) (string, error) {
-	const digits = "0123456789"
-	code := make([]byte, length)
-	for i := range code {
-		n, err := rand.Int(rand.Reader, big.NewInt(10))
-		if err != nil {
-			return "", err
-		}
-		code[i] = digits[n.Int64()]
+func generateResetToken() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
 	}
-	return string(code), nil
+	return hex.EncodeToString(b), nil
 }

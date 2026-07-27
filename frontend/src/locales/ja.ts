@@ -181,7 +181,7 @@ export default {
     deleteTitle: "ユーザー削除",
     deleteConfirm: "「{name}」を削除しますか？元に戻せません。",
     resetTitle: "パスワードリセットコード",
-    resetNote: "このワンタイムコードをユーザーに共有してください。24時間で無効になります。",
+    resetNote: "このワンタイムコードをユーザーに共有してください。15分で無効になります。",
     providersTitle: "プロバイダーアクセス設定",
     providersHint: "このユーザーがアクセスできるプロバイダーを選択してください。空の場合はすべて許可されます。",
     noProviders: "プロバイダーが設定されていません。",

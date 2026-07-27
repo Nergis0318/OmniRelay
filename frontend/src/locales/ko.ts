@@ -179,7 +179,7 @@ export default {
     deleteTitle: "사용자 삭제",
     deleteConfirm: "\"{name}\" 사용자를 삭제하시겠습니까? 되돌릴 수 없습니다.",
     resetTitle: "비밀번호 초기화 코드",
-    resetNote: "이 일회용 코드를 사용자에게 전달하세요. 24시간 후 만료됩니다.",
+    resetNote: "이 일회용 코드를 사용자에게 전달하세요. 15분 후 만료됩니다.",
     providersTitle: "제공자 접근 설정",
     providersHint: "이 사용자가 접근할 수 있는 제공자를 선택하세요. 비워두면 모두 허용됩니다.",
     noProviders: "설정된 제공자가 없습니다.",

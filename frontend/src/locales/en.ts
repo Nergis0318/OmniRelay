@@ -179,7 +179,7 @@ export default {
     deleteTitle: "Delete User",
     deleteConfirm: "Are you sure you want to delete \"{name}\"? This cannot be undone.",
     resetTitle: "Password Reset Code",
-    resetNote: "Share this one-time code with the user. It expires in 24 hours.",
+    resetNote: "Share this one-time code with the user. It expires in 15 minutes.",
     providersTitle: "Provider Access",
     providersHint: "Select which providers this user can access. Leave empty to allow all.",
     noProviders: "No providers configured.",

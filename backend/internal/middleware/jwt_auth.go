@@ -52,8 +52,20 @@ func JWTAuth(secret string) gin.HandlerFunc {
 			return
 		}
 
-		c.Set("user_id", int64(claims["user_id"].(float64)))
-		c.Set("username", claims["username"].(string))
+		userID, ok := claims["user_id"].(float64)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": gin.H{"type": "authentication_error", "message": "invalid token claims"}})
+			c.Abort()
+			return
+		}
+		username, ok := claims["username"].(string)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": gin.H{"type": "authentication_error", "message": "invalid token claims"}})
+			c.Abort()
+			return
+		}
+		c.Set("user_id", int64(userID))
+		c.Set("username", username)
 		if isAdmin, ok := claims["is_admin"].(bool); ok {
 			c.Set("is_admin", isAdmin)
 		}
