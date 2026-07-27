@@ -8,6 +8,17 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
+func RequireAdmin() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if !c.GetBool("is_admin") {
+			c.JSON(http.StatusForbidden, gin.H{"error": gin.H{"type": "permission_error", "message": "admin access required"}})
+			c.Abort()
+			return
+		}
+		c.Next()
+	}
+}
+
 func JWTAuth(secret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
@@ -43,6 +54,9 @@ func JWTAuth(secret string) gin.HandlerFunc {
 
 		c.Set("user_id", int64(claims["user_id"].(float64)))
 		c.Set("username", claims["username"].(string))
+		if isAdmin, ok := claims["is_admin"].(bool); ok {
+			c.Set("is_admin", isAdmin)
+		}
 		c.Next()
 	}
 }

@@ -30,11 +30,13 @@ const router = createRouter({
           path: "providers",
           name: "Providers",
           component: () => import("../views/ProvidersView.vue"),
+          meta: { requiresAdmin: true },
         },
         {
           path: "models",
           name: "Models",
           component: () => import("../views/ModelsView.vue"),
+          meta: { requiresAdmin: true },
         },
         {
           path: "api-keys",
@@ -55,6 +57,7 @@ const router = createRouter({
           path: "users",
           name: "Users",
           component: () => import("../views/UsersView.vue"),
+          meta: { requiresAdmin: true },
         },
       ],
     },
@@ -67,6 +70,8 @@ router.beforeEach((to, _from, next) => {
   if (to.meta.requiresAuth && !auth.isLoggedIn) {
     next("/login");
   } else if (to.meta.guest && auth.isLoggedIn) {
+    next("/");
+  } else if (to.meta.requiresAdmin && !auth.user?.is_admin) {
     next("/");
   } else {
     next();

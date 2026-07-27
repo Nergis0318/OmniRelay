@@ -81,17 +81,8 @@ func main() {
 		adminAuth.Use(middleware.JWTAuth(cfg.JWTSecret))
 		{
 			adminAuth.GET("/providers", handlers.ListProviders(providerService))
-			adminAuth.POST("/providers", handlers.CreateProvider(providerService))
-			adminAuth.PUT("/providers/:id", handlers.UpdateProvider(providerService))
-			adminAuth.DELETE("/providers/:id", handlers.DeleteProvider(providerService))
-			adminAuth.POST("/providers/:id/sync", handlers.SyncProviderModels(providerService, modelService))
-			adminAuth.POST("/providers/:id/test", handlers.TestProvider(providerService, proxyEngine))
-			adminAuth.GET("/models/source-list", handlers.ListSourceModels(modelService))
-
 			adminAuth.GET("/models", handlers.ListModels(modelService))
-			adminAuth.POST("/models", handlers.CreateModel(modelService))
-			adminAuth.PUT("/models/:id", handlers.UpdateModel(modelService))
-			adminAuth.DELETE("/models/:id", handlers.DeleteModel(modelService))
+			adminAuth.GET("/models/source-list", handlers.ListSourceModels(modelService))
 
 			adminAuth.GET("/api-keys", handlers.ListAPIKeys(apiKeyService))
 			adminAuth.POST("/api-keys", handlers.CreateAPIKey(apiKeyService))
@@ -100,12 +91,26 @@ func main() {
 			adminAuth.GET("/usage", handlers.ListUsage(usageService))
 			adminAuth.GET("/stats", handlers.GetStats(usageService, apiKeyService, modelService))
 
-			adminAuth.GET("/users", handlers.ListUsers(authService))
-			adminAuth.DELETE("/users/:id", handlers.DeleteUser(authService))
-			adminAuth.PUT("/users/:id/role", handlers.SetUserRole(authService))
-			adminAuth.POST("/users/:id/reset-password", handlers.GenerateResetCode(authService))
-			adminAuth.GET("/users/:id/providers", handlers.GetUserProviders(authService))
-			adminAuth.PUT("/users/:id/providers", handlers.SetUserProviders(authService))
+			adminOnly := adminAuth.Group("")
+			adminOnly.Use(middleware.RequireAdmin())
+			{
+				adminOnly.POST("/providers", handlers.CreateProvider(providerService))
+				adminOnly.PUT("/providers/:id", handlers.UpdateProvider(providerService))
+				adminOnly.DELETE("/providers/:id", handlers.DeleteProvider(providerService))
+				adminOnly.POST("/providers/:id/sync", handlers.SyncProviderModels(providerService, modelService))
+				adminOnly.POST("/providers/:id/test", handlers.TestProvider(providerService, proxyEngine))
+
+				adminOnly.POST("/models", handlers.CreateModel(modelService))
+				adminOnly.PUT("/models/:id", handlers.UpdateModel(modelService))
+				adminOnly.DELETE("/models/:id", handlers.DeleteModel(modelService))
+
+				adminOnly.GET("/users", handlers.ListUsers(authService))
+				adminOnly.DELETE("/users/:id", handlers.DeleteUser(authService))
+				adminOnly.PUT("/users/:id/role", handlers.SetUserRole(authService))
+				adminOnly.POST("/users/:id/reset-password", handlers.GenerateResetCode(authService))
+				adminOnly.GET("/users/:id/providers", handlers.GetUserProviders(authService))
+				adminOnly.PUT("/users/:id/providers", handlers.SetUserProviders(authService))
+			}
 		}
 	}
 
