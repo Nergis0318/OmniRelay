@@ -80,8 +80,8 @@ func main() {
 		adminAuth := admin.Group("")
 		adminAuth.Use(middleware.JWTAuth(cfg.JWTSecret))
 		{
-			adminAuth.GET("/providers", handlers.ListProviders(providerService))
-			adminAuth.GET("/models", handlers.ListModels(modelService))
+			adminAuth.GET("/providers", handlers.ListProviders(providerService, authService))
+			adminAuth.GET("/models", handlers.ListModels(modelService, authService))
 			adminAuth.GET("/models/source-list", handlers.ListSourceModels(modelService))
 
 			adminAuth.GET("/api-keys", handlers.ListAPIKeys(apiKeyService))

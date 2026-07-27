@@ -53,6 +53,7 @@ func adminAuthMiddleware(tokenStr string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Set("user_id", int64(1))
 		c.Set("username", "admin")
+		c.Set("is_admin", true)
 		c.Next()
 	}
 }
@@ -61,8 +62,10 @@ func TestListProviders(t *testing.T) {
 	db, ps, _, _, _, tokenStr := setupTest(t)
 	defer db.Close()
 
+	authSvc := service.NewAuthService(db)
+
 	r := gin.New()
-	r.GET("/admin/providers", adminAuthMiddleware(tokenStr), ListProviders(ps))
+	r.GET("/admin/providers", adminAuthMiddleware(tokenStr), ListProviders(ps, authSvc))
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/admin/providers", nil)
@@ -82,8 +85,10 @@ func TestListModels(t *testing.T) {
 	db, _, ms, _, _, tokenStr := setupTest(t)
 	defer db.Close()
 
+	authSvc := service.NewAuthService(db)
+
 	r := gin.New()
-	r.GET("/admin/models", adminAuthMiddleware(tokenStr), ListModels(ms))
+	r.GET("/admin/models", adminAuthMiddleware(tokenStr), ListModels(ms, authSvc))
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/admin/models", nil)

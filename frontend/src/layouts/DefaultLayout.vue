@@ -157,8 +157,8 @@ onUnmounted(() => {
 
 const menuItems = [
   { i18nKey: "nav.dashboard", icon: "mdi-view-dashboard-outline", to: "/" },
-  { i18nKey: "nav.providers", icon: "mdi-server-outline", to: "/providers", adminOnly: true },
-  { i18nKey: "nav.models", icon: "mdi-cube-outline", to: "/models", adminOnly: true },
+  { i18nKey: "nav.providers", icon: "mdi-server-outline", to: "/providers" },
+  { i18nKey: "nav.models", icon: "mdi-cube-outline", to: "/models" },
   { i18nKey: "nav.apiKeys", icon: "mdi-key-outline", to: "/api-keys" },
   { i18nKey: "nav.usage", icon: "mdi-chart-line", to: "/usage" },
   { i18nKey: "nav.logs", icon: "mdi-text-box-search-outline", to: "/logs" },

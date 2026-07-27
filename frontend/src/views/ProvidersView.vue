@@ -5,7 +5,7 @@
         <h1 class="page-title">{{ $t("providers.title") }}</h1>
         <p class="page-sub">{{ $t("providers.subtitle") }}</p>
       </div>
-      <button class="btn-primary" @click="openDialog()">
+      <button v-if="isAdmin" class="btn-primary" @click="openDialog()">
         <v-icon size="15">mdi-plus</v-icon>
         {{ $t("providers.addProvider") }}
       </button>
@@ -101,7 +101,7 @@
           },
         ]"
       >
-        <template #actions>
+        <template v-if="isAdmin" #actions>
           <button
             class="row-btn"
             :title="$t('providers.test')"
@@ -296,10 +296,13 @@
 import { ref, computed, onMounted, onUnmounted } from "vue";
 import { useI18n } from "vue-i18n";
 import { useProvidersStore } from "../stores/providers";
+import { useAuthStore } from "../stores/auth";
 import MobileDataCard from "../components/MobileDataCard.vue";
 
 const { t } = useI18n();
 const store = useProvidersStore();
+const auth = useAuthStore();
+const isAdmin = computed(() => !!auth.user?.is_admin);
 const isMobile = ref(false);
 function checkMobile() {
   isMobile.value = window.innerWidth <= 768;
@@ -341,18 +344,23 @@ const form = ref({
   source_models: [] as string[],
 });
 
-const headers = computed(() => [
-  { title: t("providers.key"), key: "provider_key", sortable: true },
-  { title: t("providers.name"), key: "name", sortable: true },
-  { title: t("providers.type"), key: "provider_type" },
-  { title: t("providers.status"), key: "is_active" },
-  {
-    title: t("providers.actions"),
-    key: "actions",
-    sortable: false,
-    align: "end" as const,
-  },
-]);
+const headers = computed(() => {
+  const cols: Record<string, unknown>[] = [
+    { title: t("providers.key"), key: "provider_key", sortable: true },
+    { title: t("providers.name"), key: "name", sortable: true },
+    { title: t("providers.type"), key: "provider_type" },
+    { title: t("providers.status"), key: "is_active" },
+  ];
+  if (isAdmin.value) {
+    cols.push({
+      title: t("providers.actions"),
+      key: "actions",
+      sortable: false,
+      align: "end",
+    });
+  }
+  return cols;
+});
 
 function openDialog(provider?: any) {
   dialogError.value = "";

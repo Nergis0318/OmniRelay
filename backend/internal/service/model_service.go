@@ -17,8 +17,8 @@ func NewModelService(db *sql.DB) *ModelService {
 func (s *ModelService) List(providerKey string, userID int64) ([]models.Model, error) {
 	query := `SELECT m.id, m.provider_id, m.model_id, COALESCE(m.display_name,''), m.provider_key,
 		m.is_manual, m.source_provider_key, m.input_price_per_1mtok, m.output_price_per_1mtok, m.cache_write_5m_price_per_1mtok, m.cache_write_1h_price_per_1mtok, m.cache_read_price_per_1mtok, m.context_window, COALESCE(m.user_id, 0), m.created_at
-		FROM models m JOIN providers p ON m.provider_id = p.id WHERE p.is_active = 1 AND p.show_in_model_list = 1 AND (m.user_id = ? OR m.user_id IS NULL)`
-	args := []interface{}{userID}
+		FROM models m JOIN providers p ON m.provider_id = p.id WHERE p.is_active = 1 AND p.show_in_model_list = 1`
+	args := []interface{}{}
 
 	if providerKey != "" {
 		query += " AND m.provider_key = ?"
@@ -146,8 +146,8 @@ func (s *ModelService) FindByFullID(fullModelID string, userID int64) (*models.M
 			`SELECT m.id, m.provider_id, m.model_id, COALESCE(m.display_name,''), m.provider_key,
 				m.is_manual, m.source_provider_key, m.input_price_per_1mtok, m.output_price_per_1mtok, m.cache_write_5m_price_per_1mtok, m.cache_write_1h_price_per_1mtok, m.cache_read_price_per_1mtok, m.context_window, COALESCE(m.user_id, 0), m.created_at
 			FROM models m JOIN providers p ON m.provider_id = p.id
-			WHERE m.provider_key = ? AND m.model_id = ? AND p.is_active = 1 AND (m.user_id = ? OR m.user_id IS NULL)`,
-			providerKey, modelID, userID,
+			WHERE m.provider_key = ? AND m.model_id = ? AND p.is_active = 1`,
+			providerKey, modelID,
 		).Scan(&m.ID, &m.ProviderID, &m.ModelID, &m.DisplayName, &m.ProviderKey,
 			&m.IsManual, &m.SourceProviderKey, &m.InputPricePer1MTok, &m.OutputPricePer1MTok, &m.CacheWrite5mPricePer1MTok, &m.CacheWrite1hPricePer1MTok, &m.CacheReadPricePer1MTok, &m.ContextWindow, &m.UserID, &m.CreatedAt)
 			if err != nil {

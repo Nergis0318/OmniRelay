@@ -74,6 +74,18 @@ func (e *Engine) HandleListModels(c *gin.Context) {
 		return
 	}
 
+	if e.authService != nil {
+		if allowed, _ := e.authService.AllowedProviderSet(userID); allowed != nil {
+			filtered := modelList[:0]
+			for _, m := range modelList {
+				if allowed[m.ProviderID] {
+					filtered = append(filtered, m)
+				}
+			}
+			modelList = filtered
+		}
+	}
+
 	var data []models.PublicModel
 	for _, m := range modelList {
 		data = append(data, m.ToPublicModel())

@@ -10,7 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func ListModels(svc *service.ModelService) gin.HandlerFunc {
+func ListModels(svc *service.ModelService, authSvc *service.AuthService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID := c.GetInt64("user_id")
 		providerKey := c.Query("provider_key")
@@ -19,6 +19,22 @@ func ListModels(svc *service.ModelService) gin.HandlerFunc {
 		if err != nil {
 			apiresponse.AbortAdminInternal(c, err.Error())
 			return
+		}
+		if !c.GetBool("is_admin") {
+			allowed, err := authSvc.AllowedProviderSet(userID)
+			if err != nil {
+				apiresponse.AbortAdminInternal(c, err.Error())
+				return
+			}
+			if allowed != nil {
+				filtered := modelList[:0]
+				for _, m := range modelList {
+					if allowed[m.ProviderID] {
+						filtered = append(filtered, m)
+					}
+				}
+				modelList = filtered
+			}
 		}
 		if modelList == nil {
 			modelList = []models.Model{}

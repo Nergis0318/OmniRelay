@@ -238,6 +238,23 @@ func (s *AuthService) GetUserProviders(userID int64) ([]int64, error) {
 	return ids, nil
 }
 
+// AllowedProviderSet returns the set of provider IDs the user may access.
+// A nil map means all providers are allowed (no ACL rows configured).
+func (s *AuthService) AllowedProviderSet(userID int64) (map[int64]bool, error) {
+	ids, err := s.GetUserProviders(userID)
+	if err != nil {
+		return nil, err
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	set := make(map[int64]bool, len(ids))
+	for _, id := range ids {
+		set[id] = true
+	}
+	return set, nil
+}
+
 func (s *AuthService) SetUserProviders(userID int64, providerIDs []int64) error {
 	tx, err := s.db.Begin()
 	if err != nil {

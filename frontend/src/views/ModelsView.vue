@@ -5,7 +5,7 @@
         <h1 class="page-title">{{ $t("models.title") }}</h1>
         <p class="page-sub">{{ $t("models.subtitle") }}</p>
       </div>
-      <button class="btn-primary" @click="openDialog()">
+      <button v-if="isAdmin" class="btn-primary" @click="openDialog()">
         <v-icon size="15">mdi-plus</v-icon>
         {{ $t("models.addModel") }}
       </button>
@@ -118,7 +118,7 @@
           },
         ]"
       >
-        <template #actions>
+        <template v-if="isAdmin" #actions>
           <button class="row-btn" title="Edit" @click="openEditDialog(m)">
             <v-icon size="15">mdi-pencil-outline</v-icon>
           </button>
@@ -264,11 +264,14 @@ import { ref, computed, onMounted, onUnmounted } from "vue";
 import { useI18n } from "vue-i18n";
 import { useModelsStore } from "../stores/models";
 import { useProvidersStore } from "../stores/providers";
+import { useAuthStore } from "../stores/auth";
 import MobileDataCard from "../components/MobileDataCard.vue";
 
 const { t } = useI18n();
 const store = useModelsStore();
 const providersStore = useProvidersStore();
+const auth = useAuthStore();
+const isAdmin = computed(() => !!auth.user?.is_admin);
 const dialog = ref(false);
 const editMode = ref(false);
 const editingId = ref<number | null>(null);
@@ -303,14 +306,19 @@ const providerOptions = computed(() =>
   providersStore.providers.map((p) => ({ text: p.name, value: p.id })),
 );
 
-const headers = computed(() => [
-  { title: t("models.model"), key: "full_id", sortable: false },
-  { title: t("models.provider"), key: "provider_key" },
-  { title: t("models.source"), key: "is_manual" },
-  { title: t("models.pricing"), key: "pricing", sortable: false },
-  { title: t("models.context"), key: "context_window" },
-  { title: "", key: "actions", sortable: false, width: 80 },
-]);
+const headers = computed(() => {
+  const cols: Record<string, unknown>[] = [
+    { title: t("models.model"), key: "full_id", sortable: false },
+    { title: t("models.provider"), key: "provider_key" },
+    { title: t("models.source"), key: "is_manual" },
+    { title: t("models.pricing"), key: "pricing", sortable: false },
+    { title: t("models.context"), key: "context_window" },
+  ];
+  if (isAdmin.value) {
+    cols.push({ title: "", key: "actions", sortable: false, width: 80 });
+  }
+  return cols;
+});
 
 function openDialog() {
   editMode.value = false;

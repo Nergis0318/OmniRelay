@@ -12,13 +12,29 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func ListProviders(svc *service.ProviderService) gin.HandlerFunc {
+func ListProviders(svc *service.ProviderService, authSvc *service.AuthService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID := c.GetInt64("user_id")
 		providers, err := svc.List(userID)
 		if err != nil {
 			apiresponse.AbortAdminInternal(c, err.Error())
 			return
+		}
+		if !c.GetBool("is_admin") {
+			allowed, err := authSvc.AllowedProviderSet(userID)
+			if err != nil {
+				apiresponse.AbortAdminInternal(c, err.Error())
+				return
+			}
+			if allowed != nil {
+				filtered := providers[:0]
+				for _, p := range providers {
+					if allowed[p.ID] {
+						filtered = append(filtered, p)
+					}
+				}
+				providers = filtered
+			}
 		}
 		if providers == nil {
 			providers = []models.Provider{}

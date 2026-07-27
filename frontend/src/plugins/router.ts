@@ -30,13 +30,11 @@ const router = createRouter({
           path: "providers",
           name: "Providers",
           component: () => import("../views/ProvidersView.vue"),
-          meta: { requiresAdmin: true },
         },
         {
           path: "models",
           name: "Models",
           component: () => import("../views/ModelsView.vue"),
-          meta: { requiresAdmin: true },
         },
         {
           path: "api-keys",

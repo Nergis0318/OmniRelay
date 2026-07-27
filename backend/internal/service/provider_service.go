@@ -35,8 +35,7 @@ func NewProviderService(db *sql.DB, cfg *config.Config) *ProviderService {
 
 func (s *ProviderService) List(userID int64) ([]models.Provider, error) {
 	rows, err := s.db.Query(
-		"SELECT id, provider_key, name, api_base_url, provider_type, is_active, show_in_model_list, COALESCE(user_id, 0), created_at, updated_at FROM providers WHERE (user_id = ? OR user_id IS NULL) ORDER BY created_at",
-		userID,
+		"SELECT id, provider_key, name, api_base_url, provider_type, is_active, show_in_model_list, COALESCE(user_id, 0), created_at, updated_at FROM providers ORDER BY created_at",
 	)
 	if err != nil {
 		return nil, err
@@ -62,8 +61,8 @@ func (s *ProviderService) List(userID int64) ([]models.Provider, error) {
 func (s *ProviderService) GetByKey(providerKey string, userID int64) (*models.Provider, error) {
 	var p models.Provider
 	err := s.db.QueryRow(
-		"SELECT id, provider_key, name, api_base_url, api_key_encrypted, provider_type, is_active, show_in_model_list, COALESCE(user_id, 0), created_at, updated_at FROM providers WHERE provider_key = ? AND is_active = 1 AND (user_id = ? OR user_id IS NULL)",
-		providerKey, userID,
+		"SELECT id, provider_key, name, api_base_url, api_key_encrypted, provider_type, is_active, show_in_model_list, COALESCE(user_id, 0), created_at, updated_at FROM providers WHERE provider_key = ? AND is_active = 1",
+		providerKey,
 	).Scan(&p.ID, &p.ProviderKey, &p.Name, &p.APiBaseURL, &p.APIKeyEncrypted, &p.ProviderType, &p.IsActive, &p.ShowInModelList, &p.UserID, &p.CreatedAt, &p.UpdatedAt)
 	if err != nil {
 		return nil, err
@@ -74,8 +73,8 @@ func (s *ProviderService) GetByKey(providerKey string, userID int64) (*models.Pr
 func (s *ProviderService) GetByID(id int64, userID int64) (*models.Provider, error) {
 	var p models.Provider
 	err := s.db.QueryRow(
-		"SELECT id, provider_key, name, api_base_url, api_key_encrypted, provider_type, is_active, show_in_model_list, COALESCE(user_id, 0), created_at, updated_at FROM providers WHERE id = ? AND (user_id = ? OR user_id IS NULL)",
-		id, userID,
+		"SELECT id, provider_key, name, api_base_url, api_key_encrypted, provider_type, is_active, show_in_model_list, COALESCE(user_id, 0), created_at, updated_at FROM providers WHERE id = ?",
+		id,
 	).Scan(&p.ID, &p.ProviderKey, &p.Name, &p.APiBaseURL, &p.APIKeyEncrypted, &p.ProviderType, &p.IsActive, &p.ShowInModelList, &p.UserID, &p.CreatedAt, &p.UpdatedAt)
 	if err != nil {
 		return nil, err
