@@ -18,7 +18,7 @@ const upstreamRequestTimeout = 5 * time.Minute
 // isUpstreamErrorContent checks if the response text is a known error sent by
 // an upstream that does not follow standard error reporting.
 func isUpstreamErrorContent(text string) bool {
-	return strings.TrimSpace(text) == "Request failed."
+	return strings.TrimSpace(text) == "Empty message"
 }
 
 // extractErrorContent checks a parsed response for non-standard error text embedded in content.
