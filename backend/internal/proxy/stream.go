@@ -56,6 +56,33 @@ func startKeepAlive(sw *streamWriter, done <-chan struct{}) {
 	}()
 }
 
+// writeStreamUpstreamError converts an upstream error detected mid-stream
+// into a standard error response. Interruptions are temporary → 503
+// retryable (overloaded_error/server_error); other upstream errors keep the
+// legacy 502 api_error shape.
+func writeStreamUpstreamError(c *gin.Context, errMsg string) {
+	errFmt := apiresponse.FormatFromContext(c)
+	requestID := c.GetString("request_id")
+	// Some interruption error events omit the message field; treat those as
+	// interruptions anyway and fall back to the canonical wording.
+	if errMsg == "" {
+		errMsg = "Temporary service interruption. Retry the last turn; your conversation and tool state are preserved."
+	}
+	if isInterruptionText(errMsg) {
+		errType := "overloaded_error"
+		if errFmt != apiresponse.FormatAnthropic {
+			errType = "server_error"
+		}
+		c.Status(http.StatusServiceUnavailable)
+		c.Header("Content-Type", "application/json")
+		c.Writer.Write(reformatError(upstreamError{ErrType: errType, Message: errMsg, Code: "upstream_error"}, errFmt, requestID))
+		return
+	}
+	c.Status(http.StatusBadGateway)
+	c.Header("Content-Type", "application/json")
+	c.Writer.Write(reformatError(upstreamError{ErrType: "api_error", Message: errMsg}, errFmt, requestID))
+}
+
 func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapter Adapter, apiKeyID, providerID int64, fullModelID string, dbModel *models.Model, userID int64, providerType string, inputTokens int64) {
 	start := time.Now()
 	buf := make([]byte, 4096)
@@ -89,7 +116,17 @@ func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapt
 
 	var totalInputTokens, totalOutputTokens int64
 	var outputTextAccum strings.Builder
+	var head bytes.Buffer
+	headOpen := true
 	sentDone := false
+
+	flushHead := func() {
+		if headOpen {
+			sw.Write(head.Bytes())
+			head.Reset()
+			headOpen = false
+		}
+	}
 
 	for {
 		if n > 0 {
@@ -108,13 +145,31 @@ func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapt
 			if outTok > 0 {
 				totalOutputTokens = outTok
 			}
+			// Upstream error (e.g. Anthropic interruption) detected mid-stream:
+			// abort before anything content-bearing reaches the client.
+			if _, errSet := state["upstream_error"]; errSet {
+				break
+			}
+
+			var out []byte
 			if transformed != nil {
 				if strings.Contains(string(transformed), "data: [DONE]") {
 					sentDone = true
 				}
-				sw.Write(transformed)
+				out = transformed
 			} else {
-				sw.Write(chunk)
+				out = chunk
+			}
+			// Hold the pre-content head (role/empty chunks) until the first
+			// content-bearing chunk so a mid-stream upstream error can still
+			// become a clean 503.
+			if headOpen && (strings.Contains(string(out), "content") || strings.Contains(string(out), "finish_reason") || sentDone) {
+				flushHead()
+			}
+			if headOpen {
+				head.Write(out)
+			} else {
+				sw.Write(out)
 			}
 		}
 		if err != nil {
@@ -123,11 +178,19 @@ func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapt
 		n, err = resp.Body.Read(buf)
 	}
 
+	latencyMs := time.Since(start).Milliseconds()
+
+	if errMsg, ok := state["upstream_error"].(string); ok {
+		e.logUpstreamError(usageContext{apiKeyID: apiKeyID, providerID: providerID, userID: userID, fullModelID: fullModelID}, errMsg, latencyMs)
+		writeStreamUpstreamError(c, errMsg)
+		return
+	}
+	flushHead()
+
 	if !sentDone {
 		sw.Write([]byte("data: [DONE]\n\n"))
 	}
 
-	latencyMs := time.Since(start).Milliseconds()
 	completedAt := time.Now()
 
 	if totalOutputTokens == 0 && outputTextAccum.Len() > 0 {
@@ -241,14 +304,9 @@ func (e *Engine) handleMessagesStreamResponse(c *gin.Context, resp *http.Respons
 		}
 	}
 
-	if _, ok := state["upstream_error"]; ok {
-		errMsg, _ := state["upstream_error"].(string)
-		errFmt := apiresponse.FormatFromContext(c)
-		requestID := c.GetString("request_id")
+	if errMsg, ok := state["upstream_error"].(string); ok {
 		e.logUpstreamError(usageContext{apiKeyID: apiKeyID, providerID: providerID, userID: userID, fullModelID: fullModelID}, errMsg, time.Since(start).Milliseconds())
-		c.Status(http.StatusBadGateway)
-		c.Header("Content-Type", "application/json")
-		c.Writer.Write(reformatError(upstreamError{ErrType: "api_error", Message: errMsg}, errFmt, requestID))
+		writeStreamUpstreamError(c, errMsg)
 		return
 	}
 
