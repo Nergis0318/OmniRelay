@@ -19,6 +19,14 @@
       <v-icon size="14">mdi-alert-circle-outline</v-icon>
       {{ testResult.error || $t("providers.testFailed") }}
     </div>
+    <div v-if="syncResult" class="alert alert--success alert--page">
+      <v-icon size="14">mdi-check-circle-outline</v-icon>
+      {{ syncResult }}
+    </div>
+    <div v-if="syncError" class="alert alert--error alert--page">
+      <v-icon size="14">mdi-alert-circle-outline</v-icon>
+      {{ syncError }}
+    </div>
 
     <div class="table-card">
       <v-data-table
@@ -62,9 +70,11 @@
             <button
               class="row-btn"
               title="Sync Models"
+              :disabled="syncingId === item.id"
               @click="handleSync(item.id)"
             >
-              <v-icon size="15">mdi-sync</v-icon>
+              <v-icon v-if="syncingId !== item.id" size="15">mdi-sync</v-icon>
+              <span v-else class="btn-spinner btn-spinner--sm" />
             </button>
             <button
               class="row-btn row-btn--danger"
@@ -114,8 +124,14 @@
           <button class="row-btn" title="Edit" @click="openDialog(p)">
             <v-icon size="15">mdi-pencil-outline</v-icon>
           </button>
-          <button class="row-btn" title="Sync Models" @click="handleSync(p.id)">
-            <v-icon size="15">mdi-sync</v-icon>
+          <button
+            class="row-btn"
+            title="Sync Models"
+            :disabled="syncingId === p.id"
+            @click="handleSync(p.id)"
+          >
+            <v-icon v-if="syncingId !== p.id" size="15">mdi-sync</v-icon>
+            <span v-else class="btn-spinner btn-spinner--sm" />
           </button>
           <button
             class="row-btn row-btn--danger"
@@ -322,6 +338,8 @@ const editing = ref<any>(null);
 const saving = ref(false);
 const dialogError = ref("");
 const syncResult = ref("");
+const syncError = ref("");
+const syncingId = ref<number | null>(null);
 const testingId = ref<number | null>(null);
 const testResult = ref<{ ok: boolean; latency_ms: number; error?: string } | null>(null);
 const providerTypes = [
@@ -365,6 +383,7 @@ const headers = computed(() => {
 function openDialog(provider?: any) {
   dialogError.value = "";
   syncResult.value = "";
+  syncError.value = "";
   if (provider) {
     editing.value = provider;
     form.value = {
@@ -425,20 +444,25 @@ async function handleSave() {
   }
 }
 
-async function handleSync(id: number) {
+  async function handleSync(id: number) {
     syncResult.value = "";
+    syncError.value = "";
     testResult.value = null;
+    syncingId.value = id;
     try {
       const { data } = await store.syncModels(id);
       syncResult.value = t("providers.syncedModels", { count: data.model_count });
     } catch (e: any) {
-      dialogError.value = e.response?.data?.error || t("providers.syncFailed");
+      syncError.value = e.response?.data?.error || t("providers.syncFailed");
+    } finally {
+      syncingId.value = null;
     }
   }
 
   async function handleTest(id: number) {
     testResult.value = null;
     syncResult.value = "";
+    syncError.value = "";
     testingId.value = id;
     try {
       const result = await store.testProvider(id);
