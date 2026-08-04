@@ -128,6 +128,40 @@ func TestOpenAIParseStreamChunkExtractsUsageFromFinalChunk(t *testing.T) {
 	}
 }
 
+func TestOpenAIParseStreamChunkEmptyMessageSetsUpstreamError(t *testing.T) {
+	adapter := &OpenAIAdapter{}
+	state := make(map[string]interface{})
+
+	chunk := []byte("data: {\"choices\":[{\"delta\":{\"content\":\"Empty message\"}}]}\n\n")
+	out, _, _, err := adapter.ParseStreamChunk(chunk, state)
+	if err != nil {
+		t.Fatalf("ParseStreamChunk returned error: %v", err)
+	}
+	if out != nil {
+		t.Errorf("out = %q, want nil (chunk dropped)", out)
+	}
+	if msg, _ := state["upstream_error"].(string); msg != "Empty message" {
+		t.Errorf("state upstream_error = %q, want \"Empty message\"", msg)
+	}
+}
+
+func TestOpenAIParseMessagesStreamChunkEmptyMessageSetsUpstreamError(t *testing.T) {
+	adapter := &OpenAIAdapter{}
+	state := make(map[string]interface{})
+
+	chunk := []byte("data: {\"choices\":[{\"delta\":{\"content\":\"Empty message\"}}]}\n\n")
+	out, _, _, err := adapter.ParseMessagesStreamChunk(chunk, state)
+	if err != nil {
+		t.Fatalf("ParseMessagesStreamChunk returned error: %v", err)
+	}
+	if out != nil {
+		t.Errorf("out = %q, want nil (chunk dropped)", out)
+	}
+	if msg, _ := state["upstream_error"].(string); msg != "Empty message" {
+		t.Errorf("state upstream_error = %q, want \"Empty message\"", msg)
+	}
+}
+
 func TestOpenAIParseStreamChunkReturnsDataAsIs(t *testing.T) {
 	adapter := &OpenAIAdapter{}
 	state := make(map[string]interface{})

@@ -249,7 +249,7 @@ func (a *AnthropicAdapter) ParseStreamChunk(data []byte, state map[string]interf
 			delta, _ := event["delta"].(map[string]interface{})
 			if deltaType, _ := delta["type"].(string); deltaType == "text_delta" {
 				textDelta, _ := delta["text"].(string)
-				if isInterruptionText(textDelta) {
+				if isErrorContent(textDelta) {
 					state["upstream_error"] = textDelta
 					return nil, inputTokens, outputTokens, nil
 				}
@@ -376,7 +376,7 @@ func (a *AnthropicAdapter) ParseMessagesStreamChunk(data []byte, state map[strin
 		case "content_block_delta":
 			if delta, ok := event["delta"].(map[string]interface{}); ok {
 				if deltaType, _ := delta["type"].(string); deltaType == "text_delta" {
-					if text, _ := delta["text"].(string); text == "Request failed." || isInterruptionText(text) {
+					if text, _ := delta["text"].(string); text == "Request failed." || isErrorContent(text) {
 						state["upstream_error"] = text
 						return nil, inputTokens, outputTokens, nil
 					}

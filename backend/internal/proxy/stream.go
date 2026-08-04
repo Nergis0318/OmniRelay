@@ -78,6 +78,14 @@ func writeStreamUpstreamError(c *gin.Context, errMsg string) {
 		c.Writer.Write(reformatError(upstreamError{ErrType: errType, Message: errMsg, Code: "upstream_error"}, errFmt, requestID))
 		return
 	}
+	// Legacy "Empty message" behavior: 200 api_error, matching the
+	// non-streaming path (abortErrorContent).
+	if isUpstreamErrorContent(errMsg) {
+		c.Status(http.StatusOK)
+		c.Header("Content-Type", "application/json")
+		c.Writer.Write(reformatError(upstreamError{ErrType: "api_error", Message: errMsg}, errFmt, requestID))
+		return
+	}
 	c.Status(http.StatusBadGateway)
 	c.Header("Content-Type", "application/json")
 	c.Writer.Write(reformatError(upstreamError{ErrType: "api_error", Message: errMsg}, errFmt, requestID))

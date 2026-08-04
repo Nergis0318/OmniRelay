@@ -167,6 +167,38 @@ func TestParseMessagesStreamChunkOtherErrorEventPassesThrough(t *testing.T) {
 	}
 }
 
+func TestParseMessagesStreamChunkEmptyMessageTextDelta(t *testing.T) {
+	a := &AnthropicAdapter{}
+	state := make(map[string]interface{})
+	chunk := []byte("data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Empty message\"}}\n\n")
+	out, _, _, err := a.ParseMessagesStreamChunk(chunk, state)
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if out != nil {
+		t.Errorf("out = %q, want nil (chunk dropped)", out)
+	}
+	if msg, _ := state["upstream_error"].(string); msg != "Empty message" {
+		t.Errorf("state upstream_error = %q, want \"Empty message\"", msg)
+	}
+}
+
+func TestParseStreamChunkEmptyMessageTextDelta(t *testing.T) {
+	a := &AnthropicAdapter{}
+	state := make(map[string]interface{})
+	chunk := []byte("data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Empty message\"}}\n\n")
+	out, _, _, err := a.ParseStreamChunk(chunk, state)
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if out != nil {
+		t.Errorf("out = %q, want nil (chunk dropped)", out)
+	}
+	if msg, _ := state["upstream_error"].(string); msg != "Empty message" {
+		t.Errorf("state upstream_error = %q, want \"Empty message\"", msg)
+	}
+}
+
 func TestParseStreamChunkInterruptionTextDelta(t *testing.T) {
 	a := &AnthropicAdapter{}
 	state := make(map[string]interface{})

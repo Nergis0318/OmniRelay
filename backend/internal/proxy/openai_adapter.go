@@ -51,6 +51,17 @@ func (a *OpenAIAdapter) ParseStreamChunk(data []byte, state map[string]interface
 			state["output_tokens"] = outputTokens
 			extractAndStoreCacheTokens(usage, state)
 		}
+
+		if choices, ok := chunk["choices"].([]interface{}); ok {
+			for _, rawChoice := range choices {
+				choice, _ := rawChoice.(map[string]interface{})
+				delta, _ := choice["delta"].(map[string]interface{})
+				if content, ok := delta["content"].(string); ok && isUpstreamErrorContent(content) {
+					state["upstream_error"] = content
+					return nil, int64State(state, "input_tokens", inputTokens), int64State(state, "output_tokens", outputTokens), nil
+				}
+			}
+		}
 	}
 
 	return data, int64State(state, "input_tokens", inputTokens), int64State(state, "output_tokens", outputTokens), nil
@@ -149,8 +160,14 @@ func (a *OpenAIAdapter) ParseMessagesStreamChunk(data []byte, state map[string]i
 				continue
 			}
 
-			if content, ok := delta["content"].(string); ok && content != "" {
-				w.textDelta(content)
+			if content, ok := delta["content"].(string); ok {
+				if isUpstreamErrorContent(content) {
+					state["upstream_error"] = content
+					return nil, int64State(state, "input_tokens", inputTokens), int64State(state, "output_tokens", outputTokens), nil
+				}
+				if content != "" {
+					w.textDelta(content)
+				}
 			} else if _, ok := delta["role"].(string); ok {
 				w.ensureStarted()
 			}
