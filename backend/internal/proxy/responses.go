@@ -59,7 +59,9 @@ func inputToMessages(input interface{}) ([]map[string]interface{}, error) {
 			case "function_call":
 				args := "{}"
 				if a, ok := item["arguments"]; ok {
-					if b, err := json.Marshal(a); err == nil {
+					if s, isStr := a.(string); isStr {
+						args = s
+					} else if b, err := json.Marshal(a); err == nil {
 						args = string(b)
 					}
 				}
@@ -107,7 +109,11 @@ func convertResponsesContent(content interface{}) interface{} {
 		case "input_text":
 			out = append(out, map[string]interface{}{"type": "text", "text": part["text"]})
 		case "input_image":
-			out = append(out, map[string]interface{}{"type": "image_url", "image_url": part["image_url"]})
+			imageURL := map[string]interface{}{"url": part["image_url"]}
+			if detail, ok := part["detail"]; ok {
+				imageURL["detail"] = detail
+			}
+			out = append(out, map[string]interface{}{"type": "image_url", "image_url": imageURL})
 		default:
 			out = append(out, part)
 		}

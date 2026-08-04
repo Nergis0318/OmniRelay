@@ -45,13 +45,14 @@ func TestResponsesToChatBodyInputArray(t *testing.T) {
 		}},
 		map[string]interface{}{"type": "function_call", "call_id": "call_1", "name": "get_weather", "arguments": map[string]interface{}{"city": "seoul"}},
 		map[string]interface{}{"type": "function_call_output", "call_id": "call_1", "output": "sunny"},
+		map[string]interface{}{"type": "function_call", "call_id": "call_2", "name": "get_temperature", "arguments": `{"city":"seoul","unit":"c"}`},
 	}
 	chat, err := responsesToChatBody(map[string]interface{}{"model": "openai/gpt-4o", "input": input})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	messages := chat["messages"].([]map[string]interface{})
-	if len(messages) != 3 {
+	if len(messages) != 4 {
 		t.Fatalf("messages len = %d", len(messages))
 	}
 	if messages[0]["role"] != "user" {
@@ -71,6 +72,27 @@ func TestResponsesToChatBodyInputArray(t *testing.T) {
 	}
 	if messages[2]["role"] != "tool" || messages[2]["tool_call_id"] != "call_1" || messages[2]["content"] != "sunny" {
 		t.Errorf("messages[2] = %#v", messages[2])
+	}
+	stringFn := messages[3]["tool_calls"].([]map[string]interface{})[0]["function"].(map[string]interface{})
+	if stringFn["arguments"] != `{"city":"seoul","unit":"c"}` {
+		t.Errorf("string arguments = %#v", stringFn["arguments"])
+	}
+}
+
+func TestResponsesToChatBodyInputImage(t *testing.T) {
+	input := []interface{}{
+		map[string]interface{}{"role": "user", "content": []interface{}{
+			map[string]interface{}{"type": "input_image", "image_url": "https://example.com/cat.png", "detail": "high"},
+		}},
+	}
+	chat, err := responsesToChatBody(map[string]interface{}{"model": "openai/gpt-4o", "input": input})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	parts := chat["messages"].([]map[string]interface{})[0]["content"].([]map[string]interface{})
+	img := parts[0]["image_url"].(map[string]interface{})
+	if parts[0]["type"] != "image_url" || img["url"] != "https://example.com/cat.png" || img["detail"] != "high" {
+		t.Errorf("image part = %#v", parts[0])
 	}
 }
 
