@@ -137,11 +137,28 @@ func parseNonStreamChatResponse(c *gin.Context, respBody []byte, respHeader http
 		return nil, true
 	}
 
+	latencyMs := time.Since(startTime).Milliseconds()
+
+	// Upstream errors embedded in a successful response (e.g. Anthropic
+	// interruptions) become standard errors.
+	if errMsg := extractErrorContent(finalResponse); errMsg != "" {
+		usageService.Log(models.UsageLog{
+			APIKeyID:     &apiKeyID,
+			ProviderID:   &providerID,
+			Model:        fullModelID,
+			IsError:      true,
+			ErrorMessage: errMsg,
+			LatencyMs:    latencyMs,
+			UserID:       &userID,
+		})
+		abortErrorContent(c, errMsg)
+		return nil, true
+	}
+
 	finalResponse["model"] = fullModelID
 
 	// Count output tokens locally from the response content
 	localOutput := countOutputTokens(finalResponse, providerType, fullModelID)
-	latencyMs := time.Since(startTime).Milliseconds()
 	completedAt := time.Now()
 
 	// Extract upstream token data for cache tokens which we can't count locally

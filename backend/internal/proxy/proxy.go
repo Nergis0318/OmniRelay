@@ -334,8 +334,7 @@ func (e *Engine) executeMessages(c *gin.Context, body map[string]interface{}, fu
 
 	if errMsg := extractErrorContent(finalResponse); errMsg != "" {
 		e.logUpstreamError(u, errMsg, latencyMs)
-		errFmt := apiresponse.FormatFromContext(c)
-		apiresponse.Abort(c, resp.StatusCode, errFmt, "api_error", errMsg, "", "")
+		abortErrorContent(c, errMsg)
 		return
 	}
 
@@ -490,7 +489,7 @@ func (e *Engine) handlePathRoutedProxy(c *gin.Context, provider *models.Provider
 	if json.Unmarshal(respBody, &respJSON) == nil {
 		if errMsg := extractErrorContent(respJSON); errMsg != "" {
 			e.logUpstreamError(u, errMsg, latencyMs)
-			apiresponse.Abort(c, resp.StatusCode, errFmt, "api_error", errMsg, "", "")
+			abortErrorContent(c, errMsg)
 			return
 		}
 
