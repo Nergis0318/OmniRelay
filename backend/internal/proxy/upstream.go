@@ -99,16 +99,26 @@ func logErrorResponse(e *Engine, apiKeyID, providerID int64, fullModelID string,
 }
 
 func handleNonStreamChatResponse(c *gin.Context, respBody []byte, respHeader http.Header, adapter Adapter, fullModelID string, dbModel *models.Model, apiKeyID, providerID int64, startTime time.Time, userID int64, usageService UsageLogger, providerType string, inputTokens int64) {
+	finalResponse, wrote := parseNonStreamChatResponse(c, respBody, respHeader, adapter, fullModelID, dbModel, apiKeyID, providerID, startTime, userID, usageService, providerType, inputTokens)
+	if !wrote && finalResponse != nil {
+		c.JSON(http.StatusOK, finalResponse)
+	}
+}
+
+// parseNonStreamChatResponse parses an upstream chat completions response,
+// logs usage, and returns the final chat-format response map. The bool is
+// true when an error response was already written to c (nothing to send).
+func parseNonStreamChatResponse(c *gin.Context, respBody []byte, respHeader http.Header, adapter Adapter, fullModelID string, dbModel *models.Model, apiKeyID, providerID int64, startTime time.Time, userID int64, usageService UsageLogger, providerType string, inputTokens int64) (map[string]interface{}, bool) {
 	var modelResponse map[string]interface{}
 	if err := json.Unmarshal(respBody, &modelResponse); err != nil {
 		c.Data(http.StatusOK, contentTypeOrDefault(respHeader), respBody)
-		return
+		return nil, true
 	}
 
 	finalResponse, err := adapter.ParseChatResponse(modelResponse)
 	if err != nil {
 		c.Data(http.StatusOK, contentTypeOrDefault(respHeader), respBody)
-		return
+		return nil, true
 	}
 
 	finalResponse["model"] = fullModelID
@@ -159,7 +169,7 @@ func handleNonStreamChatResponse(c *gin.Context, respBody []byte, respHeader htt
 		})
 	}
 
-	c.JSON(http.StatusOK, finalResponse)
+	return finalResponse, false
 }
 
 func readBodyAndParse(c *gin.Context) (map[string]interface{}, error) {
