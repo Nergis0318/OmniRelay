@@ -120,3 +120,62 @@ func TestResponsesToChatBodyInvalidInput(t *testing.T) {
 		t.Errorf("expected error for numeric input")
 	}
 }
+
+func TestChatResponseToResponses(t *testing.T) {
+	chat := map[string]interface{}{
+		"id": "cmpl-1",
+		"choices": []interface{}{
+			map[string]interface{}{
+				"message": map[string]interface{}{
+					"role":    "assistant",
+					"content": "hello",
+					"tool_calls": []interface{}{
+						map[string]interface{}{
+							"id":       "call_9",
+							"type":     "function",
+							"function": map[string]interface{}{"name": "get_weather", "arguments": `{"city":"seoul"}`},
+						},
+					},
+				},
+				"finish_reason": "tool_calls",
+			},
+		},
+		"usage": map[string]interface{}{"prompt_tokens": 4, "completion_tokens": 3, "total_tokens": 7},
+	}
+	resp := chatResponseToResponses(chat, "openai/gpt-4o")
+
+	if resp["object"] != "response" || resp["model"] != "openai/gpt-4o" || resp["status"] != "completed" {
+		t.Errorf("base fields = %#v", resp)
+	}
+	if resp["output_text"] != "hello" {
+		t.Errorf("output_text = %v", resp["output_text"])
+	}
+	output := resp["output"].([]map[string]interface{})
+	if len(output) != 2 {
+		t.Fatalf("output len = %d", len(output))
+	}
+	if output[0]["type"] != "message" || output[1]["type"] != "function_call" {
+		t.Errorf("output types = %v, %v", output[0]["type"], output[1]["type"])
+	}
+	fc := output[1]
+	if fc["call_id"] != "call_9" || fc["name"] != "get_weather" || fc["arguments"] != `{"city":"seoul"}` {
+		t.Errorf("function_call = %#v", fc)
+	}
+	usage := resp["usage"].(map[string]interface{})
+	if usage["input_tokens"] != int64(4) || usage["output_tokens"] != int64(3) {
+		t.Errorf("usage = %#v", usage)
+	}
+}
+
+func TestChatResponseToResponsesIncomplete(t *testing.T) {
+	chat := map[string]interface{}{
+		"choices": []interface{}{map[string]interface{}{
+			"message":       map[string]interface{}{"role": "assistant", "content": "part"},
+			"finish_reason": "length",
+		}},
+	}
+	resp := chatResponseToResponses(chat, "openai/gpt-4o")
+	if resp["status"] != "incomplete" {
+		t.Errorf("status = %v", resp["status"])
+	}
+}
