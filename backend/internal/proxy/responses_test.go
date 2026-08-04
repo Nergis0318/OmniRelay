@@ -1,7 +1,17 @@
 package proxy
 
 import (
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"path/filepath"
+	"strings"
 	"testing"
+
+	"omnirelay/internal/database"
+	"omnirelay/internal/service"
+
+	"github.com/gin-gonic/gin"
 )
 
 func TestResponsesToChatBodyStringInput(t *testing.T) {
@@ -177,5 +187,94 @@ func TestChatResponseToResponsesIncomplete(t *testing.T) {
 	resp := chatResponseToResponses(chat, "openai/gpt-4o")
 	if resp["status"] != "incomplete" {
 		t.Errorf("status = %v", resp["status"])
+	}
+}
+
+func TestHandleResponsesStreamText(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	sse := "" +
+		"data: {\"choices\":[{\"delta\":{\"role\":\"assistant\",\"content\":\"Hel\"}}]}\n\n" +
+		"data: {\"choices\":[{\"delta\":{\"content\":\"lo\"}}]}\n\n" +
+		"data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n" +
+		"data: {\"choices\":[],\"usage\":{\"prompt_tokens\":5,\"completion_tokens\":3,\"total_tokens\":8}}\n\n" +
+		"data: [DONE]\n\n"
+
+	db, err := database.Init(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("init db: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+	usageSvc := service.NewUsageService(db)
+	engine := NewEngine(nil, nil, usageSvc, nil, nil)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	upstream := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(sse)),
+	}
+	engine.handleResponsesStream(c, upstream, &OpenAIAdapter{}, 1, 1, "openai/gpt-4o", nil, 1, "openai", 5)
+
+	body := w.Body.String()
+	for _, want := range []string{
+		`"type":"response.created"`,
+		`"type":"response.output_text.delta"`,
+		`"delta":"Hel"`,
+		`"delta":"lo"`,
+		`"type":"response.output_text.done"`,
+		`"type":"response.output_item.done"`,
+		`"type":"response.completed"`,
+		`"status":"completed"`,
+		`"output_text":"Hello"`,
+		`"input_tokens":5`,
+		`"output_tokens":3`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("stream missing %s\nbody: %s", want, body)
+		}
+	}
+}
+
+func TestHandleResponsesStreamToolCall(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	sse := "" +
+		"data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"function\":{\"name\":\"get_weather\",\"arguments\":\"\"}}]}}]}\n\n" +
+		"data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"{\\\"city\\\":\"}}]}}]}\n\n" +
+		"data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"\\\"seoul\\\"}\"}}]}}]}\n\n" +
+		"data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\n" +
+		"data: [DONE]\n\n"
+
+	db, err := database.Init(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("init db: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+	usageSvc := service.NewUsageService(db)
+	engine := NewEngine(nil, nil, usageSvc, nil, nil)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	upstream := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(sse)),
+	}
+	engine.handleResponsesStream(c, upstream, &OpenAIAdapter{}, 1, 1, "openai/gpt-4o", nil, 1, "openai", 0)
+
+	body := w.Body.String()
+	for _, want := range []string{
+		`"type":"function_call"`,
+		`"type":"response.function_call_arguments.delta"`,
+		`"type":"response.function_call_arguments.done"`,
+		`"arguments":"{\"city\":\"seoul\"}"`,
+		`"call_id":"call_1"`,
+		`"name":"get_weather"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("stream missing %s\nbody: %s", want, body)
+		}
 	}
 }
