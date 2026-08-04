@@ -101,3 +101,51 @@ func TestAnthropicParseStreamChunkSkipsDoneSentinel(t *testing.T) {
 		t.Errorf("expected exactly one placeholder chunk for [DONE]-only input, got:\n%s", got)
 	}
 }
+
+func TestParseMessagesStreamChunkInterruptionTextDelta(t *testing.T) {
+	a := &AnthropicAdapter{}
+	state := make(map[string]interface{})
+	chunk := []byte("data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"" + interruptionMsg + "\"}}\n\n")
+	out, _, _, err := a.ParseMessagesStreamChunk(chunk, state)
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if out != nil {
+		t.Errorf("out = %q, want nil (chunk dropped)", out)
+	}
+	if msg, _ := state["upstream_error"].(string); !isInterruptionText(msg) {
+		t.Errorf("state upstream_error = %q", msg)
+	}
+}
+
+func TestParseMessagesStreamChunkInterruptionErrorEvent(t *testing.T) {
+	a := &AnthropicAdapter{}
+	state := make(map[string]interface{})
+	chunk := []byte("data: {\"type\":\"error\",\"error\":{\"type\":\"interruption\",\"message\":\"" + interruptionMsg + "\"}}\n\n")
+	out, _, _, err := a.ParseMessagesStreamChunk(chunk, state)
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if out != nil {
+		t.Errorf("out = %q, want nil", out)
+	}
+	if msg, _ := state["upstream_error"].(string); !isInterruptionText(msg) {
+		t.Errorf("state upstream_error = %q", msg)
+	}
+}
+
+func TestParseMessagesStreamChunkOtherErrorEventPassesThrough(t *testing.T) {
+	a := &AnthropicAdapter{}
+	state := make(map[string]interface{})
+	chunk := []byte("data: {\"type\":\"error\",\"error\":{\"type\":\"rate_limit_error\",\"message\":\"rate limited\"}}\n\n")
+	out, _, _, err := a.ParseMessagesStreamChunk(chunk, state)
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if out == nil {
+		t.Error("out = nil, want passthrough for non-interruption errors")
+	}
+	if _, ok := state["upstream_error"]; ok {
+		t.Error("upstream_error set for non-interruption error")
+	}
+}
