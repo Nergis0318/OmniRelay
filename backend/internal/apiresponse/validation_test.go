@@ -54,6 +54,24 @@ func TestValidateChatCompletionBody(t *testing.T) {
 	}
 }
 
+func TestValidateResponsesBody(t *testing.T) {
+	if param, err := ValidateResponsesBody(map[string]interface{}{"input": "hi"}); err == nil {
+		t.Errorf("expected model error, got nil (param=%s)", param)
+	}
+	if param, err := ValidateResponsesBody(map[string]interface{}{"model": "gpt-4o"}); err == nil {
+		t.Errorf("expected input error, got nil (param=%s)", param)
+	}
+	if _, err := ValidateResponsesBody(map[string]interface{}{"model": "gpt-4o", "input": "hi"}); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if _, err := ValidateResponsesBody(map[string]interface{}{"model": "gpt-4o", "input": []interface{}{}}); err == nil {
+		t.Errorf("expected empty input error")
+	}
+	if _, err := ValidateResponsesBody(map[string]interface{}{"model": "gpt-4o", "input": []interface{}{map[string]interface{}{"role": "user", "content": "hi"}}}); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
 func TestValidateMessagesBody(t *testing.T) {
 	tests := []struct {
 		name    string

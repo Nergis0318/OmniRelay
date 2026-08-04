@@ -29,6 +29,25 @@ func ValidateMessagesBody(body map[string]interface{}) (param string, err error)
 	return "", nil
 }
 
+// ValidateResponsesBody checks OpenAI CreateResponseRequest required fields.
+func ValidateResponsesBody(body map[string]interface{}) (param string, err error) {
+	if _, ok := body["model"].(string); !ok {
+		return "model", fmt.Errorf("you must provide a model parameter")
+	}
+	input, ok := body["input"]
+	if !ok {
+		return "input", fmt.Errorf("you must provide an input parameter")
+	}
+	if _, isString := input.(string); isString {
+		return "", nil
+	}
+	items, isArray := input.([]interface{})
+	if !isArray || len(items) == 0 {
+		return "input", fmt.Errorf("input must be a string or a non-empty array")
+	}
+	return "", nil
+}
+
 func hasPositiveNumber(v interface{}) bool {
 	switch n := v.(type) {
 	case float64:
