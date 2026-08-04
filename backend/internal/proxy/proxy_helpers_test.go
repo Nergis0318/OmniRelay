@@ -332,3 +332,75 @@ func TestWriteUpstreamErrorBody_EmptyBody(t *testing.T) {
 		t.Errorf("message = %v, want 'upstream error (HTTP 502)'", errObj["message"])
 	}
 }
+
+func TestIsInterruptionText(t *testing.T) {
+	msg := "Temporary service interruption. Retry the last turn; your conversation and tool state are preserved."
+	if !isInterruptionText(msg) {
+		t.Error("exact message should match")
+	}
+	if !isInterruptionText("  " + msg + "  ") {
+		t.Error("should be whitespace-tolerant")
+	}
+	if !isInterruptionText("Temporary service interruption.") {
+		t.Error("prefix should match")
+	}
+	if isInterruptionText("Request failed.") {
+		t.Error("other text must not match")
+	}
+	if isInterruptionText("") {
+		t.Error("empty must not match")
+	}
+}
+
+func TestExtractErrorContentInterruption(t *testing.T) {
+	msg := "Temporary service interruption. Retry the last turn; your conversation and tool state are preserved."
+	anthropic := map[string]interface{}{
+		"content": []interface{}{
+			map[string]interface{}{"type": "text", "text": msg},
+		},
+	}
+	if got := extractErrorContent(anthropic); !isInterruptionText(got) {
+		t.Errorf("anthropic content block: extractErrorContent = %q", got)
+	}
+	openai := map[string]interface{}{
+		"choices": []interface{}{
+			map[string]interface{}{"message": map[string]interface{}{"content": msg}},
+		},
+	}
+	if got := extractErrorContent(openai); !isInterruptionText(got) {
+		t.Errorf("choices message: extractErrorContent = %q", got)
+	}
+	if got := extractErrorContent(map[string]interface{}{
+		"content": []interface{}{map[string]interface{}{"type": "text", "text": "normal reply"}},
+	}); got != "" {
+		t.Errorf("normal text: extractErrorContent = %q, want empty", got)
+	}
+}
+
+func TestAbortErrorContent(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	msg := "Temporary service interruption. Retry the last turn; your conversation and tool state are preserved."
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	c.Set("request_id", "req-1")
+	abortErrorContent(c, msg)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("interruption status = %d, want 503", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), `"type":"server_error"`) {
+		t.Errorf("interruption body = %s", w.Body.String())
+	}
+
+	w2 := httptest.NewRecorder()
+	c2, _ := gin.CreateTestContext(w2)
+	c2.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	abortErrorContent(c2, "Empty message")
+	if w2.Code != http.StatusOK {
+		t.Errorf("legacy status = %d, want 200", w2.Code)
+	}
+	if !strings.Contains(w2.Body.String(), `"type":"api_error"`) {
+		t.Errorf("legacy body = %s", w2.Body.String())
+	}
+}

@@ -26,6 +26,34 @@ func isUpstreamErrorContent(text string) bool {
 	return strings.TrimSpace(text) == "Empty message"
 }
 
+// interruptionMarker is the prefix Anthropic uses for temporary service
+// interruptions (error type "interruption").
+const interruptionMarker = "Temporary service interruption"
+
+// isInterruptionText reports whether text is Anthropic's temporary service
+// interruption message. Prefix match so variants stay detected.
+func isInterruptionText(text string) bool {
+	return strings.HasPrefix(strings.TrimSpace(text), interruptionMarker)
+}
+
+// isErrorContent reports whether a response text is a known non-standard
+// upstream error embedded in an otherwise successful response.
+func isErrorContent(text string) bool {
+	return isUpstreamErrorContent(text) || isInterruptionText(text)
+}
+
+// abortErrorContent writes a standard error for upstream error text embedded
+// in a successful response. Interruptions are temporary → 503 retryable;
+// other cases keep the legacy 200 api_error behavior.
+func abortErrorContent(c *gin.Context, errMsg string) {
+	errFmt := apiresponse.FormatFromContext(c)
+	if isInterruptionText(errMsg) {
+		apiresponse.AbortServiceUnavailable(c, errFmt, errMsg)
+		return
+	}
+	apiresponse.Abort(c, http.StatusOK, errFmt, "api_error", errMsg, "", "")
+}
+
 // extractErrorContent checks a parsed response for non-standard error text embedded in content.
 // Returns the error message if found, empty string otherwise.
 func extractErrorContent(response map[string]interface{}) string {
@@ -33,7 +61,7 @@ func extractErrorContent(response map[string]interface{}) string {
 		for _, c := range content {
 			if block, ok := c.(map[string]interface{}); ok {
 				if block["type"] == "text" {
-					if text, ok := block["text"].(string); ok && isUpstreamErrorContent(text) {
+					if text, ok := block["text"].(string); ok && isErrorContent(text) {
 						return text
 					}
 				}
@@ -44,12 +72,12 @@ func extractErrorContent(response map[string]interface{}) string {
 		for _, c := range choices {
 			if choice, ok := c.(map[string]interface{}); ok {
 				if msg, ok := choice["message"].(map[string]interface{}); ok {
-					if text, ok := msg["content"].(string); ok && isUpstreamErrorContent(text) {
+					if text, ok := msg["content"].(string); ok && isErrorContent(text) {
 						return text
 					}
 				}
 				if delta, ok := choice["delta"].(map[string]interface{}); ok {
-					if text, ok := delta["content"].(string); ok && isUpstreamErrorContent(text) {
+					if text, ok := delta["content"].(string); ok && isErrorContent(text) {
 						return text
 					}
 				}
