@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 )
@@ -163,5 +164,69 @@ func TestParseMessagesStreamChunkOtherErrorEventPassesThrough(t *testing.T) {
 	}
 	if _, ok := state["upstream_error"]; ok {
 		t.Error("upstream_error set for non-interruption error")
+	}
+}
+
+func TestParseStreamChunkInterruptionTextDelta(t *testing.T) {
+	a := &AnthropicAdapter{}
+	state := make(map[string]interface{})
+	chunk := []byte("data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"" + interruptionMsg + "\"}}\n\n")
+	out, _, _, err := a.ParseStreamChunk(chunk, state)
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if out != nil {
+		t.Errorf("out = %q, want nil (dropped)", out)
+	}
+	if msg, _ := state["upstream_error"].(string); !isInterruptionText(msg) {
+		t.Errorf("state upstream_error = %q", msg)
+	}
+}
+
+func TestParseStreamChunkInterruptionErrorEvent(t *testing.T) {
+	a := &AnthropicAdapter{}
+	state := make(map[string]interface{})
+	chunk := []byte("data: {\"type\":\"error\",\"error\":{\"type\":\"interruption\",\"message\":\"" + interruptionMsg + "\"}}\n\n")
+	out, _, _, err := a.ParseStreamChunk(chunk, state)
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if out != nil {
+		t.Errorf("out = %q, want nil", out)
+	}
+	if msg, _ := state["upstream_error"].(string); !isInterruptionText(msg) {
+		t.Errorf("state upstream_error = %q", msg)
+	}
+}
+
+func TestParseStreamChunkInterruptionErrorTypeOnly(t *testing.T) {
+	a := &AnthropicAdapter{}
+	state := make(map[string]interface{})
+	chunk := []byte("data: {\"type\":\"error\",\"error\":{\"type\":\"interruption\",\"message\":\"some other error\"}}\n\n")
+	out, _, _, err := a.ParseStreamChunk(chunk, state)
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if out != nil {
+		t.Errorf("out = %q, want nil", out)
+	}
+	if msg, _ := state["upstream_error"].(string); msg == "" {
+		t.Error("state upstream_error not set for error.type=interruption")
+	}
+}
+
+func TestParseStreamChunkNormalDeltaUnchanged(t *testing.T) {
+	a := &AnthropicAdapter{}
+	state := make(map[string]interface{})
+	chunk := []byte("data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"hi\"}}\n\n")
+	out, _, _, err := a.ParseStreamChunk(chunk, state)
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if !bytes.Contains(out, []byte(`"content":"hi"`)) {
+		t.Errorf("out = %s, want content delta", out)
+	}
+	if _, ok := state["upstream_error"]; ok {
+		t.Error("upstream_error set for normal delta")
 	}
 }
