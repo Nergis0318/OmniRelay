@@ -84,6 +84,7 @@ func (e *Engine) buildAndSendChatRequest(c *gin.Context, provider *models.Provid
 		latencyMs := time.Since(startTime).Milliseconds()
 		logErrorResponse(e, apiKeyID, provider.ID, fullModelID, resp.StatusCode, latencyMs, userID)
 		writeUpstreamErrorBody(c, resp, provider.ProviderType)
+		resp.Body.Close()
 		return nil, time.Time{}, 0, true
 	}
 
