@@ -312,6 +312,12 @@ func (e *Engine) executeMessages(c *gin.Context, body map[string]interface{}, fu
 	respBody, _ := io.ReadAll(resp.Body)
 	latencyMs := time.Since(startTime).Milliseconds()
 
+	if isEmptyResponseBody(respBody) {
+		e.logUpstreamError(u, "the model returned an empty response", latencyMs)
+		apiresponse.AbortBadGateway(c, apiresponse.FormatFromContext(c), "the model returned an empty response")
+		return
+	}
+
 	var modelResponse map[string]interface{}
 	if err := json.Unmarshal(respBody, &modelResponse); err != nil {
 		e.logLatencyOnly(u, latencyMs)
@@ -473,6 +479,12 @@ func (e *Engine) handlePathRoutedProxy(c *gin.Context, provider *models.Provider
 
 	respBody, _ := io.ReadAll(resp.Body)
 	latencyMs := time.Since(startTime).Milliseconds()
+
+	if isEmptyResponseBody(respBody) {
+		e.logUpstreamError(u, "the model returned an empty response", latencyMs)
+		apiresponse.AbortBadGateway(c, errFmt, "the model returned an empty response")
+		return
+	}
 
 	var respJSON map[string]interface{}
 	if json.Unmarshal(respBody, &respJSON) == nil {

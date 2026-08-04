@@ -57,6 +57,20 @@ func startKeepAlive(sw *streamWriter, done <-chan struct{}) {
 }
 
 func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapter Adapter, apiKeyID, providerID int64, fullModelID string, dbModel *models.Model, userID int64, providerType string, inputTokens int64) {
+	start := time.Now()
+	buf := make([]byte, 4096)
+	state := make(map[string]interface{})
+
+	n, err := resp.Body.Read(buf)
+	for n == 0 && err == nil {
+		n, err = resp.Body.Read(buf)
+	}
+	if n == 0 {
+		e.logUpstreamError(usageContext{apiKeyID: apiKeyID, providerID: providerID, userID: userID, fullModelID: fullModelID}, "the model returned an empty response", time.Since(start).Milliseconds())
+		apiresponse.AbortBadGateway(c, apiresponse.FormatFromContext(c), "the model returned an empty response")
+		return
+	}
+
 	c.Status(http.StatusOK)
 	copyResponseHeaders(c, resp.Header)
 	c.Header("Content-Type", "text/event-stream")
@@ -73,16 +87,11 @@ func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapt
 	sw := newStreamWriter(c.Writer, flusher)
 	startKeepAlive(sw, done)
 
-	start := time.Now()
-	buf := make([]byte, 4096)
-	state := make(map[string]interface{})
-
 	var totalInputTokens, totalOutputTokens int64
 	var outputTextAccum strings.Builder
 	sentDone := false
 
 	for {
-		n, err := resp.Body.Read(buf)
 		if n > 0 {
 			chunk := buf[:n]
 			chunkStr := string(chunk)
@@ -111,6 +120,7 @@ func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapt
 		if err != nil {
 			break
 		}
+		n, err = resp.Body.Read(buf)
 	}
 
 	if !sentDone {
@@ -154,6 +164,17 @@ func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapt
 }
 
 func (e *Engine) handleRawStreamResponse(c *gin.Context, resp *http.Response, apiKeyID, providerID int64, fullModelID string, start time.Time, userID int64) {
+	buf := make([]byte, 4096)
+	n, err := resp.Body.Read(buf)
+	for n == 0 && err == nil {
+		n, err = resp.Body.Read(buf)
+	}
+	if n == 0 {
+		e.logUpstreamError(usageContext{apiKeyID: apiKeyID, providerID: providerID, userID: userID, fullModelID: fullModelID}, "the model returned an empty response", time.Since(start).Milliseconds())
+		apiresponse.AbortBadGateway(c, apiresponse.FormatFromContext(c), "the model returned an empty response")
+		return
+	}
+
 	c.Status(http.StatusOK)
 	copyResponseHeaders(c, resp.Header)
 	if resp.Header.Get("Content-Type") == "" {
@@ -172,15 +193,14 @@ func (e *Engine) handleRawStreamResponse(c *gin.Context, resp *http.Response, ap
 	sw := newStreamWriter(c.Writer, flusher)
 	startKeepAlive(sw, done)
 
-	buf := make([]byte, 4096)
 	for {
-		n, err := resp.Body.Read(buf)
 		if n > 0 {
 			sw.Write(buf[:n])
 		}
 		if err != nil {
 			break
 		}
+		n, err = resp.Body.Read(buf)
 	}
 
 	e.usageService.Log(models.UsageLog{
@@ -223,6 +243,17 @@ func (e *Engine) handleMessagesStreamResponse(c *gin.Context, resp *http.Respons
 
 	if _, ok := state["upstream_error"]; ok {
 		errMsg, _ := state["upstream_error"].(string)
+		errFmt := apiresponse.FormatFromContext(c)
+		requestID := c.GetString("request_id")
+		e.logUpstreamError(usageContext{apiKeyID: apiKeyID, providerID: providerID, userID: userID, fullModelID: fullModelID}, errMsg, time.Since(start).Milliseconds())
+		c.Status(http.StatusBadGateway)
+		c.Header("Content-Type", "application/json")
+		c.Writer.Write(reformatError(upstreamError{ErrType: "api_error", Message: errMsg}, errFmt, requestID))
+		return
+	}
+
+	if streamBuf.Len() == 0 {
+		errMsg := "the model returned an empty response"
 		errFmt := apiresponse.FormatFromContext(c)
 		requestID := c.GetString("request_id")
 		e.logUpstreamError(usageContext{apiKeyID: apiKeyID, providerID: providerID, userID: userID, fullModelID: fullModelID}, errMsg, time.Since(start).Milliseconds())

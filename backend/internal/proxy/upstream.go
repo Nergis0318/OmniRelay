@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"omnirelay/internal/apiresponse"
 	"omnirelay/internal/models"
 
 	"github.com/gin-gonic/gin"
@@ -109,6 +110,21 @@ func handleNonStreamChatResponse(c *gin.Context, respBody []byte, respHeader htt
 // logs usage, and returns the final chat-format response map. The bool is
 // true when an error response was already written to c (nothing to send).
 func parseNonStreamChatResponse(c *gin.Context, respBody []byte, respHeader http.Header, adapter Adapter, fullModelID string, dbModel *models.Model, apiKeyID, providerID int64, startTime time.Time, userID int64, usageService UsageLogger, providerType string, inputTokens int64) (map[string]interface{}, bool) {
+	if isEmptyResponseBody(respBody) {
+		latencyMs := time.Since(startTime).Milliseconds()
+		usageService.Log(models.UsageLog{
+			APIKeyID:     &apiKeyID,
+			ProviderID:   &providerID,
+			Model:        fullModelID,
+			IsError:      true,
+			ErrorMessage: "the model returned an empty response",
+			LatencyMs:    latencyMs,
+			UserID:       &userID,
+		})
+		apiresponse.AbortBadGateway(c, apiresponse.FormatFromContext(c), "the model returned an empty response")
+		return nil, true
+	}
+
 	var modelResponse map[string]interface{}
 	if err := json.Unmarshal(respBody, &modelResponse); err != nil {
 		c.Data(http.StatusOK, contentTypeOrDefault(respHeader), respBody)

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"omnirelay/internal/apiresponse"
 	"omnirelay/internal/models"
 
 	"github.com/gin-gonic/gin"
@@ -15,6 +16,21 @@ import (
 // handleResponsesStream translates an upstream chat-completions SSE stream
 // into OpenAI Responses API SSE events.
 func (e *Engine) handleResponsesStream(c *gin.Context, resp *http.Response, adapter Adapter, apiKeyID, providerID int64, fullModelID string, dbModel *models.Model, userID int64, providerType string, inputTokens int64) {
+	start := time.Now()
+	state := make(map[string]interface{})
+	responseID := randomID("resp_")
+
+	buf := make([]byte, 4096)
+	n, err := resp.Body.Read(buf)
+	for n == 0 && err == nil {
+		n, err = resp.Body.Read(buf)
+	}
+	if n == 0 {
+		e.logUpstreamError(usageContext{apiKeyID: apiKeyID, providerID: providerID, userID: userID, fullModelID: fullModelID}, "the model returned an empty response", time.Since(start).Milliseconds())
+		apiresponse.AbortBadGateway(c, apiresponse.FormatFromContext(c), "the model returned an empty response")
+		return
+	}
+
 	c.Status(http.StatusOK)
 	copyResponseHeaders(c, resp.Header)
 	c.Header("Content-Type", "text/event-stream")
@@ -30,10 +46,6 @@ func (e *Engine) handleResponsesStream(c *gin.Context, resp *http.Response, adap
 	defer close(done)
 	sw := newStreamWriter(c.Writer, flusher)
 	startKeepAlive(sw, done)
-
-	start := time.Now()
-	state := make(map[string]interface{})
-	responseID := randomID("resp_")
 
 	emit := func(ev map[string]interface{}) {
 		b, _ := json.Marshal(ev)
@@ -114,11 +126,9 @@ func (e *Engine) handleResponsesStream(c *gin.Context, resp *http.Response, adap
 	}
 
 	finishReason := ""
-	buf := make([]byte, 4096)
 	var totalInputTokens, totalOutputTokens int64
 	var pending []byte
 	for {
-		n, err := resp.Body.Read(buf)
 		if n > 0 {
 			chunk := buf[:n]
 			transformed, inTok, outTok, _ := adapter.ParseStreamChunk(chunk, state)
@@ -200,6 +210,7 @@ func (e *Engine) handleResponsesStream(c *gin.Context, resp *http.Response, adap
 		if err != nil {
 			break
 		}
+		n, err = resp.Body.Read(buf)
 	}
 
 	closeItem()
