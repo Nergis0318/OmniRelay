@@ -134,6 +134,22 @@ func TestParseMessagesStreamChunkInterruptionErrorEvent(t *testing.T) {
 	}
 }
 
+func TestParseMessagesStreamChunkInterruptionErrorTypeOnly(t *testing.T) {
+	a := &AnthropicAdapter{}
+	state := make(map[string]interface{})
+	chunk := []byte("data: {\"type\":\"error\",\"error\":{\"type\":\"interruption\",\"message\":\"some other error\"}}\n\n")
+	out, _, _, err := a.ParseMessagesStreamChunk(chunk, state)
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if out != nil {
+		t.Errorf("out = %q, want nil", out)
+	}
+	if msg, _ := state["upstream_error"].(string); msg == "" {
+		t.Error("state upstream_error not set for error.type=interruption")
+	}
+}
+
 func TestParseMessagesStreamChunkOtherErrorEventPassesThrough(t *testing.T) {
 	a := &AnthropicAdapter{}
 	state := make(map[string]interface{})

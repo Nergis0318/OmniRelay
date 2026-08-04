@@ -373,6 +373,10 @@ func (a *AnthropicAdapter) ParseMessagesStreamChunk(data []byte, state map[strin
 					state["upstream_error"] = msg
 					return nil, inputTokens, outputTokens, nil
 				}
+				if errType := vstr(errObj, "type"); errType == "interruption" {
+					state["upstream_error"] = vstr(errObj, "message")
+					return nil, inputTokens, outputTokens, nil
+				}
 			}
 		case "message_delta":
 			if usage, ok := event["usage"].(map[string]interface{}); ok {
