@@ -118,6 +118,7 @@ func main() {
 	v1.Use(middleware.APIKeyAuth(apiKeyService), bodySizeLimit())
 	{
 		v1.POST("/chat/completions", proxyEngine.HandleChatCompletions)
+		v1.POST("/responses", proxyEngine.HandleResponses)
 		v1.GET("/models", proxyEngine.HandleListModels)
 		v1.GET("/models/*model", proxyEngine.HandleGetModel)
 		v1.POST("/messages", proxyEngine.HandleMessages)

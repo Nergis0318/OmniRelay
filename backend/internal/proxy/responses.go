@@ -5,8 +5,15 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"strings"
 	"time"
+
+	"omnirelay/internal/apiresponse"
+	"omnirelay/internal/models"
+
+	"github.com/gin-gonic/gin"
 )
 
 // responsesToChatBody converts an OpenAI Responses API request body into a
@@ -149,6 +156,67 @@ func randomID(prefix string) string {
 		return prefix + "000000000000"
 	}
 	return prefix + hex.EncodeToString(b)
+}
+
+// HandleResponses serves the OpenAI Responses API (/v1/responses) by
+// translating requests into the chat completions pipeline and back.
+func (e *Engine) HandleResponses(c *gin.Context) {
+	ensureRequestID(c)
+	apiKeyID := c.GetInt64("api_key_id")
+	userID := c.GetInt64("user_id")
+
+	body, ok := readJSONBody(c)
+	if !ok {
+		return
+	}
+	if param, err := apiresponse.ValidateResponsesBody(body); err != nil {
+		apiresponse.AbortInvalidRequest(c, apiresponse.FormatOpenAI, err.Error(), param)
+		return
+	}
+
+	fullModelID := body["model"].(string)
+
+	dbModel, provider, adapter, _, ok := e.resolveDispatch(c, fullModelID, userID, apiresponse.FormatOpenAI)
+	if !ok {
+		return
+	}
+
+	chatBody, err := responsesToChatBody(body)
+	if err != nil {
+		apiresponse.AbortInvalidRequest(c, apiresponse.FormatOpenAI, err.Error(), "")
+		return
+	}
+
+	resp, startTime, inputTokens, wroteError := e.buildAndSendChatRequest(c, provider, dbModel, adapter, chatBody, fullModelID, apiKeyID, userID)
+	if wroteError {
+		return
+	}
+	defer resp.Body.Close()
+
+	if extractStreamFlag(chatBody) {
+		e.handleResponsesStream(c, resp, adapter, apiKeyID, provider.ID, fullModelID, dbModel, userID, provider.ProviderType, inputTokens)
+		return
+	}
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		e.usageService.Log(models.UsageLog{
+			APIKeyID:     &apiKeyID,
+			ProviderID:   &provider.ID,
+			Model:        fullModelID,
+			IsError:      true,
+			ErrorMessage: "failed to read the model response",
+			UserID:       &userID,
+		})
+		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to read the model response"})
+		return
+	}
+
+	chatResp, wrote := parseNonStreamChatResponse(c, respBody, resp.Header, adapter, fullModelID, dbModel, apiKeyID, provider.ID, startTime, userID, e.usageService, provider.ProviderType, inputTokens)
+	if wrote || chatResp == nil {
+		return
+	}
+	c.JSON(http.StatusOK, chatResponseToResponses(chatResp, fullModelID))
 }
 
 // chatResponseToResponses converts a chat completions response map into the
