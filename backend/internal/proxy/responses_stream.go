@@ -47,9 +47,24 @@ func (e *Engine) handleResponsesStream(c *gin.Context, resp *http.Response, adap
 	sw := newStreamWriter(c.Writer, flusher)
 	startKeepAlive(sw, done)
 
+	// Pre-content events are held back until the first content-bearing chunk
+	// so a mid-stream upstream error can still become a clean 503.
+	var pendingEvents [][]byte
+	contentStarted := false
 	emit := func(ev map[string]interface{}) {
 		b, _ := json.Marshal(ev)
-		sw.Write([]byte("data: " + string(b) + "\n\n"))
+		data := []byte("data: " + string(b) + "\n\n")
+		if contentStarted {
+			sw.Write(data)
+			return
+		}
+		pendingEvents = append(pendingEvents, data)
+	}
+	flushPending := func() {
+		if len(pendingEvents) > 0 {
+			sw.Write(bytes.Join(pendingEvents, nil))
+			pendingEvents = nil
+		}
 	}
 
 	emit(map[string]interface{}{
@@ -138,6 +153,11 @@ func (e *Engine) handleResponsesStream(c *gin.Context, resp *http.Response, adap
 			if outTok > 0 {
 				totalOutputTokens = outTok
 			}
+			// Upstream error (e.g. Anthropic interruption): abort before
+			// emitting any response events.
+			if _, errSet := state["upstream_error"]; errSet {
+				break
+			}
 
 			toParse := chunk
 			if len(transformed) > 0 {
@@ -192,6 +212,10 @@ func (e *Engine) handleResponsesStream(c *gin.Context, resp *http.Response, adap
 					}
 
 					if content, ok := delta["content"].(string); ok && content != "" {
+						if !contentStarted {
+							contentStarted = true
+							flushPending()
+						}
 						if current == nil || current.kind != "message" {
 							closeItem()
 							openMessage()
@@ -202,6 +226,10 @@ func (e *Engine) handleResponsesStream(c *gin.Context, resp *http.Response, adap
 					}
 
 					if fr, ok := choice["finish_reason"].(string); ok && fr != "" {
+						if !contentStarted {
+							contentStarted = true
+							flushPending()
+						}
 						finishReason = fr
 					}
 				}
@@ -211,6 +239,18 @@ func (e *Engine) handleResponsesStream(c *gin.Context, resp *http.Response, adap
 			break
 		}
 		n, err = resp.Body.Read(buf)
+	}
+
+	latencyMs := time.Since(start).Milliseconds()
+
+	if errMsg, ok := state["upstream_error"].(string); ok {
+		e.logUpstreamError(usageContext{apiKeyID: apiKeyID, providerID: providerID, userID: userID, fullModelID: fullModelID}, errMsg, latencyMs)
+		writeStreamUpstreamError(c, errMsg)
+		return
+	}
+	if !contentStarted {
+		contentStarted = true
+		flushPending()
 	}
 
 	closeItem()
@@ -259,7 +299,6 @@ func (e *Engine) handleResponsesStream(c *gin.Context, resp *http.Response, adap
 
 	sw.Write([]byte("data: [DONE]\n\n"))
 
-	latencyMs := time.Since(start).Milliseconds()
 	completedAt := time.Now()
 	var cost float64
 	if dbModel != nil && (totalInputTokens > 0 || totalOutputTokens > 0) {

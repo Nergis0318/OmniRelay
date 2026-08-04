@@ -517,3 +517,45 @@ func TestHandleResponsesStreamSplitEvent(t *testing.T) {
 		t.Errorf("split event arguments truncated (want %d chars)\nbody: %s", len(bigArgs), body)
 	}
 }
+
+func TestHandleResponsesStreamInterruption503(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	sse := "" +
+		"event: message_start\n" +
+		"data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"claude-opus-4-8\",\"usage\":{\"input_tokens\":5,\"output_tokens\":0}}}\n\n" +
+		"event: content_block_delta\n" +
+		"data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"" + interruptionMsg + "\"}}\n\n" +
+		"event: message_delta\n" +
+		"data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":4}}\n\n" +
+		"event: message_stop\n" +
+		"data: {\"type\":\"message_stop\"}\n"
+
+	db, err := database.Init(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("init db: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+	usageSvc := service.NewUsageService(db)
+	engine := NewEngine(nil, nil, usageSvc, nil, nil)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	c.Set("request_id", "req-1")
+	upstream := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(sse)),
+	}
+	engine.handleResponsesStream(c, upstream, &AnthropicAdapter{}, 1, 1, "anthropic/claude-opus-4-8", nil, 1, "anthropic", 5)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, body = %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), `"type":"server_error"`) {
+		t.Errorf("body = %s", w.Body.String())
+	}
+	if strings.Contains(w.Body.String(), "response.created") {
+		t.Errorf("response events leaked into error body: %s", w.Body.String())
+	}
+}
