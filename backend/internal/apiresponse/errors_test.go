@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -75,5 +76,36 @@ func TestFormatFromPath(t *testing.T) {
 	}
 	if FormatFromPath("/anthropic/v1/messages") != FormatAnthropic {
 		t.Error("path-routed messages should be Anthropic format")
+	}
+}
+
+func TestAbortServiceUnavailable(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cases := []struct {
+		name   string
+		format Format
+		path   string
+		want   string
+	}{
+		{"anthropic", FormatAnthropic, "/v1/messages", `"type":"overloaded_error"`},
+		{"openai", FormatOpenAI, "/v1/chat/completions", `"type":"server_error"`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+			c.Request = httptest.NewRequest(http.MethodPost, tc.path, nil)
+			c.Set("request_id", "req-1")
+			AbortServiceUnavailable(c, tc.format, "Temporary service interruption. Retry the last turn; your conversation and tool state are preserved.")
+			if w.Code != http.StatusServiceUnavailable {
+				t.Fatalf("status = %d, want 503; body = %s", w.Code, w.Body.String())
+			}
+			if !strings.Contains(w.Body.String(), tc.want) {
+				t.Errorf("body missing %s: %s", tc.want, w.Body.String())
+			}
+			if !strings.Contains(w.Body.String(), "Temporary service interruption") {
+				t.Errorf("body missing message: %s", w.Body.String())
+			}
+		})
 	}
 }
