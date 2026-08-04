@@ -38,14 +38,14 @@ func TestResponsesToChatBodyStringInput(t *testing.T) {
 	if chat["temperature"] != 0.5 || chat["stream"] != true {
 		t.Errorf("passthrough fields = %#v", chat)
 	}
-	messages := chat["messages"].([]map[string]interface{})
+	messages := chat["messages"].([]interface{})
 	if len(messages) != 2 {
 		t.Fatalf("messages len = %d", len(messages))
 	}
-	if messages[0]["role"] != "system" || messages[0]["content"] != "be nice" {
+	if messages[0].(map[string]interface{})["role"] != "system" || messages[0].(map[string]interface{})["content"] != "be nice" {
 		t.Errorf("first message = %#v", messages[0])
 	}
-	if messages[1]["role"] != "user" || messages[1]["content"] != "hello" {
+	if messages[1].(map[string]interface{})["role"] != "user" || messages[1].(map[string]interface{})["content"] != "hello" {
 		t.Errorf("second message = %#v", messages[1])
 	}
 }
@@ -63,29 +63,29 @@ func TestResponsesToChatBodyInputArray(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	messages := chat["messages"].([]map[string]interface{})
+	messages := chat["messages"].([]interface{})
 	if len(messages) != 4 {
 		t.Fatalf("messages len = %d", len(messages))
 	}
-	if messages[0]["role"] != "user" {
-		t.Errorf("messages[0] role = %v", messages[0]["role"])
+	if messages[0].(map[string]interface{})["role"] != "user" {
+		t.Errorf("messages[0] role = %v", messages[0].(map[string]interface{})["role"])
 	}
-	parts := messages[0]["content"].([]map[string]interface{})
+	parts := messages[0].(map[string]interface{})["content"].([]map[string]interface{})
 	if parts[0]["type"] != "text" || parts[0]["text"] != "what's the weather?" {
-		t.Errorf("messages[0] content = %#v", messages[0]["content"])
+		t.Errorf("messages[0] content = %#v", messages[0].(map[string]interface{})["content"])
 	}
-	if messages[1]["role"] != "assistant" {
-		t.Errorf("messages[1] role = %v", messages[1]["role"])
+	if messages[1].(map[string]interface{})["role"] != "assistant" {
+		t.Errorf("messages[1] role = %v", messages[1].(map[string]interface{})["role"])
 	}
-	toolCalls := messages[1]["tool_calls"].([]map[string]interface{})
+	toolCalls := messages[1].(map[string]interface{})["tool_calls"].([]map[string]interface{})
 	fn := toolCalls[0]["function"].(map[string]interface{})
 	if fn["name"] != "get_weather" || fn["arguments"] != `{"city":"seoul"}` {
 		t.Errorf("tool call = %#v", toolCalls[0])
 	}
-	if messages[2]["role"] != "tool" || messages[2]["tool_call_id"] != "call_1" || messages[2]["content"] != "sunny" {
+	if messages[2].(map[string]interface{})["role"] != "tool" || messages[2].(map[string]interface{})["tool_call_id"] != "call_1" || messages[2].(map[string]interface{})["content"] != "sunny" {
 		t.Errorf("messages[2] = %#v", messages[2])
 	}
-	stringFn := messages[3]["tool_calls"].([]map[string]interface{})[0]["function"].(map[string]interface{})
+	stringFn := messages[3].(map[string]interface{})["tool_calls"].([]map[string]interface{})[0]["function"].(map[string]interface{})
 	if stringFn["arguments"] != `{"city":"seoul","unit":"c"}` {
 		t.Errorf("string arguments = %#v", stringFn["arguments"])
 	}
@@ -101,7 +101,7 @@ func TestResponsesToChatBodyInputImage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	parts := chat["messages"].([]map[string]interface{})[0]["content"].([]map[string]interface{})
+	parts := chat["messages"].([]interface{})[0].(map[string]interface{})["content"].([]map[string]interface{})
 	img := parts[0]["image_url"].(map[string]interface{})
 	if parts[0]["type"] != "image_url" || img["url"] != "https://example.com/cat.png" || img["detail"] != "high" {
 		t.Errorf("image part = %#v", parts[0])
@@ -281,7 +281,7 @@ func TestHandleResponsesStreamToolCall(t *testing.T) {
 	}
 }
 
-func newResponsesTestRouter(t *testing.T, upstream *httptest.Server) (*gin.Engine, *Engine) {
+func newResponsesTestRouter(t *testing.T, upstream *httptest.Server, providerType string) (*gin.Engine, *Engine) {
 	t.Helper()
 	db, err := database.Init(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
@@ -294,8 +294,8 @@ func newResponsesTestRouter(t *testing.T, upstream *httptest.Server) (*gin.Engin
 	}
 	if _, err := db.Exec(
 		`INSERT INTO providers (id, provider_key, name, api_base_url, api_key_encrypted, provider_type, user_id)
-		 VALUES (1, 'openai', 'OpenAI', ?, ?, 'openai', 1)`,
-		upstream.URL, encryptTestAPIKey(t, "sk-test"),
+		 VALUES (1, 'openai', 'OpenAI', ?, ?, ?, 1)`,
+		upstream.URL, encryptTestAPIKey(t, "sk-test"), providerType,
 	); err != nil {
 		t.Fatalf("seed provider: %v", err)
 	}
@@ -339,7 +339,7 @@ func TestHandleResponsesNonStreaming(t *testing.T) {
 	}))
 	t.Cleanup(upstream.Close)
 
-	r, _ := newResponsesTestRouter(t, upstream)
+	r, _ := newResponsesTestRouter(t, upstream, "openai")
 
 	body := `{"model":"openai/gpt-4o","input":"hello"}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(body))
@@ -382,7 +382,7 @@ func TestHandleResponsesStreaming(t *testing.T) {
 	}))
 	t.Cleanup(upstream.Close)
 
-	r, _ := newResponsesTestRouter(t, upstream)
+	r, _ := newResponsesTestRouter(t, upstream, "openai")
 
 	body := `{"model":"openai/gpt-4o","input":"hello","stream":true}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(body))
@@ -398,5 +398,122 @@ func TestHandleResponsesStreaming(t *testing.T) {
 	}
 	if !strings.Contains(w.Body.String(), `"type":"response.completed"`) {
 		t.Errorf("stream missing response.completed\nbody: %s", w.Body.String())
+	}
+	if !strings.HasSuffix(w.Body.String(), "data: [DONE]\n\n") {
+		t.Errorf("stream missing [DONE] terminator\nbody: %s", w.Body.String())
+	}
+}
+
+func TestHandleResponsesStreamAnthropic(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		io.WriteString(w,
+			"event: content_block_delta\n"+
+				"data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"hi \"}}\n\n"+
+				"event: content_block_delta\n"+
+				"data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"there\"}}\n\n"+
+				"event: message_delta\n"+
+				"data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":5}}\n\n"+
+				"event: message_stop\n"+
+				"data: {\"type\":\"message_stop\"}\n")
+	}))
+	t.Cleanup(upstream.Close)
+
+	r, _ := newResponsesTestRouter(t, upstream, "anthropic")
+
+	body := `{"model":"openai/gpt-4o","input":"hello","stream":true}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", w.Code, w.Body.String())
+	}
+	respBody := w.Body.String()
+	for _, want := range []string{
+		`"type":"response.output_text.delta"`,
+		`"delta":"hi "`,
+		`"delta":"there"`,
+		`"type":"response.completed"`,
+		`"output_text":"hi there"`,
+		`"output_tokens":5`,
+		"data: [DONE]",
+	} {
+		if !strings.Contains(respBody, want) {
+			t.Errorf("stream missing %s\nbody: %s", want, respBody)
+		}
+	}
+}
+
+func TestHandleResponsesStreamGemini(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		io.WriteString(w,
+			"data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"hel\"}]}}]}\n\n"+
+				"data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"lo\"}]}}]}\n\n"+
+				"data: {\"usageMetadata\":{\"promptTokenCount\":4,\"candidatesTokenCount\":2,\"totalTokenCount\":6}}\n\n")
+	}))
+	t.Cleanup(upstream.Close)
+
+	r, _ := newResponsesTestRouter(t, upstream, "gemini")
+
+	body := `{"model":"openai/gpt-4o","input":"hello","stream":true}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", w.Code, w.Body.String())
+	}
+	respBody := w.Body.String()
+	for _, want := range []string{
+		`"type":"response.output_text.delta"`,
+		`"delta":"hel"`,
+		`"delta":"lo"`,
+		`"type":"response.completed"`,
+		`"output_text":"hello"`,
+		`"output_tokens":2`,
+		"data: [DONE]",
+	} {
+		if !strings.Contains(respBody, want) {
+			t.Errorf("stream missing %s\nbody: %s", want, respBody)
+		}
+	}
+}
+
+func TestHandleResponsesStreamSplitEvent(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	bigArgs := strings.Repeat("a", 6000)
+	sse := "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"function\":{\"name\":\"get_weather\",\"arguments\":\"" + bigArgs + "\"}}]}}]}\n\n" +
+		"data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\n" +
+		"data: [DONE]\n\n"
+
+	db, err := database.Init(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("init db: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+	usageSvc := service.NewUsageService(db)
+	engine := NewEngine(nil, nil, usageSvc, nil, nil)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	upstream := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(sse)),
+	}
+	engine.handleResponsesStream(c, upstream, &OpenAIAdapter{}, 1, 1, "openai/gpt-4o", nil, 1, "openai", 0)
+
+	body := w.Body.String()
+	if !strings.Contains(body, `"arguments":"`+bigArgs+`"`) {
+		t.Errorf("split event arguments truncated (want %d chars)\nbody: %s", len(bigArgs), body)
 	}
 }

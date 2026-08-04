@@ -35,7 +35,7 @@ func responsesToChatBody(body map[string]interface{}) (map[string]interface{}, e
 		return nil, err
 	}
 	if instructions, ok := body["instructions"].(string); ok && instructions != "" {
-		messages = append([]map[string]interface{}{{"role": "system", "content": instructions}}, messages...)
+		messages = append([]interface{}{map[string]interface{}{"role": "system", "content": instructions}}, messages...)
 	}
 	chat["messages"] = messages
 
@@ -45,15 +45,15 @@ func responsesToChatBody(body map[string]interface{}) (map[string]interface{}, e
 	return chat, nil
 }
 
-func inputToMessages(input interface{}) ([]map[string]interface{}, error) {
+func inputToMessages(input interface{}) ([]interface{}, error) {
 	if s, ok := input.(string); ok {
-		return []map[string]interface{}{{"role": "user", "content": s}}, nil
+		return []interface{}{map[string]interface{}{"role": "user", "content": s}}, nil
 	}
 	items, ok := input.([]interface{})
 	if !ok {
 		return nil, fmt.Errorf("input must be a string or an array")
 	}
-	var messages []map[string]interface{}
+	var messages []interface{}
 	for _, raw := range items {
 		item, ok := raw.(map[string]interface{})
 		if !ok {

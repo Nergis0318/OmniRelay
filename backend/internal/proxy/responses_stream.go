@@ -1,7 +1,7 @@
 package proxy
 
 import (
-	"bufio"
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -116,11 +116,12 @@ func (e *Engine) handleResponsesStream(c *gin.Context, resp *http.Response, adap
 	finishReason := ""
 	buf := make([]byte, 4096)
 	var totalInputTokens, totalOutputTokens int64
+	var pending []byte
 	for {
 		n, err := resp.Body.Read(buf)
 		if n > 0 {
 			chunk := buf[:n]
-			_, inTok, outTok, _ := adapter.ParseStreamChunk(chunk, state)
+			transformed, inTok, outTok, _ := adapter.ParseStreamChunk(chunk, state)
 			if inTok > 0 {
 				totalInputTokens = inTok
 			}
@@ -128,18 +129,30 @@ func (e *Engine) handleResponsesStream(c *gin.Context, resp *http.Response, adap
 				totalOutputTokens = outTok
 			}
 
-			scanner := bufio.NewScanner(strings.NewReader(string(chunk)))
-			for scanner.Scan() {
-				line := scanner.Text()
-				if !strings.HasPrefix(line, "data: ") {
+			toParse := chunk
+			if len(transformed) > 0 {
+				toParse = transformed
+			}
+			pending = append(pending, toParse...)
+			for {
+				nl := bytes.IndexByte(pending, '\n')
+				if nl < 0 {
+					break
+				}
+				line := pending[:nl]
+				pending = pending[nl+1:]
+				if len(line) > 0 && line[len(line)-1] == '\r' {
+					line = line[:len(line)-1]
+				}
+				if !bytes.HasPrefix(line, []byte("data: ")) {
 					continue
 				}
-				payload := strings.TrimPrefix(line, "data: ")
-				if payload == "[DONE]" {
+				payload := line[len("data: "):]
+				if string(payload) == "[DONE]" {
 					continue
 				}
 				var chunkJSON map[string]interface{}
-				if err := json.Unmarshal([]byte(payload), &chunkJSON); err != nil {
+				if err := json.Unmarshal(payload, &chunkJSON); err != nil {
 					continue
 				}
 				choices, _ := chunkJSON["choices"].([]interface{})
@@ -232,6 +245,8 @@ func (e *Engine) handleResponsesStream(c *gin.Context, resp *http.Response, adap
 			},
 		},
 	})
+
+	sw.Write([]byte("data: [DONE]\n\n"))
 
 	latencyMs := time.Since(start).Milliseconds()
 	completedAt := time.Now()
