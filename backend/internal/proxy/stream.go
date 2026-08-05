@@ -23,16 +23,36 @@ type streamWriter struct {
 	w       io.Writer
 	flusher http.Flusher
 	mu      sync.Mutex
+	// atLineStart is true when the last write ended with a newline, so a
+	// keepalive comment can be emitted without splitting a data: payload.
+	atLineStart bool
 }
 
 func newStreamWriter(w io.Writer, flusher http.Flusher) *streamWriter {
-	return &streamWriter{w: w, flusher: flusher}
+	return &streamWriter{w: w, flusher: flusher, atLineStart: true}
 }
 
 func (s *streamWriter) Write(p []byte) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	_, _ = s.w.Write(p)
+	if len(p) > 0 {
+		s.atLineStart = p[len(p)-1] == '\n'
+	}
+	s.flusher.Flush()
+}
+
+// WriteKeepAlive writes an SSE comment line, but only when the stream is at a
+// line boundary. Upstream chunks can split a data: payload mid-JSON; writing a
+// comment then would corrupt the line (e.g. `data: {...: keepalive`) and break
+// the client's JSON parser. When mid-line the ping is skipped for this tick.
+func (s *streamWriter) WriteKeepAlive() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.atLineStart {
+		return
+	}
+	_, _ = s.w.Write([]byte(": keepalive\n\n"))
 	s.flusher.Flush()
 }
 
@@ -50,7 +70,7 @@ func startKeepAlive(sw *streamWriter, done <-chan struct{}) {
 			case <-done:
 				return
 			case <-ticker.C:
-				sw.Write([]byte(": keepalive\n\n"))
+				sw.WriteKeepAlive()
 			}
 		}
 	}()
