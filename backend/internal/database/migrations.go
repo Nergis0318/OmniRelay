@@ -281,6 +281,26 @@ var migrations = []migration{
 			return nil
 		},
 	},
+	{
+		version: 12,
+		up: func(tx *sql.Tx) error {
+			if _, err := tx.Exec(`CREATE TABLE IF NOT EXISTS provider_endpoints (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				provider_id INTEGER NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
+				api_type TEXT NOT NULL,
+				base_url TEXT NOT NULL,
+				created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+				updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+				UNIQUE(provider_id, api_type)
+			)`); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(`CREATE INDEX IF NOT EXISTS idx_provider_endpoints_provider_id ON provider_endpoints(provider_id)`); err != nil {
+				return err
+			}
+			return nil
+		},
+	},
 }
 
 func hasColumn(tx *sql.Tx, tableName, columnName string) (bool, error) {

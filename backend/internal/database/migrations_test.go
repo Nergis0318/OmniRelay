@@ -97,6 +97,33 @@ func TestMigrationsCreateTables(t *testing.T) {
 	}
 }
 
+func TestMigrationV12CreatesProviderEndpoints(t *testing.T) {
+	db := openTestDB(t)
+	if err := runMigrations(db); err != nil {
+		t.Fatalf("runMigrations: %v", err)
+	}
+
+	rows, err := db.Query(`SELECT name FROM pragma_table_info('provider_endpoints')`)
+	if err != nil {
+		t.Fatalf("query pragma: %v", err)
+	}
+	defer rows.Close()
+
+	cols := map[string]bool{}
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		cols[name] = true
+	}
+	for _, want := range []string{"provider_id", "api_type", "base_url"} {
+		if !cols[want] {
+			t.Errorf("provider_endpoints missing column %q (got %v)", want, cols)
+		}
+	}
+}
+
 func TestHasColumn(t *testing.T) {
 	db := openTestDB(t)
 	if err := runMigrations(db); err != nil {
