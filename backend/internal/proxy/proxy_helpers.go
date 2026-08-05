@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"omnirelay/internal/apiresponse"
+	"omnirelay/internal/models"
 	"strings"
 	"time"
 
@@ -189,4 +190,42 @@ func (e *Engine) proxyJSONRequest(c *gin.Context, u usageContext, providerType, 
 	}
 
 	return resp, start, true
+}
+
+// apiFormat identifies the incoming request's wire format, used to pick a
+// matching upstream endpoint.
+type apiFormat int
+
+const (
+	apiFormatOpenAI apiFormat = iota
+	apiFormatAnthropic
+)
+
+// openaiCompatPriority is the endpoint api_type preference for OpenAI-family
+// requests (mirrors isOpenAICompat).
+var openaiCompatPriority = []string{"openai", "lmstudio", "ollama"}
+
+// effectiveProvider returns a shallow copy of provider whose ProviderType and
+// APiBaseURL are overridden by the endpoint matching the request format, or the
+// original provider when no matching endpoint exists.
+func effectiveProvider(provider *models.Provider, format apiFormat) *models.Provider {
+	types := formatEndpointTypes(format)
+	for _, t := range types {
+		for i := range provider.Endpoints {
+			if provider.Endpoints[i].APIType == t {
+				cp := *provider
+				cp.ProviderType = t
+				cp.APiBaseURL = provider.Endpoints[i].BaseURL
+				return &cp
+			}
+		}
+	}
+	return provider
+}
+
+func formatEndpointTypes(format apiFormat) []string {
+	if format == apiFormatAnthropic {
+		return []string{"anthropic"}
+	}
+	return openaiCompatPriority
 }

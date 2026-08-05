@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"omnirelay/internal/models"
 )
 
 func TestApplyGeminiStreamingURL(t *testing.T) {
@@ -402,5 +403,56 @@ func TestAbortErrorContent(t *testing.T) {
 	}
 	if !strings.Contains(w2.Body.String(), `"type":"api_error"`) {
 		t.Errorf("legacy body = %s", w2.Body.String())
+	}
+}
+
+func TestEffectiveProvider(t *testing.T) {
+	base := &models.Provider{
+		ProviderKey:  "gw",
+		ProviderType: "openai",
+		APiBaseURL:   "https://default.example/v1",
+		Endpoints: []models.ProviderEndpoint{
+			{APIType: "anthropic", BaseURL: "https://anthropic.example"},
+		},
+	}
+
+	// OpenAI-family request falls back to the default (no openai/lmstudio/ollama endpoint)
+	if got := effectiveProvider(base, apiFormatOpenAI); got != base {
+		t.Errorf("openai family: expected original provider, got %+v", got)
+	}
+
+	// Anthropic request uses the anthropic endpoint
+	got := effectiveProvider(base, apiFormatAnthropic)
+	if got == base {
+		t.Fatal("anthropic family: expected a copy, got original")
+	}
+	if got.ProviderType != "anthropic" || got.APiBaseURL != "https://anthropic.example" {
+		t.Errorf("anthropic copy = %s / %s", got.ProviderType, got.APiBaseURL)
+	}
+	// Original is unchanged
+	if base.ProviderType != "openai" || base.APiBaseURL != "https://default.example/v1" {
+		t.Errorf("original mutated: %s / %s", base.ProviderType, base.APiBaseURL)
+	}
+}
+
+func TestEffectiveProviderOpenAIPriority(t *testing.T) {
+	p := &models.Provider{
+		ProviderType: "gemini",
+		APiBaseURL:   "https://gemini.example",
+		Endpoints: []models.ProviderEndpoint{
+			{APIType: "ollama", BaseURL: "http://ollama.local"},
+			{APIType: "openai", BaseURL: "https://openai.example"},
+		},
+	}
+	got := effectiveProvider(p, apiFormatOpenAI)
+	if got.ProviderType != "openai" || got.APiBaseURL != "https://openai.example" {
+		t.Errorf("openai priority = %s / %s", got.ProviderType, got.APiBaseURL)
+	}
+}
+
+func TestEffectiveProviderNoEndpoints(t *testing.T) {
+	p := &models.Provider{ProviderType: "openai", APiBaseURL: "https://default.example/v1"}
+	if got := effectiveProvider(p, apiFormatAnthropic); got != p {
+		t.Errorf("no endpoints: expected original, got %+v", got)
 	}
 }
