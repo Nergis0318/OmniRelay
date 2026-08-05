@@ -24,8 +24,51 @@ func (e *ProviderError) Error() string {
 	return e.Message
 }
 
+var endpointTypes = map[string]bool{
+	"openai": true, "anthropic": true, "lmstudio": true, "ollama": true, "gemini": true,
+}
+
+func (s *ProviderService) loadEndpoints(p *models.Provider) error {
+	rows, err := s.db.Query(`SELECT api_type, base_url FROM provider_endpoints WHERE provider_id = ? ORDER BY id`, p.ID)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var ep models.ProviderEndpoint
+		if err := rows.Scan(&ep.APIType, &ep.BaseURL); err != nil {
+			return err
+		}
+		p.Endpoints = append(p.Endpoints, ep)
+	}
+	return rows.Err()
+}
+
+func (s *ProviderService) saveEndpoints(providerID int64, endpoints []models.ProviderEndpoint) error {
+	for _, ep := range endpoints {
+		if !endpointTypes[ep.APIType] {
+			return &ProviderError{Message: "invalid endpoint api_type: " + ep.APIType, StatusCode: 400}
+		}
+		if ep.BaseURL == "" {
+			return &ProviderError{Message: "endpoint base_url is required", StatusCode: 400}
+		}
+	}
+	if _, err := s.db.Exec(`DELETE FROM provider_endpoints WHERE provider_id = ?`, providerID); err != nil {
+		return err
+	}
+	for _, ep := range endpoints {
+		if _, err := s.db.Exec(
+			`INSERT INTO provider_endpoints (provider_id, api_type, base_url) VALUES (?, ?, ?)`,
+			providerID, ep.APIType, ep.BaseURL,
+		); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 type ProviderService struct {
-	db *sql.DB
+	db  *sql.DB
 	cfg *config.Config
 }
 
@@ -54,6 +97,9 @@ func (s *ProviderService) List(userID int64) ([]models.Provider, error) {
 		if providers[i].ProviderType == "custom" {
 			s.loadSourceModels(&providers[i])
 		}
+		if err := s.loadEndpoints(&providers[i]); err != nil {
+			return nil, err
+		}
 	}
 	return providers, nil
 }
@@ -65,6 +111,9 @@ func (s *ProviderService) GetByKey(providerKey string, userID int64) (*models.Pr
 		providerKey,
 	).Scan(&p.ID, &p.ProviderKey, &p.Name, &p.APiBaseURL, &p.APIKeyEncrypted, &p.ProviderType, &p.IsActive, &p.ShowInModelList, &p.UserID, &p.CreatedAt, &p.UpdatedAt)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.loadEndpoints(&p); err != nil {
 		return nil, err
 	}
 	return &p, nil
@@ -81,6 +130,9 @@ func (s *ProviderService) GetByID(id int64, userID int64) (*models.Provider, err
 	}
 	if p.ProviderType == "custom" {
 		s.loadSourceModels(&p)
+	}
+	if err := s.loadEndpoints(&p); err != nil {
+		return nil, err
 	}
 	return &p, nil
 }
@@ -144,6 +196,13 @@ func (s *ProviderService) Create(req models.CreateProviderRequest, userID int64)
 	}
 
 	id, _ := result.LastInsertId()
+	if req.ProviderType == "custom" && len(req.Endpoints) > 0 {
+		return nil, &ProviderError{Message: "endpoints are not supported for custom providers", StatusCode: 400}
+	}
+	if err := s.saveEndpoints(id, req.Endpoints); err != nil {
+		return nil, err
+	}
+
 	provider, err := s.GetByID(id, userID)
 	if err != nil {
 		return nil, err
@@ -215,6 +274,15 @@ func (s *ProviderService) Update(id int64, userID int64, req models.UpdateProvid
 		}
 		provider, _ := s.GetByID(id, userID)
 		if err := s.importSourceModels(provider, *req.SourceModels, userID); err != nil {
+			return nil, err
+		}
+	}
+
+	if req.Endpoints != nil {
+		if providerType == "custom" && len(*req.Endpoints) > 0 {
+			return nil, &ProviderError{Message: "endpoints are not supported for custom providers", StatusCode: 400}
+		}
+		if err := s.saveEndpoints(id, *req.Endpoints); err != nil {
 			return nil, err
 		}
 	}
