@@ -176,7 +176,7 @@ func (e *Engine) HandleResponses(c *gin.Context) {
 
 	fullModelID := body["model"].(string)
 
-	dbModel, provider, adapter, _, ok := e.resolveDispatch(c, fullModelID, userID, apiresponse.FormatOpenAI)
+	dbModel, provider, adapter, _, ok := e.resolveDispatch(c, fullModelID, userID, apiresponse.FormatOpenAI, apiFormatOpenAI)
 	if !ok {
 		return
 	}

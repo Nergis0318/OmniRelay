@@ -29,7 +29,7 @@ func (e *Engine) HandleChatCompletions(c *gin.Context) {
 
 	fullModelID := body["model"].(string)
 
-	dbModel, provider, adapter, _, ok := e.resolveDispatch(c, fullModelID, userID, apiresponse.FormatOpenAI)
+	dbModel, provider, adapter, _, ok := e.resolveDispatch(c, fullModelID, userID, apiresponse.FormatOpenAI, apiFormatOpenAI)
 	if !ok {
 		return
 	}
@@ -53,7 +53,7 @@ func (e *Engine) HandleMessages(c *gin.Context) {
 
 	fullModelID := body["model"].(string)
 
-	dbModel, provider, adapter, apiKey, ok := e.resolveDispatch(c, fullModelID, userID, apiresponse.FormatAnthropic)
+	dbModel, provider, adapter, apiKey, ok := e.resolveDispatch(c, fullModelID, userID, apiresponse.FormatAnthropic, apiFormatAnthropic)
 	if !ok {
 		return
 	}
@@ -179,8 +179,6 @@ func (e *Engine) HandlePathRouted(c *gin.Context) {
 		}
 	}
 
-	adapter := e.getAdapter(provider.ProviderType)
-
 	u := usageContext{
 		apiKeyID:    apiKeyID,
 		providerID:  provider.ID,
@@ -190,6 +188,13 @@ func (e *Engine) HandlePathRouted(c *gin.Context) {
 
 	isChatCompletions := endpoint == "/chat/completions" && c.Request.Method == http.MethodPost
 	isMessages := endpoint == "/messages" && c.Request.Method == http.MethodPost
+
+	format := apiFormatOpenAI
+	if isMessages || strings.HasPrefix(apiPrefix, "v1beta") {
+		format = apiFormatAnthropic
+	}
+	provider = effectiveProvider(provider, format)
+	adapter := e.getAdapter(provider.ProviderType)
 
 	if isChatCompletions && hasRequestBody && isJSONContentType(contentType) {
 		if param, err := apiresponse.ValidateChatCompletionBody(body); err != nil {
@@ -224,7 +229,7 @@ func (e *Engine) HandlePathRouted(c *gin.Context) {
 
 // resolveDispatch resolves dbModel/provider/adapter/apiKey for body-driven endpoints (HandleChatCompletions / HandleMessages).
 // It writes the appropriate error response if anything fails.
-func (e *Engine) resolveDispatch(c *gin.Context, fullModelID string, userID int64, errFmt apiresponse.Format) (*models.Model, *models.Provider, Adapter, string, bool) {
+func (e *Engine) resolveDispatch(c *gin.Context, fullModelID string, userID int64, errFmt apiresponse.Format, format apiFormat) (*models.Model, *models.Provider, Adapter, string, bool) {
 	dbModel, err := e.resolveModel(fullModelID, userID)
 	if err != nil {
 		apiresponse.AbortNotFound(c, errFmt, fmt.Sprintf("The model '%s' does not exist", fullModelID), "model")
@@ -248,6 +253,8 @@ func (e *Engine) resolveDispatch(c *gin.Context, fullModelID string, userID int6
 			return nil, nil, nil, "", false
 		}
 	}
+
+	provider = effectiveProvider(provider, format)
 
 	adapter := e.getAdapter(provider.ProviderType)
 	if adapter == nil {

@@ -5,11 +5,15 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"omnirelay/internal/config"
+	"omnirelay/internal/database"
 	"omnirelay/internal/models"
+	"omnirelay/internal/service"
 )
 
 func TestApplyGeminiStreamingURL(t *testing.T) {
@@ -454,5 +458,98 @@ func TestEffectiveProviderNoEndpoints(t *testing.T) {
 	p := &models.Provider{ProviderType: "openai", APiBaseURL: "https://default.example/v1"}
 	if got := effectiveProvider(p, apiFormatAnthropic); got != p {
 		t.Errorf("no endpoints: expected original, got %+v", got)
+	}
+}
+
+func TestMultiFormatRouting(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	openaiUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"choices":[{"message":{"role":"assistant","content":"openai"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1}}`)
+	}))
+	t.Cleanup(openaiUpstream.Close)
+
+	anthropicUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"id":"msg_1","type":"message","role":"assistant","content":[{"type":"text","text":"anthropic"}],"usage":{"input_tokens":1,"output_tokens":1}}`)
+	}))
+	t.Cleanup(anthropicUpstream.Close)
+
+	db, err := database.Init(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("init db: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+	if _, err := db.Exec(`INSERT INTO users (id, username, password_hash) VALUES (1, 'u', 'h')`); err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+	if _, err := db.Exec(
+		`INSERT INTO providers (id, provider_key, name, api_base_url, api_key_encrypted, provider_type, user_id)
+		 VALUES (1, 'gw', 'Gateway', ?, ?, 'openai', 1)`,
+		openaiUpstream.URL, encryptTestAPIKey(t, "sk-test"),
+	); err != nil {
+		t.Fatalf("seed provider: %v", err)
+	}
+	if _, err := db.Exec(
+		`INSERT INTO provider_endpoints (provider_id, api_type, base_url) VALUES (1, 'anthropic', ?)`,
+		anthropicUpstream.URL,
+	); err != nil {
+		t.Fatalf("seed endpoint: %v", err)
+	}
+	if _, err := db.Exec(
+		`INSERT INTO models (id, provider_id, model_id, provider_key, is_manual, user_id)
+		 VALUES (1, 1, 'm', 'gw', 1, 1)`,
+	); err != nil {
+		t.Fatalf("seed model: %v", err)
+	}
+	if _, err := db.Exec(
+		`INSERT INTO api_keys (id, key_hash, key_prefix, name, created_by) VALUES (1, 'h', 'om-ni-xxx', 'k', 1)`,
+	); err != nil {
+		t.Fatalf("seed api key: %v", err)
+	}
+
+	providerSvc := service.NewProviderService(db, &config.Config{EncryptKey: testEncryptKey})
+	modelSvc := service.NewModelService(db)
+	usageSvc := service.NewUsageService(db)
+	engine := NewEngine(providerSvc, modelSvc, usageSvc, nil, nil)
+
+	r := gin.New()
+	r.POST("/v1/chat/completions", func(c *gin.Context) {
+		c.Set("api_key_id", int64(1))
+		c.Set("user_id", int64(1))
+		engine.HandleChatCompletions(c)
+	})
+	r.POST("/v1/messages", func(c *gin.Context) {
+		c.Set("api_key_id", int64(1))
+		c.Set("user_id", int64(1))
+		engine.HandleMessages(c)
+	})
+
+	// OpenAI-family request → no openai/lmstudio/ollama endpoint, falls back to
+	// the provider default (openaiUpstream).
+	chatReq := httptest.NewRequest(http.MethodPost, "/v1/chat/completions",
+		strings.NewReader(`{"model":"gw/m","messages":[{"role":"user","content":"hi"}]}`))
+	chatReq.Header.Set("Content-Type", "application/json")
+	chatW := httptest.NewRecorder()
+	r.ServeHTTP(chatW, chatReq)
+	if chatW.Code != http.StatusOK {
+		t.Fatalf("chat status = %d, body = %s", chatW.Code, chatW.Body.String())
+	}
+	if !strings.Contains(chatW.Body.String(), "openai") {
+		t.Fatalf("chat body = %s", chatW.Body.String())
+	}
+
+	// Anthropic request → /v1/messages routes to the anthropic endpoint.
+	msgReq := httptest.NewRequest(http.MethodPost, "/v1/messages",
+		strings.NewReader(`{"model":"gw/m","messages":[{"role":"user","content":"hi"}],"max_tokens":100}`))
+	msgReq.Header.Set("Content-Type", "application/json")
+	msgW := httptest.NewRecorder()
+	r.ServeHTTP(msgW, msgReq)
+	if msgW.Code != http.StatusOK {
+		t.Fatalf("messages status = %d, body = %s", msgW.Code, msgW.Body.String())
+	}
+	if !strings.Contains(msgW.Body.String(), "anthropic") {
+		t.Fatalf("messages body = %s", msgW.Body.String())
 	}
 }
