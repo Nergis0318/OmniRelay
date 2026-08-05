@@ -103,6 +103,9 @@ export default {
     noSourceModels: "다른 제공자에서 사용 가능한 모델이 없습니다",
     showInModelList: "공개 모델 목록에 표시",
     showInModelListHint: "활성화하면 이 모델들이 /v1/models에 표시됩니다",
+    additionalFormats: "추가 API 형식",
+    additionalFormatsHint: "요청 형식을 각자의 업스트림 주소로 라우팅 (선택)",
+    addFormat: "형식 추가",
   },
   models: {
     title: "모델",

@@ -103,6 +103,9 @@ export default {
     noSourceModels: "No models available from other providers",
     showInModelList: "Show in public model list",
     showInModelListHint: "When enabled, these models appear in /v1/models",
+    additionalFormats: "Additional API formats",
+    additionalFormatsHint: "Route a request format to its own upstream address (optional)",
+    addFormat: "Add format",
   },
   models: {
     title: "Models",

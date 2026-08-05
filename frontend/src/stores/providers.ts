@@ -11,6 +11,7 @@ interface Provider {
   is_active: boolean;
   show_in_model_list: boolean;
   source_models: string[];
+  endpoints?: { api_type: string; base_url: string }[];
   created_at: string;
 }
 
@@ -33,6 +34,7 @@ interface CreateProviderPayload {
   api_key?: string;
   provider_type: string;
   source_models?: string[];
+  endpoints?: { api_type: string; base_url: string }[];
   show_in_model_list?: boolean;
 }
 

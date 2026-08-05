@@ -213,6 +213,43 @@
               </option>
             </select>
           </div>
+          <div v-if="form.provider_type !== 'custom'" class="field-group">
+            <label class="field-label">{{
+              $t("providers.additionalFormats")
+            }}</label>
+            <p class="field-hint">{{ $t("providers.additionalFormatsHint") }}</p>
+            <div
+              v-for="(ep, i) in form.endpoints"
+              :key="i"
+              class="endpoint-row"
+            >
+              <select v-model="ep.api_type" class="field-select endpoint-select">
+                <option v-for="t in endpointTypes" :key="t" :value="t">
+                  {{ t }}
+                </option>
+              </select>
+              <input
+                v-model="ep.base_url"
+                class="field-input"
+                placeholder="https://..."
+              />
+              <button
+                class="row-btn row-btn--danger"
+                :title="$t('common.delete')"
+                @click="form.endpoints.splice(i, 1)"
+              >
+                <v-icon size="15">mdi-close</v-icon>
+              </button>
+            </div>
+            <button
+              type="button"
+              class="btn-secondary"
+              @click="form.endpoints.push({ api_type: 'openai', base_url: '' })"
+            >
+              <v-icon size="14">mdi-plus</v-icon>
+              {{ $t("providers.addFormat") }}
+            </button>
+          </div>
           <div v-if="form.provider_type === 'custom'" class="field-group">
             <label class="field-label">{{
               $t("providers.sourceModels")
@@ -350,6 +387,7 @@ const providerTypes = [
   "ollama",
   "gemini",
 ];
+const endpointTypes = ["openai", "anthropic", "lmstudio", "ollama", "gemini"];
 
 const form = ref({
   provider_key: "",
@@ -360,6 +398,7 @@ const form = ref({
   auto_sync: true,
   show_in_model_list: true,
   source_models: [] as string[],
+  endpoints: [] as { api_type: string; base_url: string }[],
 });
 
 const headers = computed(() => {
@@ -391,6 +430,7 @@ function openDialog(provider?: any) {
       api_key: "",
       auto_sync: false,
       source_models: provider.source_models ?? [],
+      endpoints: provider.endpoints ? provider.endpoints.map((e: any) => ({ ...e })) : [],
       show_in_model_list: provider.show_in_model_list ?? true,
     };
   } else {
@@ -404,6 +444,7 @@ function openDialog(provider?: any) {
       auto_sync: true,
       show_in_model_list: true,
       source_models: [],
+      endpoints: [],
     };
   }
   dialog.value = true;
@@ -540,6 +581,30 @@ async function handleDelete(id: number) {
   font-size: 12px;
   color: var(--text-muted);
   margin-bottom: 4px;
+}
+.endpoint-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.endpoint-row .endpoint-select {
+  flex: 0 0 120px;
+  min-width: 0;
+}
+.endpoint-row .field-input {
+  flex: 1 1 auto;
+}
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--chip-bg, #eee);
+  border: 1px solid var(--border, #ccc);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 13px;
+  cursor: pointer;
 }
 @media (max-width: 768px) {
   .v-data-table {

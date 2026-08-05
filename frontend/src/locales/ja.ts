@@ -104,6 +104,9 @@ export default {
     showInModelList: "公開モデル一覧に表示",
     showInModelListHint:
       "有効にすると、これらのモデルは /v1/models に表示されます",
+    additionalFormats: "追加のAPI形式",
+    additionalFormatsHint: "リクエスト形式を独自のアップストリームアドレスにルーティング（任意）",
+    addFormat: "形式を追加",
   },
   models: {
     title: "モデル",
