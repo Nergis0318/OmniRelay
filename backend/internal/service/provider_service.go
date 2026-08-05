@@ -13,7 +13,6 @@ import (
 	"time"
 )
 
-
 // ProviderError carries an HTTP status code for provider-related errors.
 type ProviderError struct {
 	Message    string
