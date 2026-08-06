@@ -87,6 +87,22 @@ func extractErrorContent(response map[string]interface{}) string {
 			}
 		}
 	}
+	// Responses API format: output[].content[].text
+	if output, ok := response["output"].([]interface{}); ok {
+		for _, rawItem := range output {
+			item, _ := rawItem.(map[string]interface{})
+			if item["type"] != "message" {
+				continue
+			}
+			content, _ := item["content"].([]interface{})
+			for _, rawPart := range content {
+				part, _ := rawPart.(map[string]interface{})
+				if text, ok := part["text"].(string); ok && isErrorContent(text) {
+					return text
+				}
+			}
+		}
+	}
 	return ""
 }
 

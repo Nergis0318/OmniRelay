@@ -382,6 +382,36 @@ func TestExtractErrorContentInterruption(t *testing.T) {
 	}
 }
 
+func TestExtractErrorContentResponsesFormat(t *testing.T) {
+	resp := map[string]interface{}{
+		"output": []interface{}{
+			map[string]interface{}{
+				"type": "message",
+				"content": []interface{}{
+					map[string]interface{}{"type": "output_text", "text": "[Empty message]", "annotations": []interface{}{}},
+				},
+			},
+		},
+	}
+	if got := extractErrorContent(resp); got != "[Empty message]" {
+		t.Errorf("responses format: extractErrorContent = %q, want %q", got, "[Empty message]")
+	}
+
+	normal := map[string]interface{}{
+		"output": []interface{}{
+			map[string]interface{}{
+				"type": "message",
+				"content": []interface{}{
+					map[string]interface{}{"type": "output_text", "text": "normal reply", "annotations": []interface{}{}},
+				},
+			},
+		},
+	}
+	if got := extractErrorContent(normal); got != "" {
+		t.Errorf("normal responses: extractErrorContent = %q, want empty", got)
+	}
+}
+
 func TestAbortErrorContent(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	msg := "Temporary service interruption. Retry the last turn; your conversation and tool state are preserved."
