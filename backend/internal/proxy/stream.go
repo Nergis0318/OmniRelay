@@ -147,6 +147,7 @@ func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapt
 	// Buffer the whole stream and decide at the end so the failure can still
 	// become a clean 503.
 	responsesMode := false
+	responsesCarry := ""
 	var respBuf bytes.Buffer
 	var respDeltaAccum strings.Builder
 	respFinalText := ""
@@ -182,8 +183,14 @@ func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapt
 				break
 			}
 
-			if !responsesMode && strings.Contains(chunkStr, `"type":"response.`) {
+			if !responsesMode && strings.Contains(responsesCarry+chunkStr, `"type":"response.`) {
 				responsesMode = true
+			}
+			responsesCarry = ""
+			if len(chunkStr) > 15 {
+				responsesCarry = chunkStr[len(chunkStr)-15:]
+			} else {
+				responsesCarry = chunkStr
 			}
 			if responsesMode {
 				respBuf.Write(chunk)
@@ -234,7 +241,16 @@ func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapt
 		}
 		if isUpstreamErrorContent(text) {
 			e.logUpstreamError(usageContext{apiKeyID: apiKeyID, providerID: providerID, userID: userID, fullModelID: fullModelID}, text, latencyMs)
-			writeStreamUpstreamError(c, text)
+			if !c.Writer.Written() {
+				writeStreamUpstreamError(c, text)
+				return
+			}
+			errFmt := apiresponse.FormatFromContext(c)
+			errType := "server_error"
+			if errFmt == apiresponse.FormatAnthropic {
+				errType = "overloaded_error"
+			}
+			sw.Write([]byte("data: " + string(reformatError(upstreamError{ErrType: errType, Message: text, Code: "upstream_error"}, errFmt, c.GetString("request_id"))) + "\n\n"))
 			return
 		}
 	}
@@ -315,6 +331,7 @@ func (e *Engine) handleRawStreamResponse(c *gin.Context, resp *http.Response, ap
 	startKeepAlive(sw, done)
 
 	responsesMode := false
+	responsesCarry := ""
 	var respBuf bytes.Buffer
 	var respDeltaAccum strings.Builder
 	respFinalText := ""
@@ -323,8 +340,14 @@ func (e *Engine) handleRawStreamResponse(c *gin.Context, resp *http.Response, ap
 		if n > 0 {
 			chunk := buf[:n]
 			chunkStr := string(chunk)
-			if !responsesMode && strings.Contains(chunkStr, `"type":"response.`) {
+			if !responsesMode && strings.Contains(responsesCarry+chunkStr, `"type":"response.`) {
 				responsesMode = true
+			}
+			responsesCarry = ""
+			if len(chunkStr) > 15 {
+				responsesCarry = chunkStr[len(chunkStr)-15:]
+			} else {
+				responsesCarry = chunkStr
 			}
 			if responsesMode {
 				respBuf.Write(chunk)
@@ -347,7 +370,16 @@ func (e *Engine) handleRawStreamResponse(c *gin.Context, resp *http.Response, ap
 		}
 		if isUpstreamErrorContent(text) {
 			e.logUpstreamError(usageContext{apiKeyID: apiKeyID, providerID: providerID, userID: userID, fullModelID: fullModelID}, text, time.Since(start).Milliseconds())
-			writeStreamUpstreamError(c, text)
+			if !c.Writer.Written() {
+				writeStreamUpstreamError(c, text)
+				return
+			}
+			errFmt := apiresponse.FormatFromContext(c)
+			errType := "server_error"
+			if errFmt == apiresponse.FormatAnthropic {
+				errType = "overloaded_error"
+			}
+			sw.Write([]byte("data: " + string(reformatError(upstreamError{ErrType: errType, Message: text, Code: "upstream_error"}, errFmt, c.GetString("request_id"))) + "\n\n"))
 			return
 		}
 		sw.Write(respBuf.Bytes())
