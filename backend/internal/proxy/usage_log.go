@@ -61,6 +61,7 @@ type tokenUsage struct {
 	startedAt      *time.Time
 	completedAt    *time.Time
 	latencyMs      int64
+	ttftMs         *int64
 }
 
 func (e *Engine) logTokenUsage(u usageContext, t tokenUsage) {
@@ -77,6 +78,7 @@ func (e *Engine) logTokenUsage(u usageContext, t tokenUsage) {
 	entry.CacheReadTokens = t.cacheRead
 	entry.Cost = t.cost
 	entry.LatencyMs = t.latencyMs
+	entry.TTFTMs = t.ttftMs
 	entry.StartedAt = t.startedAt
 	entry.CompletedAt = t.completedAt
 	e.persistUsage(entry)

@@ -143,6 +143,7 @@ func (e *Engine) handleResponsesStream(c *gin.Context, resp *http.Response, adap
 	finishReason := ""
 	var totalInputTokens, totalOutputTokens int64
 	var pending []byte
+	var firstTokenAt *time.Time
 	for {
 		if n > 0 {
 			chunk := buf[:n]
@@ -212,6 +213,10 @@ func (e *Engine) handleResponsesStream(c *gin.Context, resp *http.Response, adap
 					}
 
 					if content, ok := delta["content"].(string); ok && content != "" {
+						if firstTokenAt == nil {
+							now := time.Now()
+							firstTokenAt = &now
+						}
 						if !contentStarted {
 							contentStarted = true
 							flushPending()
@@ -300,6 +305,11 @@ func (e *Engine) handleResponsesStream(c *gin.Context, resp *http.Response, adap
 	sw.Write([]byte("data: [DONE]\n\n"))
 
 	completedAt := time.Now()
+	var ttftMs *int64
+	if firstTokenAt != nil {
+		v := firstTokenAt.Sub(start).Milliseconds()
+		ttftMs = &v
+	}
 	var cost float64
 	if dbModel != nil && (totalInputTokens > 0 || totalOutputTokens > 0) {
 		cost = calculateCost(dbModel, totalInputTokens, totalOutputTokens, cacheWrite5m, cacheWrite1h, cacheReadTokens)
@@ -315,6 +325,7 @@ func (e *Engine) handleResponsesStream(c *gin.Context, resp *http.Response, adap
 		CacheWrite1HTokens: cacheWrite1h,
 		CacheReadTokens:    cacheReadTokens,
 		LatencyMs:          latencyMs,
+		TTFTMs:             ttftMs,
 		Cost:               cost,
 		StartedAt:          &start,
 		CompletedAt:        &completedAt,

@@ -15,6 +15,7 @@ type UsageLog struct {
 	CacheWrite1HTokens  int64      `json:"cache_write_1h_tokens"`
 	CacheReadTokens     int64      `json:"cache_read_tokens"`
 	LatencyMs           int64      `json:"latency_ms"`
+	TTFTMs              *int64     `json:"ttft_ms"`
 	Cost                float64    `json:"cost"`
 	IsError             bool       `json:"is_error"`
 	ErrorMessage        string     `json:"error_message,omitempty"`

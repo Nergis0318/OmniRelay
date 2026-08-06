@@ -301,6 +301,27 @@ var migrations = []migration{
 			return nil
 		},
 	},
+	{
+		version: 13,
+		up: func(tx *sql.Tx) error {
+			hasColumn, err := hasColumn(tx, "usage_logs", "ttft_ms")
+			if err != nil {
+				return err
+			}
+			if !hasColumn {
+				if _, err := tx.Exec(`ALTER TABLE usage_logs ADD COLUMN ttft_ms INTEGER DEFAULT NULL`); err != nil {
+					return err
+				}
+			}
+			if _, err := tx.Exec(`CREATE INDEX IF NOT EXISTS idx_usage_ttft ON usage_logs(ttft_ms) WHERE ttft_ms IS NOT NULL`); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(`CREATE INDEX IF NOT EXISTS idx_usage_perf ON usage_logs(user_id, created_at, provider_id)`); err != nil {
+				return err
+			}
+			return nil
+		},
+	},
 }
 
 func hasColumn(tx *sql.Tx, tableName, columnName string) (bool, error) {

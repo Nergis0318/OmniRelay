@@ -141,6 +141,8 @@ func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapt
 	var head bytes.Buffer
 	headOpen := true
 	sentDone := false
+	var firstTokenAt *time.Time
+	var ttftMs *int64
 
 	// Responses-API format streams (e.g. conduit relay) carry the "Empty
 	// message" failure text in output_text.delta events, split across chunks.
@@ -168,7 +170,12 @@ func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapt
 				sentDone = true
 			}
 
+			prevLen := outputTextAccum.Len()
 			extractDeltaContent(chunkStr, providerType, &outputTextAccum)
+			if firstTokenAt == nil && outputTextAccum.Len() > prevLen {
+				now := time.Now()
+				firstTokenAt = &now
+			}
 
 			transformed, inTok, outTok, _ := adapter.ParseStreamChunk(chunk, state)
 			if inTok > 0 {
@@ -266,6 +273,10 @@ func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapt
 	}
 
 	completedAt := time.Now()
+	if firstTokenAt != nil {
+		v := firstTokenAt.Sub(start).Milliseconds()
+		ttftMs = &v
+	}
 
 	if totalOutputTokens == 0 && outputTextAccum.Len() > 0 {
 		totalOutputTokens = countTextTokens(outputTextAccum.String(), fullModelID)
@@ -293,6 +304,7 @@ func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapt
 		CacheWrite1HTokens: cacheWrite1h,
 		CacheReadTokens:    cacheReadTokens,
 		LatencyMs:          latencyMs,
+		TTFTMs:             ttftMs,
 		Cost:               cost,
 		StartedAt:          &start,
 		CompletedAt:        &completedAt,
@@ -400,12 +412,18 @@ func (e *Engine) handleMessagesStreamResponse(c *gin.Context, resp *http.Respons
 	var outputTextAccum strings.Builder
 	var streamBuf bytes.Buffer
 	readBuf := make([]byte, 4096)
+	var firstTokenAt *time.Time
 
 	for {
 		n, err := resp.Body.Read(readBuf)
 		if n > 0 {
 			chunk := readBuf[:n]
+			prevLen := outputTextAccum.Len()
 			extractDeltaContent(string(chunk), providerType, &outputTextAccum)
+			if firstTokenAt == nil && outputTextAccum.Len() > prevLen {
+				now := time.Now()
+				firstTokenAt = &now
+			}
 
 			transformed, inTok, outTok, _ := adapter.ParseMessagesStreamChunk(chunk, state)
 			if inTok > 0 {
@@ -460,6 +478,11 @@ func (e *Engine) handleMessagesStreamResponse(c *gin.Context, resp *http.Respons
 
 	completedAt := time.Now()
 	latencyMs := time.Since(start).Milliseconds()
+	var ttftMs *int64
+	if firstTokenAt != nil {
+		v := firstTokenAt.Sub(start).Milliseconds()
+		ttftMs = &v
+	}
 
 	// Prefer locally counted output tokens over upstream values
 	if totalOutputTokens == 0 && outputTextAccum.Len() > 0 {
@@ -485,6 +508,7 @@ func (e *Engine) handleMessagesStreamResponse(c *gin.Context, resp *http.Respons
 		CacheWrite1HTokens: cacheWrite1h,
 		CacheReadTokens:    cacheReadTokens,
 		LatencyMs:          latencyMs,
+		TTFTMs:             ttftMs,
 		StartedAt:          &start,
 		CompletedAt:        &completedAt,
 		UserID:             &userID,

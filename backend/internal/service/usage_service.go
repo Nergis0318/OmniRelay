@@ -41,11 +41,11 @@ func (s *UsageService) Log(log models.UsageLog) error {
 	log.UserID = s.resolveLogUserID(log)
 
 	_, err := s.db.Exec(
-		`INSERT INTO usage_logs (api_key_id, provider_id, model, request_tokens, response_tokens, total_tokens, cache_write_5m_tokens, cache_write_1h_tokens, cache_read_tokens, latency_ms, cost, is_error, error_message, user_id, started_at, completed_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO usage_logs (api_key_id, provider_id, model, request_tokens, response_tokens, total_tokens, cache_write_5m_tokens, cache_write_1h_tokens, cache_read_tokens, latency_ms, ttft_ms, cost, is_error, error_message, user_id, started_at, completed_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		log.APIKeyID, log.ProviderID, log.Model, log.RequestTokens, log.ResponseTokens, log.TotalTokens,
 		log.CacheWrite5MTokens, log.CacheWrite1HTokens, log.CacheReadTokens,
-		log.LatencyMs, log.Cost, log.IsError, log.ErrorMessage, log.UserID, log.StartedAt, log.CompletedAt,
+		log.LatencyMs, log.TTFTMs, log.Cost, log.IsError, log.ErrorMessage, log.UserID, log.StartedAt, log.CompletedAt,
 	)
 	return err
 }
@@ -92,7 +92,7 @@ func (s *UsageService) Query(params models.UsageQueryParams, userID int64) ([]mo
 		return nil, 0, err
 	}
 
-	query := fmt.Sprintf("SELECT u.id, u.api_key_id, u.provider_id, u.model, u.request_tokens, u.response_tokens, u.total_tokens, COALESCE(u.cache_write_5m_tokens,0), COALESCE(u.cache_write_1h_tokens,0), COALESCE(u.cache_read_tokens,0), u.latency_ms, u.cost, u.is_error, COALESCE(u.error_message,''), COALESCE(u.user_id, 0), u.started_at, u.completed_at, u.created_at, COALESCE(p.name,'') FROM usage_logs u LEFT JOIN providers p ON u.provider_id = p.id WHERE %s ORDER BY u.created_at DESC LIMIT ? OFFSET ?", whereClause)
+	query := fmt.Sprintf("SELECT u.id, u.api_key_id, u.provider_id, u.model, u.request_tokens, u.response_tokens, u.total_tokens, COALESCE(u.cache_write_5m_tokens,0), COALESCE(u.cache_write_1h_tokens,0), COALESCE(u.cache_read_tokens,0), u.latency_ms, u.ttft_ms, u.cost, u.is_error, COALESCE(u.error_message,''), COALESCE(u.user_id, 0), u.started_at, u.completed_at, u.created_at, COALESCE(p.name,'') FROM usage_logs u LEFT JOIN providers p ON u.provider_id = p.id WHERE %s ORDER BY u.created_at DESC LIMIT ? OFFSET ?", whereClause)
 	queryArgs := append(args, limit, offset)
 
 	rows, err := s.db.Query(query, queryArgs...)
@@ -104,7 +104,7 @@ func (s *UsageService) Query(params models.UsageQueryParams, userID int64) ([]mo
 	var logs []models.UsageLog
 	for rows.Next() {
 		var l models.UsageLog
-		if err := rows.Scan(&l.ID, &l.APIKeyID, &l.ProviderID, &l.Model, &l.RequestTokens, &l.ResponseTokens, &l.TotalTokens, &l.CacheWrite5MTokens, &l.CacheWrite1HTokens, &l.CacheReadTokens, &l.LatencyMs, &l.Cost, &l.IsError, &l.ErrorMessage, &l.UserID, &l.StartedAt, &l.CompletedAt, &l.CreatedAt, &l.ProviderName); err != nil {
+		if err := rows.Scan(&l.ID, &l.APIKeyID, &l.ProviderID, &l.Model, &l.RequestTokens, &l.ResponseTokens, &l.TotalTokens, &l.CacheWrite5MTokens, &l.CacheWrite1HTokens, &l.CacheReadTokens, &l.LatencyMs, &l.TTFTMs, &l.Cost, &l.IsError, &l.ErrorMessage, &l.UserID, &l.StartedAt, &l.CompletedAt, &l.CreatedAt, &l.ProviderName); err != nil {
 			return nil, 0, err
 		}
 		logs = append(logs, l)

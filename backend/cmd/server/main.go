@@ -39,6 +39,7 @@ func main() {
 	modelService := service.NewModelService(db)
 	apiKeyService := service.NewAPIKeyService(db)
 	usageService := service.NewUsageService(db)
+	performanceService := service.NewPerformanceService(db)
 
 	h := hub.New()
 	handlers.SetHub(h)
@@ -90,6 +91,7 @@ func main() {
 
 			adminAuth.GET("/usage", handlers.ListUsage(usageService))
 			adminAuth.GET("/stats", handlers.GetStats(usageService, apiKeyService, modelService))
+			adminAuth.GET("/performance", handlers.GetPerformance(performanceService))
 
 			adminOnly := adminAuth.Group("")
 			adminOnly.Use(middleware.RequireAdmin())
