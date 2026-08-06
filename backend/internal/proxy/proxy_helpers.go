@@ -46,11 +46,11 @@ func isErrorContent(text string) bool {
 }
 
 // abortErrorContent writes a standard error for upstream error text embedded
-// in a successful response. Interruptions are temporary → 503 retryable;
-// other cases keep the legacy 200 api_error behavior.
+// in a successful response. Upstream errors and interruptions are temporary →
+// 503 retryable; other cases keep the legacy 200 api_error behavior.
 func abortErrorContent(c *gin.Context, errMsg string) {
 	errFmt := apiresponse.FormatFromContext(c)
-	if isInterruptionText(errMsg) {
+	if isInterruptionText(errMsg) || isUpstreamErrorContent(errMsg) {
 		apiresponse.AbortServiceUnavailable(c, errFmt, errMsg)
 		return
 	}

@@ -401,12 +401,12 @@ func TestAbortErrorContent(t *testing.T) {
 	w2 := httptest.NewRecorder()
 	c2, _ := gin.CreateTestContext(w2)
 	c2.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
-	abortErrorContent(c2, "Empty message")
-	if w2.Code != http.StatusOK {
-		t.Errorf("legacy status = %d, want 200", w2.Code)
+	abortErrorContent(c2, "[Empty message]")
+	if w2.Code != http.StatusServiceUnavailable {
+		t.Errorf("empty-message status = %d, want 503", w2.Code)
 	}
-	if !strings.Contains(w2.Body.String(), `"type":"api_error"`) {
-		t.Errorf("legacy body = %s", w2.Body.String())
+	if !strings.Contains(w2.Body.String(), `"type":"overloaded_error"`) {
+		t.Errorf("empty-message body = %s", w2.Body.String())
 	}
 }
 

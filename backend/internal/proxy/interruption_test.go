@@ -1,7 +1,6 @@
 package proxy
 
 import (
-	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -157,7 +156,7 @@ func TestPathRoutedInterruption503(t *testing.T) {
 	}
 }
 
-func TestNonStreamChatEmptyMessageStill200(t *testing.T) {
+func TestNonStreamChatEmptyMessage503(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -176,15 +175,14 @@ func TestNonStreamChatEmptyMessageStill200(t *testing.T) {
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Fatalf("legacy status = %d, body = %s", w.Code, w.Body.String())
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, body = %s", w.Code, w.Body.String())
 	}
-	var respObj map[string]interface{}
-	if err := json.Unmarshal(w.Body.Bytes(), &respObj); err != nil {
-		t.Fatalf("invalid json: %v", err)
+	if !strings.Contains(w.Body.String(), `"type":"server_error"`) {
+		t.Errorf("body = %s", w.Body.String())
 	}
-	if errObj, ok := respObj["error"].(map[string]interface{}); !ok || errObj["message"] != "Empty message" {
-		t.Errorf("expected legacy error body, got %s", w.Body.String())
+	if !strings.Contains(w.Body.String(), `"message":"Empty message"`) {
+		t.Errorf("body = %s", w.Body.String())
 	}
 }
 
