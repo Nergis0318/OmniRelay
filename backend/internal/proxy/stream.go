@@ -142,6 +142,15 @@ func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapt
 	headOpen := true
 	sentDone := false
 
+	// Responses-API format streams (e.g. conduit relay) carry the "Empty
+	// message" failure text in output_text.delta events, split across chunks.
+	// Buffer the whole stream and decide at the end so the failure can still
+	// become a clean 503.
+	responsesMode := false
+	var respBuf bytes.Buffer
+	var respDeltaAccum strings.Builder
+	respFinalText := ""
+
 	flushHead := func() {
 		if headOpen {
 			sw.Write(head.Bytes())
@@ -171,6 +180,16 @@ func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapt
 			// abort before anything content-bearing reaches the client.
 			if _, errSet := state["upstream_error"]; errSet {
 				break
+			}
+
+			if !responsesMode && strings.Contains(chunkStr, `"type":"response.`) {
+				responsesMode = true
+			}
+			if responsesMode {
+				respBuf.Write(chunk)
+				extractResponsesOutputText(chunkStr, &respDeltaAccum, &respFinalText)
+				n, err = resp.Body.Read(buf)
+				continue
 			}
 
 			var out []byte
@@ -207,7 +226,24 @@ func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapt
 		writeStreamUpstreamError(c, errMsg)
 		return
 	}
+
+	if responsesMode {
+		text := respFinalText
+		if text == "" {
+			text = respDeltaAccum.String()
+		}
+		if isUpstreamErrorContent(text) {
+			e.logUpstreamError(usageContext{apiKeyID: apiKeyID, providerID: providerID, userID: userID, fullModelID: fullModelID}, text, latencyMs)
+			writeStreamUpstreamError(c, text)
+			return
+		}
+	}
+
 	flushHead()
+
+	if responsesMode {
+		sw.Write(respBuf.Bytes())
+	}
 
 	if !sentDone {
 		sw.Write([]byte("data: [DONE]\n\n"))
@@ -278,14 +314,43 @@ func (e *Engine) handleRawStreamResponse(c *gin.Context, resp *http.Response, ap
 	sw := newStreamWriter(c.Writer, flusher)
 	startKeepAlive(sw, done)
 
+	responsesMode := false
+	var respBuf bytes.Buffer
+	var respDeltaAccum strings.Builder
+	respFinalText := ""
+
 	for {
 		if n > 0 {
-			sw.Write(buf[:n])
+			chunk := buf[:n]
+			chunkStr := string(chunk)
+			if !responsesMode && strings.Contains(chunkStr, `"type":"response.`) {
+				responsesMode = true
+			}
+			if responsesMode {
+				respBuf.Write(chunk)
+				extractResponsesOutputText(chunkStr, &respDeltaAccum, &respFinalText)
+				n, err = resp.Body.Read(buf)
+				continue
+			}
+			sw.Write(chunk)
 		}
 		if err != nil {
 			break
 		}
 		n, err = resp.Body.Read(buf)
+	}
+
+	if responsesMode {
+		text := respFinalText
+		if text == "" {
+			text = respDeltaAccum.String()
+		}
+		if isUpstreamErrorContent(text) {
+			e.logUpstreamError(usageContext{apiKeyID: apiKeyID, providerID: providerID, userID: userID, fullModelID: fullModelID}, text, time.Since(start).Milliseconds())
+			writeStreamUpstreamError(c, text)
+			return
+		}
+		sw.Write(respBuf.Bytes())
 	}
 
 	e.usageService.Log(models.UsageLog{
@@ -447,6 +512,43 @@ func extractDeltaContent(chunk string, providerType string, acc *strings.Builder
 					if text, ok := delta["text"].(string); ok && text != "" {
 						acc.WriteString(text)
 					}
+				}
+			}
+		}
+	}
+}
+
+// extractResponsesOutputText accumulates output text from Responses-API SSE
+// events. deltaAccum grows with output_text.delta deltas; finalText holds the
+// authoritative full text once output_text.done or response.completed arrives
+// (deltas alone are not enough — some upstreams skip the delta events).
+func extractResponsesOutputText(chunk string, deltaAccum *strings.Builder, finalText *string) {
+	for _, line := range strings.Split(chunk, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		payload := strings.TrimPrefix(line, "data: ")
+		if payload == "[DONE]" {
+			continue
+		}
+		var ev map[string]interface{}
+		if err := json.Unmarshal([]byte(payload), &ev); err != nil {
+			continue
+		}
+		switch ev["type"] {
+		case "response.output_text.delta":
+			if d, ok := ev["delta"].(string); ok {
+				deltaAccum.WriteString(d)
+			}
+		case "response.output_text.done":
+			if t, ok := ev["text"].(string); ok {
+				*finalText = t
+			}
+		case "response.completed":
+			if resp, ok := ev["response"].(map[string]interface{}); ok {
+				if t, ok := resp["output_text"].(string); ok {
+					*finalText = t
 				}
 			}
 		}
