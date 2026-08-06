@@ -269,7 +269,7 @@ func TestHandleMessagesStreamResponseInterruption503(t *testing.T) {
 	}
 }
 
-func TestHandleStreamResponseEmptyMessageStill200(t *testing.T) {
+func TestHandleStreamResponseEmptyMessage503(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	sse := "" +
 		"data: {\"choices\":[{\"delta\":{\"role\":\"assistant\"}}]}\n\n" +
@@ -295,13 +295,10 @@ func TestHandleStreamResponseEmptyMessageStill200(t *testing.T) {
 	}
 	engine.handleStreamResponse(c, upstream, &OpenAIAdapter{}, 1, 1, "openai/gpt-4o", nil, 1, "openai", 5)
 
-	if w.Code != http.StatusOK {
-		t.Fatalf("legacy status = %d, body = %s", w.Code, w.Body.String())
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, body = %s", w.Code, w.Body.String())
 	}
-	if !strings.Contains(w.Body.String(), `"type":"api_error"`) {
-		t.Errorf("body = %s", w.Body.String())
-	}
-	if !strings.Contains(w.Body.String(), `"message":"Empty message"`) {
+	if !strings.Contains(w.Body.String(), `"type":"server_error"`) {
 		t.Errorf("body = %s", w.Body.String())
 	}
 	if strings.Contains(w.Body.String(), "data: ") {
@@ -309,7 +306,7 @@ func TestHandleStreamResponseEmptyMessageStill200(t *testing.T) {
 	}
 }
 
-func TestHandleMessagesStreamResponseEmptyMessageStill200(t *testing.T) {
+func TestHandleMessagesStreamResponseEmptyMessage503(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	sse := "" +
 		"event: message_start\n" +
@@ -338,13 +335,10 @@ func TestHandleMessagesStreamResponseEmptyMessageStill200(t *testing.T) {
 	}
 	engine.handleMessagesStreamResponse(c, upstream, &AnthropicAdapter{}, 1, 1, "anthropic/claude-opus-4-8", nil, time.Now(), 1, "anthropic", 5)
 
-	if w.Code != http.StatusOK {
-		t.Fatalf("legacy status = %d, body = %s", w.Code, w.Body.String())
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, body = %s", w.Code, w.Body.String())
 	}
-	if !strings.Contains(w.Body.String(), `"type":"api_error"`) {
-		t.Errorf("body = %s", w.Body.String())
-	}
-	if !strings.Contains(w.Body.String(), `"message":"Empty message"`) {
+	if !strings.Contains(w.Body.String(), `"type":"overloaded_error"`) {
 		t.Errorf("body = %s", w.Body.String())
 	}
 	if strings.Contains(w.Body.String(), "data: ") {

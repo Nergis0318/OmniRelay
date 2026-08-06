@@ -88,7 +88,9 @@ func writeStreamUpstreamError(c *gin.Context, errMsg string) {
 	if errMsg == "" {
 		errMsg = "Temporary service interruption. Retry the last turn; your conversation and tool state are preserved."
 	}
-	if isInterruptionText(errMsg) {
+	// Interruptions and "Empty message" are temporary upstream failures →
+	// 503 retryable (server_error / overloaded_error).
+	if isInterruptionText(errMsg) || isUpstreamErrorContent(errMsg) {
 		errType := "overloaded_error"
 		if errFmt != apiresponse.FormatAnthropic {
 			errType = "server_error"
@@ -96,14 +98,6 @@ func writeStreamUpstreamError(c *gin.Context, errMsg string) {
 		c.Status(http.StatusServiceUnavailable)
 		c.Header("Content-Type", "application/json")
 		c.Writer.Write(reformatError(upstreamError{ErrType: errType, Message: errMsg, Code: "upstream_error"}, errFmt, requestID))
-		return
-	}
-	// Legacy "Empty message" behavior: 200 api_error, matching the
-	// non-streaming path (abortErrorContent).
-	if isUpstreamErrorContent(errMsg) {
-		c.Status(http.StatusOK)
-		c.Header("Content-Type", "application/json")
-		c.Writer.Write(reformatError(upstreamError{ErrType: "api_error", Message: errMsg}, errFmt, requestID))
 		return
 	}
 	c.Status(http.StatusBadGateway)

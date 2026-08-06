@@ -553,3 +553,21 @@ func TestMultiFormatRouting(t *testing.T) {
 		t.Fatalf("messages body = %s", msgW.Body.String())
 	}
 }
+
+func TestIsUpstreamErrorContent(t *testing.T) {
+	cases := []struct {
+		in   string
+		want bool
+	}{
+		{"Empty message", true},
+		{"[Empty message]", true},
+		{"  Empty message  ", true},
+		{"normal reply", false},
+		{"Temporary service interruption. Retry.", false},
+	}
+	for _, tc := range cases {
+		if got := isUpstreamErrorContent(tc.in); got != tc.want {
+			t.Errorf("isUpstreamErrorContent(%q) = %v, want %v", tc.in, got, tc.want)
+		}
+	}
+}

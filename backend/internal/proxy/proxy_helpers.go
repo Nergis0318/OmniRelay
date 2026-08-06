@@ -22,9 +22,11 @@ func isEmptyResponseBody(body []byte) bool {
 }
 
 // isUpstreamErrorContent checks if the response text is a known error sent by
-// an upstream that does not follow standard error reporting.
+// an upstream that does not follow standard error reporting. Both the plain
+// and bracketed forms occur in the wild.
 func isUpstreamErrorContent(text string) bool {
-	return strings.TrimSpace(text) == "Empty message"
+	text = strings.TrimSpace(text)
+	return text == "Empty message" || text == "[Empty message]"
 }
 
 // interruptionMarker is the prefix Anthropic uses for temporary service
