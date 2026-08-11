@@ -28,6 +28,8 @@
   --font-display: "Fraunces", Georgia, serif;
   --font-body: "DM Sans", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", "Cascadia Code", monospace;
+  --focus-ring-visible: 0 0 0 2px #0d0d0f, 0 0 0 4px #e8a020;
+  --dur-reduced: 100ms;
 }
 
 html,
@@ -67,16 +69,23 @@ h3,
 .page-title {
   font-family: var(--font-display) !important;
   font-weight: 600;
-  letter-spacing: -0.02em;
-  line-height: 1.15;
+  letter-spacing: var(--tracking-display, -0.025em);
+  line-height: var(--lh-tight, 1.15);
   color: var(--clr-text);
+  text-wrap: balance;
 }
 
 .text-h4 {
   font-family: var(--font-display) !important;
-  font-size: 1.6rem !important;
+  font-size: var(--text-display, clamp(1.5rem, 1.2rem + 1vw, 1.9rem)) !important;
   font-weight: 600 !important;
-  letter-spacing: -0.025em !important;
+  letter-spacing: var(--tracking-display, -0.025em) !important;
+  line-height: var(--lh-tight, 1.15) !important;
+  text-wrap: balance;
+}
+
+p {
+  text-wrap: pretty;
 }
 
 code,
@@ -120,6 +129,13 @@ pre {
 
 .v-container {
   background: transparent !important;
+  container-type: inline-size;
+}
+@media (min-width: 1536px) {
+  .v-container {
+    max-width: 1440px;
+    margin-inline: auto;
+  }
 }
 
 /* ── Form Fields ── */
@@ -237,7 +253,7 @@ pre {
 }
 .v-list-item--active {
   background: rgba(232, 160, 32, 0.1) !important;
-  border-left: 2px solid var(--clr-amber) !important;
+  border-inline-start: 2px solid var(--clr-amber) !important;
 }
 .v-list-item--active .v-list-item-title {
   color: var(--clr-amber) !important;
@@ -283,6 +299,34 @@ pre {
   height: 2px;
   background: var(--card-accent, var(--clr-amber));
   opacity: 0.7;
+}
+
+/* ── Body rhythm — dark surface needs a touch more air ── */
+body {
+  line-height: var(--lh-body, 1.6);
+  letter-spacing: 0.01em;
+}
+.v-application {
+  line-height: var(--lh-body, 1.6);
+}
+
+/* ── Focus ring — visible, obvious, consistent (2px offset, 3:1 amber on void) ── */
+:where(a, button, [role="button"], input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--clr-amber);
+  outline-offset: 2px;
+  box-shadow: var(--focus-ring-visible);
+}
+:where(a, button, [role="button"], input, select, textarea, [tabindex]):focus:not(:focus-visible) {
+  outline: none;
+  box-shadow: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: var(--dur-reduced) !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: var(--dur-reduced) !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* ── Router link in text ── */

@@ -1,15 +1,11 @@
 <template>
   <div class="page">
-    <div class="page-header">
-      <div>
-        <h1 class="page-title">{{ $t("logs.title") }}</h1>
-        <p class="page-sub">{{ $t("logs.subtitle") }}</p>
-      </div>
+    <PageHeader :title="$t('logs.title')" :subtitle="$t('logs.subtitle')">
       <button class="btn-tonal" @click="loadLogs">
         <v-icon size="15">mdi-refresh</v-icon>
         {{ $t("common.refresh") }}
       </button>
-    </div>
+    </PageHeader>
 
     <!-- Filter bar -->
     <div class="filter-bar">
@@ -84,7 +80,7 @@
           <span class="dim-text">{{ item.provider_name || "-" }}</span>
         </template>
         <template #item.model="{ item }">
-          <code class="mono-tag">{{ getModelName(item.model) }}</code>
+          <MonoTag>{{ getModelName(item.model) }}</MonoTag>
         </template>
         <template #item.request_tokens="{ item }">
           <span class="mono-val">{{
@@ -120,20 +116,12 @@
           <span class="cost-val">${{ item.cost.toFixed(6) }}</span>
         </template>
         <template #item.is_error="{ item }">
-          <span
-            class="status-chip"
-            :class="item.is_error ? 'status-chip--off' : 'status-chip--on'"
-          >
+          <StatusChip :variant="item.is_error ? 'off' : 'on'">
             {{ item.is_error ? $t("logs.error") : $t("logs.ok") }}
-          </span>
+          </StatusChip>
         </template>
         <template #no-data>
-          <div class="empty-state">
-            <v-icon size="32" color="#4a4844"
-              >mdi-text-box-search-outline</v-icon
-            >
-            <p>{{ $t("logs.noRecords") }}</p>
-          </div>
+          <EmptyState icon="mdi-text-box-search-outline" :text="$t('logs.noRecords')" />
         </template>
       </v-data-table>
 
@@ -168,10 +156,7 @@
             },
           ]"
         />
-        <div v-if="!store.logs.length" class="empty-state">
-          <v-icon size="32" color="#4a4844">mdi-text-box-search-outline</v-icon>
-          <p>{{ $t("logs.noRecords") }}</p>
-        </div>
+        <EmptyState v-if="!store.logs.length" icon="mdi-text-box-search-outline" :text="$t('logs.noRecords')" />
       </div>
 
       <div class="table-footer">
@@ -204,20 +189,21 @@
 import { ref, computed, onMounted, onUnmounted } from "vue";
 import { useI18n } from "vue-i18n";
 import { useUsageStore } from "../stores/usage";
+import { useMobile } from "../composables/useMobile";
+import PageHeader from "../components/PageHeader.vue";
+import MonoTag from "../components/MonoTag.vue";
+import StatusChip from "../components/StatusChip.vue";
+import EmptyState from "../components/EmptyState.vue";
 import MobileDataCard from "../components/MobileDataCard.vue";
 
 const { t } = useI18n();
 const store = useUsageStore();
+const { isMobile } = useMobile();
 
 const limit = 50;
 const offset = ref(0);
 
 const filters = ref({ model: "", provider: "", from: "", to: "" });
-
-const isMobile = ref(false);
-function checkMobile() {
-  isMobile.value = window.innerWidth <= 768;
-}
 
 const headers = computed(() => [
   { title: t("logs.startedAt"), key: "started_at", minWidth: "140" },
@@ -271,14 +257,11 @@ function prevPage() {
 }
 
 onMounted(() => {
-  checkMobile();
-  window.addEventListener("resize", checkMobile);
   loadLogs();
   store.connect();
 });
 
 onUnmounted(() => {
-  window.removeEventListener("resize", checkMobile);
   store.disconnect();
 });
 </script>

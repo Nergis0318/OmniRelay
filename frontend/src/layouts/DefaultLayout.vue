@@ -126,11 +126,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from "vue";
+import { ref, computed } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { useI18n } from "vue-i18n";
 import { useAuthStore } from "../stores/auth";
 import { setLocale } from "../plugins/i18n";
+import { useMobile } from "../composables/useMobile";
 import logoUrl from "../assets/omnirelay-logo.svg";
 
 const auth = useAuthStore();
@@ -139,21 +140,7 @@ const route = useRoute();
 const { locale } = useI18n();
 const drawer = ref(true);
 const rail = ref(false);
-
-const MOBILE_BREAKPOINT = 768;
-const isMobile = ref(false);
-let mql: MediaQueryList | null = null;
-function handleMQLChange(e: MediaQueryListEvent) {
-  isMobile.value = e.matches;
-}
-onMounted(() => {
-  mql = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT}px)`);
-  isMobile.value = mql.matches;
-  mql.addEventListener("change", handleMQLChange);
-});
-onUnmounted(() => {
-  mql?.removeEventListener("change", handleMQLChange);
-});
+const { isMobile } = useMobile();
 
 const menuItems = [
   { i18nKey: "nav.dashboard", icon: "mdi-view-dashboard-outline", to: "/" },
@@ -286,8 +273,8 @@ function handleLogout() {
   background: rgba(232, 160, 32, 0.09) !important;
   color: #e8a020 !important;
   font-weight: 500;
-  border-left: 2px solid #e8a020;
-  padding-left: 8px;
+  border-inline-start: 2px solid #e8a020;
+  padding-inline-start: 8px;
 }
 .nav-item__icon {
   flex-shrink: 0;
@@ -407,9 +394,8 @@ function handleLogout() {
 /* ── Mobile bottom tab bar ── */
 .mobile-tab-bar {
   position: fixed;
+  inset-inline: 0;
   bottom: 0;
-  left: 0;
-  right: 0;
   height: 56px;
   background: #131316;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
@@ -417,6 +403,7 @@ function handleLogout() {
   align-items: center;
   justify-content: space-around;
   padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-inline: env(safe-area-inset-left, 0px) env(safe-area-inset-right, 0px);
   z-index: 1000;
 }
 .mobile-tab {
@@ -453,5 +440,11 @@ function handleLogout() {
   padding-bottom: calc(
     56px + env(safe-area-inset-bottom, 0px) + 16px
   ) !important;
+  padding-inline: env(safe-area-inset-left, 0px) env(safe-area-inset-right, 0px);
+}
+@media (max-width: 768px) {
+  .v-container {
+    padding-inline: env(safe-area-inset-left, 0px) env(safe-area-inset-right, 0px);
+  }
 }
 </style>

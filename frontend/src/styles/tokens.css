@@ -1,0 +1,121 @@
+/* tokens.css — single source of truth for OmniRelay design decisions
+   Primitives → semantic roles. Imported once in main.ts, before any component styles.
+   Every hard-coded #131316 / #e8a020 / 12px / 150ms outside this file is drift. */
+
+:root {
+  /* ── Color primitives (OKLCH-derived, warm void) ── */
+  --clr-bg: #0d0d0f;
+  --clr-surface: #131316;
+  --clr-surface-2: #1a1a1f;
+  --clr-surface-3: #222228;
+  --clr-amber: #e8a020;
+  --clr-amber-bright: #f5c842;
+  --clr-teal: #2ec4b6;
+  --clr-violet: #7b61ff;
+  --clr-error: #ff5757;
+  --clr-text: #e8e6e1;
+  --clr-text-muted: #7c7a75;
+  --clr-text-dim: #4a4844;
+  --clr-text-faint: #2c2c32;
+
+  /* Border roles — subtle scale 0.04 → 0.08 */
+  --clr-border-subtle: rgba(255, 255, 255, 0.04);
+  --clr-border: rgba(255, 255, 255, 0.06);
+  --clr-border-strong: rgba(255, 255, 255, 0.08);
+  --clr-border-accent: rgba(232, 160, 32, 0.35);
+  --clr-border-accent-soft: rgba(232, 160, 32, 0.2);
+  --clr-border-accent-ghost: rgba(232, 160, 32, 0.08);
+  --clr-border-teal: rgba(46, 196, 182, 0.2);
+  --clr-border-error: rgba(255, 87, 87, 0.2);
+
+  /* Semantic aliases */
+  --color-bg: var(--clr-bg);
+  --color-surface: var(--clr-surface);
+  --color-surface-raised: var(--clr-surface-2);
+  --color-primary: var(--clr-amber);
+  --color-primary-hover: var(--clr-amber-bright);
+  --color-success: var(--clr-teal);
+  --color-danger: var(--clr-error);
+  --color-text: var(--clr-text);
+  --color-text-muted: var(--clr-text-muted);
+  --color-text-dim: var(--clr-text-dim);
+
+  /* ── Type ── */
+  --font-display: "Fraunces", Georgia, serif;
+  --font-body: "DM Sans", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "Cascadia Code", monospace;
+  --text-display: clamp(1.5rem, 1.2rem + 1vw, 1.9rem);
+  --text-title: 1.05rem;
+  --text-label: 0.68rem;
+  --text-label-sm: 0.72rem;
+  --text-body: 0.875rem;
+  --text-body-sm: 0.82rem;
+  --text-mono: 0.78rem;
+  --text-mono-sm: 0.7rem;
+  --lh-tight: 1.15;
+  --lh-label: 1.2;
+  --lh-body: 1.6;
+  --lh-mono: 1.45;
+  --tracking-display: -0.025em;
+  --tracking-label: 0.06em;
+  --tracking-mono: 0.04em;
+  --measure: 68ch;
+
+  /* ── Radius (commit once, reuse everywhere) ── */
+  --radius-sm: 5px;
+  --radius-md: 8px;
+  --radius-lg: 9px;
+  --radius-card: 12px;
+  --radius-dialog: 14px;
+  --radius-auth: 16px;
+  --radius-pill: 999px;
+
+  /* ── Spacing — 1-4-9 rhythm (4px base) ── */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 28px;
+  --space-9: 36px;
+
+  /* Semantic gaps */
+  --gap-page: var(--space-6);
+  --gap-section: var(--space-7);
+  --gap-card: 14px;
+  --pad-card: 18px;
+  --pad-card-y: 20px;
+  --gap-filter: 12px;
+
+  /* ── Shadow & glow ── */
+  --shadow-dialog: 0 32px 80px rgba(0, 0, 0, 0.7), 0 0 40px rgba(232, 160, 32, 0.06);
+  --shadow-auth: 0 32px 80px rgba(0, 0, 0, 0.6), 0 0 60px rgba(232, 160, 32, 0.04);
+  --glow-primary: 0 0 16px rgba(232, 160, 32, 0.25);
+  --glow-primary-hover: 0 0 24px rgba(232, 160, 32, 0.4);
+
+  /* ── Motion ── */
+  --dur-fast: 150ms;
+  --dur-normal: 200ms;
+  --dur-bar: 600ms;
+  --dur-reduced: 100ms;
+  --ease-default: ease;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* ── Breakpoints (for reference; media queries still literal) ── */
+  --bp-mobile: 768px;
+  --bp-compact: 560px;
+  --bp-narrow: 480px;
+  --bp-wide: 900px;
+  --bp-xl: 1100px;
+
+  /* ── Table / chip tokens ── */
+  --chip-bg-muted: rgba(255, 255, 255, 0.05);
+  --chip-bg-success: rgba(46, 196, 182, 0.1);
+  --chip-bg-danger: rgba(255, 87, 87, 0.08);
+  --chip-bg-warning: rgba(232, 160, 32, 0.1);
+  --table-row-hover: rgba(232, 160, 32, 0.04);
+  --focus-ring: 0 0 0 3px rgba(232, 160, 32, 0.08);
+  --focus-ring-strong: 0 0 0 1px rgba(232, 160, 32, 0.2);
+  --focus-ring-visible: 0 0 0 2px #0d0d0f, 0 0 0 4px #e8a020;
+}

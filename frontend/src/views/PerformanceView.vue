@@ -1,15 +1,11 @@
 <template>
   <div class="page">
-    <div class="page-header">
-      <div>
-        <h1 class="page-title">{{ $t("performance.title") }}</h1>
-        <p class="page-sub">{{ $t("performance.subtitle") }}</p>
-      </div>
+    <PageHeader :title="$t('performance.title')" :subtitle="$t('performance.subtitle')">
       <button class="btn-tonal" :disabled="store.loading" @click="load">
         <v-icon size="15">mdi-refresh</v-icon>
         {{ $t("common.refresh") }}
       </button>
-    </div>
+    </PageHeader>
 
     <!-- Filter bar -->
     <div class="filter-bar">
@@ -64,56 +60,35 @@
     <template v-if="store.data">
       <!-- Summary cards -->
       <div class="stats-grid">
-        <div class="stat-card">
-          <p class="stat-label">{{ $t("performance.rpm") }}</p>
-          <p class="stat-value">{{ fmtNum(summary.rpm) }}</p>
-          <p class="stat-sub">{{ summary.total_requests.toLocaleString() }} req</p>
-        </div>
-        <div class="stat-card">
-          <p class="stat-label">{{ $t("performance.tpm") }}</p>
-          <p class="stat-value stat-value--accent">{{ fmtNum(summary.tpm) }}</p>
-          <p class="stat-sub">&nbsp;</p>
-        </div>
-        <div class="stat-card">
-          <p class="stat-label">{{ $t("performance.avgLatency") }}</p>
-          <p class="stat-value">{{ fmtMs(summary.avg_latency_ms) }}</p>
-          <p class="stat-sub">
-            {{ $t("performance.p50") }} {{ fmtMs(summary.p50_ms) }}
-          </p>
-        </div>
-        <div class="stat-card">
-          <p class="stat-label">
-            {{ $t("performance.ttft") }}
-            <span class="stat-hint">{{ $t("performance.ttftHint") }}</span>
-          </p>
-          <p class="stat-value" :class="{ 'stat-value--dim': summary.avg_ttft_ms === null }">
-            {{ summary.avg_ttft_ms === null ? "-" : fmtMs(summary.avg_ttft_ms) }}
-          </p>
-          <p class="stat-sub">
+        <StatCard :label="$t('performance.rpm')" :sub="`${summary.total_requests.toLocaleString()} req`">
+          {{ fmtNum(summary.rpm) }}
+        </StatCard>
+        <StatCard :label="$t('performance.tpm')" value-class="stat-value--accent" sub="&nbsp;">
+          {{ fmtNum(summary.tpm) }}
+        </StatCard>
+        <StatCard :label="$t('performance.avgLatency')">
+          {{ fmtMs(summary.avg_latency_ms) }}
+          <template #sub>{{ $t("performance.p50") }} {{ fmtMs(summary.p50_ms) }}</template>
+        </StatCard>
+        <StatCard :label="$t('performance.ttft')" :hint="$t('performance.ttftHint')" :value-class="summary.avg_ttft_ms === null ? 'stat-value--dim' : undefined">
+          {{ summary.avg_ttft_ms === null ? "-" : fmtMs(summary.avg_ttft_ms) }}
+          <template #sub>
             {{
               summary.avg_ttft_ms === null
                 ? $t("performance.noStreaming")
                 : summary.ttft_count.toLocaleString() + " streams"
             }}
-          </p>
-        </div>
-        <div class="stat-card">
-          <p class="stat-label">{{ $t("performance.p95") }} / {{ $t("performance.p99") }}</p>
-          <p class="stat-value">{{ fmtMs(summary.p95_ms) }}</p>
-          <p class="stat-sub">{{ $t("performance.p99") }} {{ fmtMs(summary.p99_ms) }}</p>
-        </div>
-        <div class="stat-card">
-          <p class="stat-label">{{ $t("performance.errorRate") }}</p>
-          <p class="stat-value" :class="{ 'stat-value--error': summary.error_rate > 0.05 }">
-            {{ (summary.error_rate * 100).toFixed(2) }}%
-          </p>
-          <p class="stat-sub">&nbsp;</p>
-        </div>
-        <div class="stat-card">
-          <p class="stat-label">{{ $t("performance.cacheHitRate") }}</p>
-          <p class="stat-value stat-value--cache">{{ (summary.cache_hit_rate * 100).toFixed(1) }}%</p>
-          <p class="stat-sub">&nbsp;</p>
-        </div>
+          </template>
+        </StatCard>
+        <StatCard :label="`${$t('performance.p95')} / ${$t('performance.p99')}`" :sub="`${$t('performance.p99')} ${fmtMs(summary.p99_ms)}`">
+          {{ fmtMs(summary.p95_ms) }}
+        </StatCard>
+        <StatCard :label="$t('performance.errorRate')" :value-class="summary.error_rate > 0.05 ? 'stat-value--error' : undefined" sub="&nbsp;">
+          {{ (summary.error_rate * 100).toFixed(2) }}%
+        </StatCard>
+        <StatCard :label="$t('performance.cacheHitRate')" value-class="stat-value--cache" sub="&nbsp;">
+          {{ (summary.cache_hit_rate * 100).toFixed(1) }}%
+        </StatCard>
       </div>
 
       <!-- Timeseries charts -->
@@ -122,20 +97,14 @@
           <h2 class="chart-heading">{{ $t("performance.throughput") }}</h2>
           <div class="chart-area">
             <Line v-if="store.data.timeseries.length" :data="throughputChart" :options="throughputOptions" />
-            <div v-else class="empty-state">
-              <v-icon size="28" color="#4a4844">mdi-chart-line-variant</v-icon>
-              <p>{{ $t("performance.noData") }}</p>
-            </div>
+            <EmptyState v-else icon="mdi-chart-line-variant" :text="$t('performance.noData')" />
           </div>
         </div>
         <div class="table-card chart-section">
           <h2 class="chart-heading">{{ $t("performance.latency") }}</h2>
           <div class="chart-area">
             <Line v-if="store.data.timeseries.length" :data="latencyChart" :options="latencyOptions" />
-            <div v-else class="empty-state">
-              <v-icon size="28" color="#4a4844">mdi-chart-line-variant</v-icon>
-              <p>{{ $t("performance.noData") }}</p>
-            </div>
+            <EmptyState v-else icon="mdi-chart-line-variant" :text="$t('performance.noData')" />
           </div>
         </div>
       </div>
@@ -165,7 +134,7 @@
                 </tr>
               </tbody>
             </table>
-            <div v-else class="empty-state small"><p>{{ $t("performance.noData") }}</p></div>
+            <EmptyState v-else icon="mdi-chart-line-variant" :text="$t('performance.noData')" small />
           </div>
         </div>
 
@@ -184,7 +153,7 @@
               </thead>
               <tbody>
                 <tr v-for="r in store.data.by_model" :key="r.model">
-                  <td><code class="mono-tag">{{ r.model }}</code></td>
+                  <td><MonoTag>{{ r.model }}</MonoTag></td>
                   <td class="num mono-val">{{ r.requests.toLocaleString() }}</td>
                   <td class="num mono-val">{{ r.tokens.toLocaleString() }}</td>
                   <td class="num mono-val">{{ fmtMs(r.avg_latency_ms) }}</td>
@@ -192,7 +161,7 @@
                 </tr>
               </tbody>
             </table>
-            <div v-else class="empty-state small"><p>{{ $t("performance.noData") }}</p></div>
+            <EmptyState v-else icon="mdi-chart-line-variant" :text="$t('performance.noData')" small />
           </div>
         </div>
       </div>
@@ -211,22 +180,19 @@
             </thead>
             <tbody>
               <tr v-for="r in store.data.top_models_by_cost" :key="r.model">
-                <td><code class="mono-tag">{{ r.model }}</code></td>
+                <td><MonoTag>{{ r.model }}</MonoTag></td>
                 <td class="num mono-val">{{ r.requests.toLocaleString() }}</td>
                 <td class="num mono-val">{{ r.tokens.toLocaleString() }}</td>
                 <td class="num cost-val">${{ r.cost.toFixed(4) }}</td>
               </tr>
             </tbody>
           </table>
-          <div v-else class="empty-state small"><p>{{ $t("performance.noData") }}</p></div>
+          <EmptyState v-else icon="mdi-chart-line-variant" :text="$t('performance.noData')" small />
         </div>
       </div>
     </template>
 
-    <div v-else-if="!store.loading && !store.error" class="empty-state">
-      <v-icon size="32" color="#4a4844">mdi-chart-timeline-variant</v-icon>
-      <p>{{ $t("performance.noData") }}</p>
-    </div>
+    <EmptyState v-else-if="!store.loading && !store.error" icon="mdi-chart-timeline-variant" :text="$t('performance.noData')" />
   </div>
 </template>
 
@@ -246,6 +212,10 @@ import {
 } from "chart.js";
 import { usePerformanceStore } from "../stores/performance";
 import { useProvidersStore } from "../stores/providers";
+import PageHeader from "../components/PageHeader.vue";
+import StatCard from "../components/StatCard.vue";
+import MonoTag from "../components/MonoTag.vue";
+import EmptyState from "../components/EmptyState.vue";
 
 ChartJS.register(
   CategoryScale,
@@ -502,50 +472,10 @@ onMounted(() => {
   }
 }
 
-.stat-card {
-  background: #131316;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 12px;
-  padding: 14px 16px 12px;
-}
-.stat-label {
-  font-family: "DM Sans", sans-serif;
-  font-size: 0.68rem;
-  font-weight: 500;
-  color: #7c7a75;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  margin: 0 0 8px;
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-.stat-hint {
-  font-size: 0.6rem;
-  font-weight: 400;
-  text-transform: none;
-  color: #4a4844;
-  letter-spacing: 0.02em;
-}
-.stat-value {
-  font-family: "JetBrains Mono", monospace;
-  font-size: 1.35rem;
-  font-weight: 600;
-  color: #e8e6e1;
-  margin: 0 0 4px;
-  letter-spacing: -0.02em;
-}
 .stat-value--accent { color: #7b61ff; }
 .stat-value--cache { color: #2ec4b6; }
 .stat-value--error { color: #ff5757; }
 .stat-value--dim { color: #4a4844; }
-.stat-sub {
-  font-family: "JetBrains Mono", monospace;
-  font-size: 0.68rem;
-  color: #4a4844;
-  margin: 0;
-}
 
 /* ── Presets ── */
 .filter-col--narrow {
@@ -657,10 +587,6 @@ onMounted(() => {
   font-family: "JetBrains Mono", monospace;
   font-size: 0.78rem;
   color: #2ec4b6;
-}
-
-.empty-state.small {
-  padding: 20px 12px;
 }
 
 .field-select {

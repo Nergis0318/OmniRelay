@@ -1,60 +1,35 @@
 <template>
   <div class="page">
-    <div class="page-header">
-      <div>
-        <h1 class="page-title">{{ $t("usage.title") }}</h1>
-        <p class="page-sub">{{ $t("usage.subtitle") }}</p>
-      </div>
+    <PageHeader :title="$t('usage.title')" :subtitle="$t('usage.subtitle')">
       <button class="btn-tonal" @click="store.fetchStats()">
         <v-icon size="15">mdi-refresh</v-icon>
         {{ $t("common.refresh") }}
       </button>
-    </div>
+    </PageHeader>
 
     <!-- Stats Cards -->
     <div class="stats-grid">
-      <div class="stat-card">
-        <p class="stat-label">{{ $t("dashboard.totalRequests") }}</p>
-        <p class="stat-value">
-          {{ stats?.total_requests?.toLocaleString() ?? "-" }}
-        </p>
-      </div>
-      <div class="stat-card">
-        <p class="stat-label">{{ $t("dashboard.totalTokens") }}</p>
-        <p class="stat-value stat-value--accent">
-          {{ stats?.total_tokens?.toLocaleString() ?? "-" }}
-        </p>
-      </div>
-      <div class="stat-card">
-        <p class="stat-label">{{ $t("dashboard.totalCost") }}</p>
-        <p class="stat-value stat-value--cost">
-          ${{ stats?.total_cost?.toFixed(4) ?? "-" }}
-        </p>
-      </div>
-      <div class="stat-card">
-        <p class="stat-label">{{ $t("dashboard.avgLatency") }}</p>
-        <p class="stat-value">
-          {{ stats ? (stats.avg_latency_ms / 1000).toFixed(2) + "s" : "-" }}
-        </p>
-      </div>
-      <div class="stat-card">
-        <p class="stat-label">{{ $t("usage.cacheWrite5m") }}</p>
-        <p class="stat-value">
-          {{ stats?.total_cache_write_5m?.toLocaleString() ?? "-" }}
-        </p>
-      </div>
-      <div class="stat-card">
-        <p class="stat-label">{{ $t("usage.cacheWrite1h") }}</p>
-        <p class="stat-value">
-          {{ stats?.total_cache_write_1h?.toLocaleString() ?? "-" }}
-        </p>
-      </div>
-      <div class="stat-card">
-        <p class="stat-label">{{ $t("usage.cacheRead") }}</p>
-        <p class="stat-value stat-value--cache-read">
-          {{ stats?.total_cache_read?.toLocaleString() ?? "-" }}
-        </p>
-      </div>
+      <StatCard :label="$t('dashboard.totalRequests')">
+        {{ stats?.total_requests?.toLocaleString() ?? "-" }}
+      </StatCard>
+      <StatCard :label="$t('dashboard.totalTokens')" value-class="stat-value--accent">
+        {{ stats?.total_tokens?.toLocaleString() ?? "-" }}
+      </StatCard>
+      <StatCard :label="$t('dashboard.totalCost')" value-class="stat-value--cost">
+        ${{ stats?.total_cost?.toFixed(4) ?? "-" }}
+      </StatCard>
+      <StatCard :label="$t('dashboard.avgLatency')">
+        {{ stats ? (stats.avg_latency_ms / 1000).toFixed(2) + "s" : "-" }}
+      </StatCard>
+      <StatCard :label="$t('usage.cacheWrite5m')">
+        {{ stats?.total_cache_write_5m?.toLocaleString() ?? "-" }}
+      </StatCard>
+      <StatCard :label="$t('usage.cacheWrite1h')">
+        {{ stats?.total_cache_write_1h?.toLocaleString() ?? "-" }}
+      </StatCard>
+      <StatCard :label="$t('usage.cacheRead')" value-class="stat-value--cache-read">
+        {{ stats?.total_cache_read?.toLocaleString() ?? "-" }}
+      </StatCard>
     </div>
 
     <!-- 30-day Chart -->
@@ -64,10 +39,7 @@
         <template v-if="stats?.daily_usage?.length">
           <Line :data="chartData" :options="chartOptions" />
         </template>
-        <div v-else class="empty-state">
-          <v-icon size="32" color="#4a4844">mdi-chart-bar</v-icon>
-          <p>{{ $t("dashboard.noUsageData") }}</p>
-        </div>
+        <EmptyState v-else icon="mdi-chart-bar" :text="$t('dashboard.noUsageData')" />
       </div>
     </div>
   </div>
@@ -88,6 +60,9 @@ import {
   Legend,
 } from "chart.js";
 import { useUsageStore } from "../stores/usage";
+import PageHeader from "../components/PageHeader.vue";
+import StatCard from "../components/StatCard.vue";
+import EmptyState from "../components/EmptyState.vue";
 
 ChartJS.register(
   CategoryScale,
@@ -198,31 +173,6 @@ onUnmounted(() => {
   gap: 12px;
 }
 
-.stat-card {
-  background: #131316;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 12px;
-  padding: 16px 18px;
-}
-
-.stat-label {
-  font-family: "DM Sans", sans-serif;
-  font-size: 0.72rem;
-  font-weight: 500;
-  color: #4a4844;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  margin: 0 0 6px;
-}
-
-.stat-value {
-  font-family: "JetBrains Mono", monospace;
-  font-size: 1.3rem;
-  font-weight: 600;
-  color: #e8e6e1;
-  margin: 0;
-}
-
 .stat-value--accent {
   color: #e8a020;
 }
@@ -254,31 +204,10 @@ onUnmounted(() => {
   height: 320px;
 }
 
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  padding: 48px 24px;
-  font-family: "DM Sans", sans-serif;
-  font-size: 0.875rem;
-  color: #4a4844;
-}
-
-.empty-state p {
-  margin: 0;
-}
-
 @media (max-width: 768px) {
   .stats-grid {
     grid-template-columns: repeat(2, 1fr);
     gap: 8px;
-  }
-  .stat-card {
-    padding: 12px 14px;
-  }
-  .stat-value {
-    font-size: 1.1rem;
   }
   .chart-area {
     height: 240px;

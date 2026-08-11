@@ -1,11 +1,6 @@
 <template>
   <div class="page">
-    <div class="page-header">
-      <div>
-        <h1 class="page-title">{{ $t("users.title") }}</h1>
-        <p class="page-sub">{{ $t("users.subtitle") }}</p>
-      </div>
-    </div>
+    <PageHeader :title="$t('users.title')" :subtitle="$t('users.subtitle')" />
 
     <div class="table-card">
       <v-data-table
@@ -28,12 +23,9 @@
           <span class="dim-text">{{ item.email }}</span>
         </template>
         <template #item.is_admin="{ item }">
-          <span
-            class="status-chip"
-            :class="item.is_admin ? 'status-chip--on' : 'status-chip--off'"
-          >
+          <StatusChip :variant="item.is_admin ? 'on' : 'off'">
             {{ item.is_admin ? $t("users.admin") : $t("users.member") }}
-          </span>
+          </StatusChip>
         </template>
         <template #item.created_at="{ item }">
           <span class="dim-text">{{
@@ -73,10 +65,7 @@
           </div>
         </template>
         <template #no-data>
-          <div class="empty-state">
-            <v-icon size="32" color="#4a4844">mdi-account-group-outline</v-icon>
-            <p>{{ $t("users.noUsers") }}</p>
-          </div>
+          <EmptyState icon="mdi-account-group-outline" :text="$t('users.noUsers')" />
         </template>
       </v-data-table>
     </div>
@@ -130,10 +119,7 @@
           </button>
         </template>
       </MobileDataCard>
-      <div v-if="!store.users.length" class="empty-state">
-        <v-icon size="32" color="#4a4844">mdi-account-group-outline</v-icon>
-        <p>{{ $t("users.noUsers") }}</p>
-      </div>
+      <EmptyState v-if="!store.users.length" icon="mdi-account-group-outline" :text="$t('users.noUsers')" />
     </div>
 
     <!-- Confirm delete dialog -->
@@ -221,7 +207,7 @@
           <p class="field-hint" style="margin-bottom: 12px">
             {{ $t("users.providersHint") }}
           </p>
-          <div v-if="providersLoading" class="empty-state">
+          <div v-if="providersLoading" class="loading-center">
             <span class="btn-spinner" />
           </div>
           <div v-else class="provider-checklist">
@@ -236,7 +222,7 @@
                 v-model="selectedProviderIds"
               />
               <span>{{ p.name }}</span>
-              <code class="mono-tag">{{ p.provider_key }}</code>
+              <MonoTag>{{ p.provider_key }}</MonoTag>
             </label>
             <p v-if="!providersStore.providers.length" class="dim-text">
               {{ $t("users.noProviders") }}
@@ -266,20 +252,21 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from "vue";
+import { ref, computed, onMounted } from "vue";
 import { useI18n } from "vue-i18n";
 import { useUsersStore, type User } from "../stores/users";
 import { useProvidersStore } from "../stores/providers";
+import { useMobile } from "../composables/useMobile";
+import PageHeader from "../components/PageHeader.vue";
+import StatusChip from "../components/StatusChip.vue";
+import MonoTag from "../components/MonoTag.vue";
+import EmptyState from "../components/EmptyState.vue";
 import MobileDataCard from "../components/MobileDataCard.vue";
 
 const { t } = useI18n();
 const store = useUsersStore();
 const providersStore = useProvidersStore();
-
-const isMobile = ref(false);
-function checkMobile() {
-  isMobile.value = window.innerWidth <= 768;
-}
+const { isMobile } = useMobile();
 
 const headers = computed(() => [
   { title: t("users.username"), key: "username" },
@@ -379,12 +366,7 @@ async function saveProviders() {
 }
 
 onMounted(() => {
-  checkMobile();
-  window.addEventListener("resize", checkMobile);
   store.fetch();
-});
-onUnmounted(() => {
-  window.removeEventListener("resize", checkMobile);
 });
 </script>
 
@@ -447,5 +429,11 @@ onUnmounted(() => {
   font-family: "DM Sans", sans-serif;
   font-size: 0.875rem;
   color: #b0ada6;
+}
+
+.loading-center {
+  display: flex;
+  justify-content: center;
+  padding: 20px 0;
 }
 </style>

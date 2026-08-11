@@ -1,15 +1,11 @@
 <template>
   <div class="page">
-    <div class="page-header">
-      <div>
-        <h1 class="page-title">{{ $t("apiKeys.title") }}</h1>
-        <p class="page-sub">{{ $t("apiKeys.subtitle") }}</p>
-      </div>
+    <PageHeader :title="$t('apiKeys.title')" :subtitle="$t('apiKeys.subtitle')">
       <button class="btn-primary" @click="openCreateDialog">
         <v-icon size="15">mdi-plus</v-icon>
         {{ $t("apiKeys.issueKey") }}
       </button>
-    </div>
+    </PageHeader>
 
     <div class="table-card">
       <v-data-table
@@ -21,15 +17,12 @@
         :items-per-page="-1"
       >
         <template #item.key_prefix="{ item }">
-          <code class="mono-tag">{{ item.key_prefix }}</code>
+          <MonoTag>{{ item.key_prefix }}</MonoTag>
         </template>
         <template #item.is_active="{ item }">
-          <span
-            class="status-chip"
-            :class="item.is_active ? 'status-chip--on' : 'status-chip--off'"
-          >
+          <StatusChip :variant="item.is_active ? 'on' : 'off'">
             {{ item.is_active ? $t("apiKeys.active") : $t("apiKeys.revoked") }}
-          </span>
+          </StatusChip>
         </template>
         <template #item.last_used_at="{ item }">
           <span class="dim-text">
@@ -63,10 +56,7 @@
           </div>
         </template>
         <template #no-data>
-          <div class="empty-state">
-            <v-icon size="32" color="#4a4844">mdi-key-off-outline</v-icon>
-            <p>{{ $t("apiKeys.noKeys") }}</p>
-          </div>
+          <EmptyState icon="mdi-key-off-outline" :text="$t('apiKeys.noKeys')" />
         </template>
       </v-data-table>
     </div>
@@ -110,10 +100,11 @@
           </button>
         </template>
       </MobileDataCard>
-      <div v-if="!store.apiKeys.length" class="empty-state">
-        <v-icon size="32" color="#4a4844">mdi-key-off-outline</v-icon>
-        <p>{{ $t("apiKeys.noKeys") }}</p>
-      </div>
+      <EmptyState
+        v-if="!store.apiKeys.length"
+        icon="mdi-key-off-outline"
+        :text="$t('apiKeys.noKeys')"
+      />
     </div>
 
     <!-- Create dialog -->
@@ -216,10 +207,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from "vue";
+import { ref, computed, onMounted } from "vue";
 import { useI18n } from "vue-i18n";
 import { useApiKeysStore } from "../stores/apikeys";
 import MobileDataCard from "../components/MobileDataCard.vue";
+import PageHeader from "../components/PageHeader.vue";
+import EmptyState from "../components/EmptyState.vue";
+import StatusChip from "../components/StatusChip.vue";
+import MonoTag from "../components/MonoTag.vue";
+import { useMobile } from "../composables/useMobile";
 
 const { t } = useI18n();
 const store = useApiKeysStore();
@@ -230,10 +226,7 @@ const creating = ref(false);
 const dialogError = ref("");
 const copied = ref(false);
 
-const isMobile = ref(false);
-function checkMobile() {
-  isMobile.value = window.innerWidth <= 768;
-}
+const { isMobile } = useMobile();
 
 const form = ref({ name: "", rate_limit_rpm: 0 });
 
@@ -285,29 +278,12 @@ async function handleDelete(id: number) {
 }
 
 onMounted(() => {
-  checkMobile();
-  window.addEventListener("resize", checkMobile);
   store.fetch();
-});
-onUnmounted(() => {
-  window.removeEventListener("resize", checkMobile);
 });
 </script>
 
 <style scoped>
 @import "../styles/page-shared.css";
-
-.mobile-cards {
-  display: none;
-}
-@media (max-width: 768px) {
-  .v-data-table {
-    display: none;
-  }
-  .mobile-cards {
-    display: block;
-  }
-}
 
 .dim-text {
   font-family: "DM Sans", sans-serif;

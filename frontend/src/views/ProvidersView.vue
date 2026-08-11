@@ -1,32 +1,20 @@
 <template>
   <div class="page">
-    <div class="page-header">
-      <div>
-        <h1 class="page-title">{{ $t("providers.title") }}</h1>
-        <p class="page-sub">{{ $t("providers.subtitle") }}</p>
-      </div>
+    <PageHeader :title="$t('providers.title')" :subtitle="$t('providers.subtitle')">
       <button v-if="isAdmin" class="btn-primary" @click="openDialog()">
         <v-icon size="15">mdi-plus</v-icon>
         {{ $t("providers.addProvider") }}
       </button>
-    </div>
+    </PageHeader>
 
-    <div v-if="testResult && testResult.ok" class="alert alert--success alert--page">
-      <v-icon size="14">mdi-check-circle-outline</v-icon>
+    <AppAlert v-if="testResult && testResult.ok" variant="success" page>
       {{ $t("providers.testSuccess", { latency: testResult.latency_ms }) }}
-    </div>
-    <div v-if="testResult && !testResult.ok" class="alert alert--error alert--page">
-      <v-icon size="14">mdi-alert-circle-outline</v-icon>
+    </AppAlert>
+    <AppAlert v-if="testResult && !testResult.ok" variant="error" page>
       {{ testResult.error || $t("providers.testFailed") }}
-    </div>
-    <div v-if="syncResult" class="alert alert--success alert--page">
-      <v-icon size="14">mdi-check-circle-outline</v-icon>
-      {{ syncResult }}
-    </div>
-    <div v-if="syncError" class="alert alert--error alert--page">
-      <v-icon size="14">mdi-alert-circle-outline</v-icon>
-      {{ syncError }}
-    </div>
+    </AppAlert>
+    <AppAlert v-if="syncResult" variant="success" page>{{ syncResult }}</AppAlert>
+    <AppAlert v-if="syncError" variant="error" page>{{ syncError }}</AppAlert>
 
     <div class="table-card">
       <v-data-table
@@ -38,17 +26,12 @@
         :items-per-page="-1"
       >
         <template #item.provider_key="{ item }">
-          <code class="mono-tag">{{ item.provider_key }}</code>
+          <MonoTag>{{ item.provider_key }}</MonoTag>
         </template>
         <template #item.is_active="{ item }">
-          <span
-            class="status-chip"
-            :class="item.is_active ? 'status-chip--on' : 'status-chip--off'"
-          >
-            {{
-              item.is_active ? $t("providers.active") : $t("providers.inactive")
-            }}
-          </span>
+          <StatusChip :variant="item.is_active ? 'on' : 'off'">
+            {{ item.is_active ? $t("providers.active") : $t("providers.inactive") }}
+          </StatusChip>
         </template>
         <template #item.provider_type="{ item }">
           <span class="type-chip">{{ item.provider_type }}</span>
@@ -86,10 +69,7 @@
           </div>
         </template>
         <template #no-data>
-          <div class="empty-state">
-            <v-icon size="32" color="#4a4844">mdi-server-off</v-icon>
-            <p>{{ $t("providers.noProviders") }}</p>
-          </div>
+          <EmptyState icon="mdi-server-off" :text="$t('providers.noProviders')" />
         </template>
       </v-data-table>
     </div>
@@ -142,10 +122,11 @@
           </button>
         </template>
       </MobileDataCard>
-      <div v-if="!store.providers.length" class="empty-state">
-        <v-icon size="32" color="#4a4844">mdi-server-off</v-icon>
-        <p>{{ $t("providers.noProviders") }}</p>
-      </div>
+      <EmptyState
+        v-if="!store.providers.length"
+        icon="mdi-server-off"
+        :text="$t('providers.noProviders')"
+      />
     </div>
 
     <!-- Dialog -->
@@ -319,14 +300,8 @@
             </div>
           </label>
 
-          <div v-if="syncResult" class="alert alert--success">
-            <v-icon size="14">mdi-check-circle-outline</v-icon>
-            {{ syncResult }}
-          </div>
-          <div v-if="dialogError" class="alert alert--error">
-            <v-icon size="14">mdi-alert-circle-outline</v-icon>
-            {{ dialogError }}
-          </div>
+          <AppAlert v-if="syncResult" variant="success">{{ syncResult }}</AppAlert>
+          <AppAlert v-if="dialogError" variant="error">{{ dialogError }}</AppAlert>
         </div>
 
         <div class="dialog-footer">
@@ -346,28 +321,27 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from "vue";
+import { computed, ref, onMounted } from "vue";
 import { useI18n } from "vue-i18n";
 import { useProvidersStore } from "../stores/providers";
 import { useAuthStore } from "../stores/auth";
 import MobileDataCard from "../components/MobileDataCard.vue";
+import PageHeader from "../components/PageHeader.vue";
+import EmptyState from "../components/EmptyState.vue";
+import StatusChip from "../components/StatusChip.vue";
+import MonoTag from "../components/MonoTag.vue";
+import AppAlert from "../components/AppAlert.vue";
+import { useMobile } from "../composables/useMobile";
 
 const { t } = useI18n();
 const store = useProvidersStore();
 const auth = useAuthStore();
 const isAdmin = computed(() => !!auth.user?.is_admin);
-const isMobile = ref(false);
-function checkMobile() {
-  isMobile.value = window.innerWidth <= 768;
-}
+const { isMobile } = useMobile();
+
 onMounted(() => {
-  checkMobile();
-  window.addEventListener("resize", checkMobile);
   store.fetch();
   store.fetchSourceModels();
-});
-onUnmounted(() => {
-  window.removeEventListener("resize", checkMobile);
 });
 
 const dialog = ref(false);

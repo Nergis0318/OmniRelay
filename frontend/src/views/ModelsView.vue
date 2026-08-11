@@ -1,15 +1,11 @@
 <template>
   <div class="page">
-    <div class="page-header">
-      <div>
-        <h1 class="page-title">{{ $t("models.title") }}</h1>
-        <p class="page-sub">{{ $t("models.subtitle") }}</p>
-      </div>
+    <PageHeader :title="$t('models.title')" :subtitle="$t('models.subtitle')">
       <button v-if="isAdmin" class="btn-primary" @click="openDialog()">
         <v-icon size="15">mdi-plus</v-icon>
         {{ $t("models.addModel") }}
       </button>
-    </div>
+    </PageHeader>
 
     <div class="table-card">
       <v-data-table
@@ -21,17 +17,12 @@
         :items-per-page="-1"
       >
         <template #item.full_id="{ item }">
-          <code class="mono-tag"
-            >{{ item.provider_key }}/{{ item.model_id }}</code
-          >
+          <MonoTag>{{ item.provider_key }}/{{ item.model_id }}</MonoTag>
         </template>
         <template #item.is_manual="{ item }">
-          <span
-            class="status-chip"
-            :class="item.is_manual ? 'status-chip--warning' : 'status-chip--on'"
-          >
+          <StatusChip :variant="item.is_manual ? 'warning' : 'on'">
             {{ item.is_manual ? $t("models.manual") : $t("models.auto") }}
-          </span>
+          </StatusChip>
         </template>
         <template #item.pricing="{ item }">
           <div class="pricing-cell">
@@ -79,10 +70,7 @@
           </div>
         </template>
         <template #no-data>
-          <div class="empty-state">
-            <v-icon size="32" color="#4a4844">mdi-cube-off-outline</v-icon>
-            <p>{{ $t("models.noModels") }}</p>
-          </div>
+          <EmptyState icon="mdi-cube-off-outline" :text="$t('models.noModels')" />
         </template>
       </v-data-table>
     </div>
@@ -131,10 +119,11 @@
           </button>
         </template>
       </MobileDataCard>
-      <div v-if="!store.models.length" class="empty-state">
-        <v-icon size="32" color="#4a4844">mdi-cube-off-outline</v-icon>
-        <p>{{ $t("models.noModels") }}</p>
-      </div>
+      <EmptyState
+        v-if="!store.models.length"
+        icon="mdi-cube-off-outline"
+        :text="$t('models.noModels')"
+      />
     </div>
 
     <v-dialog
@@ -260,12 +249,17 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from "vue";
+import { ref, computed, onMounted } from "vue";
 import { useI18n } from "vue-i18n";
 import { useModelsStore } from "../stores/models";
 import { useProvidersStore } from "../stores/providers";
 import { useAuthStore } from "../stores/auth";
 import MobileDataCard from "../components/MobileDataCard.vue";
+import PageHeader from "../components/PageHeader.vue";
+import EmptyState from "../components/EmptyState.vue";
+import StatusChip from "../components/StatusChip.vue";
+import MonoTag from "../components/MonoTag.vue";
+import { useMobile } from "../composables/useMobile";
 
 const { t } = useI18n();
 const store = useModelsStore();
@@ -278,17 +272,7 @@ const editingId = ref<number | null>(null);
 const saving = ref(false);
 const dialogError = ref("");
 
-const isMobile = ref(false);
-function checkMobile() {
-  isMobile.value = window.innerWidth <= 768;
-}
-onMounted(() => {
-  checkMobile();
-  window.addEventListener("resize", checkMobile);
-});
-onUnmounted(() => {
-  window.removeEventListener("resize", checkMobile);
-});
+const { isMobile } = useMobile();
 
 const form = ref({
   provider_id: null as number | null,
@@ -451,16 +435,7 @@ onMounted(async () => {
   grid-template-columns: 1fr 1fr;
   gap: 12px;
 }
-.mobile-cards {
-  display: none;
-}
 @media (max-width: 768px) {
-  .v-data-table {
-    display: none;
-  }
-  .mobile-cards {
-    display: block;
-  }
   .price-grid {
     grid-template-columns: 1fr;
   }
