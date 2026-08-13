@@ -39,6 +39,7 @@ func main() {
 	modelService := service.NewModelService(db)
 	apiKeyService := service.NewAPIKeyService(db)
 	usageService := service.NewUsageService(db)
+	usageService.SetAPIKeyService(apiKeyService)
 	performanceService := service.NewPerformanceService(db)
 
 	h := hub.New()
@@ -73,10 +74,10 @@ func main() {
 
 	admin := r.Group("/admin")
 	{
-		admin.POST("/auth/register", handlers.Register(authService))
-		admin.POST("/auth/login", handlers.Login(authService))
-		admin.POST("/auth/reset-password", handlers.ResetPassword(authService))
-		admin.GET("/ws", handlers.WebSocketUpgrader(cfg.JWTSecret))
+		admin.POST("/auth/register", handlers.LoginRateLimit(), handlers.Register(authService))
+		admin.POST("/auth/login", handlers.LoginRateLimit(), handlers.Login(authService))
+		admin.POST("/auth/reset-password", handlers.LoginRateLimit(), handlers.ResetPassword(authService))
+		admin.GET("/ws", handlers.WebSocketUpgrader(cfg.JWTSecret, allowedOrigins))
 
 		adminAuth := admin.Group("")
 		adminAuth.Use(middleware.JWTAuth(cfg.JWTSecret))

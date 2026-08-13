@@ -10,11 +10,19 @@ import (
 const usageLogsByUser = "user_id = ?"
 
 type UsageService struct {
-	db *sql.DB
+	db      *sql.DB
+	apiKeys *APIKeyService
 }
 
 func NewUsageService(db *sql.DB) *UsageService {
 	return &UsageService{db: db}
+}
+
+// SetAPIKeyService wires the API key service so usage-log writes can
+// invalidate the token-limit cache. Optional; without it the cache simply
+// expires on its TTL.
+func (s *UsageService) SetAPIKeyService(svc *APIKeyService) {
+	s.apiKeys = svc
 }
 
 func (s *UsageService) resolveLogUserID(log models.UsageLog) *int64 {
@@ -47,6 +55,9 @@ func (s *UsageService) Log(log models.UsageLog) error {
 		log.CacheWrite5MTokens, log.CacheWrite1HTokens, log.CacheReadTokens,
 		log.LatencyMs, log.TTFTMs, log.Cost, log.IsError, log.ErrorMessage, log.UserID, log.StartedAt, log.CompletedAt,
 	)
+	if err == nil && log.APIKeyID != nil && s.apiKeys != nil {
+		s.apiKeys.InvalidateTokenCache(*log.APIKeyID)
+	}
 	return err
 }
 

@@ -175,6 +175,12 @@ func (e *Engine) HandlePathRouted(c *gin.Context) {
 	// Route to real model if model has source_provider_key
 	if dbModel != nil && dbModel.SourceProviderKey != "" {
 		if sourceProvider, serr := e.providerService.GetByKey(dbModel.SourceProviderKey, userID); serr == nil {
+			if e.authService != nil {
+				if allowed, _ := e.authService.CanAccessProvider(userID, sourceProvider.ID); !allowed {
+					apiresponse.AbortForbidden(c, errFmt, "access to this provider is not permitted for your account")
+					return
+				}
+			}
 			provider = sourceProvider
 		}
 	}

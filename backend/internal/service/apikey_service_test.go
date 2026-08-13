@@ -207,3 +207,41 @@ func TestTokenLimitZeroMeansUnlimited(t *testing.T) {
 		t.Fatalf("validate with TotalTokenLimit=0 should pass, got %v", err)
 	}
 }
+
+func TestValidateRechecksTokenLimitAfterUsageLogWithoutManualInvalidate(t *testing.T) {
+	svc := newTestAPIKeyService(t)
+	created, err := svc.Create(models.CreateAPIKeyRequest{Name: "token-limited", RateLimitRPM: 0, TotalTokenLimit: 100}, 1)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	// First validation caches the (0) token total.
+	if _, err := svc.Validate(created.PlainKey); err != nil {
+		t.Fatalf("validate before usage: %v", err)
+	}
+
+	// Usage accumulates past the limit via the UsageService while the cache is
+	// still warm. Log must invalidate the cache so Validate observes the new total.
+	usageSvc := NewUsageService(svc.db)
+	usageSvc.SetAPIKeyService(svc)
+	keyID := created.APIKey.ID
+	if err := usageSvc.Log(models.UsageLog{
+		APIKeyID:    &keyID,
+		Model:       "openai/test",
+		TotalTokens: 90,
+	}); err != nil {
+		t.Fatalf("log usage 1: %v", err)
+	}
+	if err := usageSvc.Log(models.UsageLog{
+		APIKeyID:    &keyID,
+		Model:       "openai/test",
+		TotalTokens: 20,
+	}); err != nil {
+		t.Fatalf("log usage 2: %v", err)
+	}
+
+	_, err = svc.Validate(created.PlainKey)
+	if !errors.Is(err, ErrTokenLimitExceeded) {
+		t.Fatalf("expected token limit error with warm cache, got %v", err)
+	}
+}

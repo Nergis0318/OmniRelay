@@ -135,3 +135,33 @@ func TestJWTAuthWrongSecret(t *testing.T) {
 		t.Errorf("expected 401 for wrong secret, got %d", w.Code)
 	}
 }
+
+func TestJWTAuthRejectsNonHS256Algorithm(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	// A token signed with HS512 and the *correct* secret must be rejected:
+	// the middleware only accepts HS256.
+	token := jwt.NewWithClaims(jwt.SigningMethodHS512, jwt.MapClaims{
+		"user_id":  float64(42),
+		"username": "attacker",
+		"is_admin": true,
+	})
+	tokenStr, err := token.SignedString([]byte("secret"))
+	if err != nil {
+		t.Fatalf("sign token: %v", err)
+	}
+
+	r := gin.New()
+	r.GET("/admin/test", JWTAuth("secret"), func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	})
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/admin/test", nil)
+	req.Header.Set("Authorization", "Bearer "+tokenStr)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401 for HS512 token, got %d", w.Code)
+	}
+}

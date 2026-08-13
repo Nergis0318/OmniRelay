@@ -42,6 +42,7 @@ func Login(svc *service.AuthService) gin.HandlerFunc {
 			return
 		}
 
+		resetLoginRateLimit(c)
 		c.JSON(http.StatusOK, resp)
 	}
 }

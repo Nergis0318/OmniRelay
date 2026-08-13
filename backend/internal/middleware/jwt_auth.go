@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
@@ -36,6 +37,9 @@ func JWTAuth(secret string) gin.HandlerFunc {
 		}
 
 		token, err := jwt.Parse(parts[1], func(token *jwt.Token) (interface{}, error) {
+			if token.Method != jwt.SigningMethodHS256 {
+				return nil, errors.New("unexpected signing method")
+			}
 			return []byte(secret), nil
 		})
 
