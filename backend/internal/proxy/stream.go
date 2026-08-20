@@ -105,6 +105,104 @@ func writeStreamUpstreamError(c *gin.Context, errMsg string) {
 	c.Writer.Write(reformatError(upstreamError{ErrType: "api_error", Message: errMsg}, errFmt, requestID))
 }
 
+// startSSE writes 200 + streaming headers and returns a keepalive-pinged
+// writer for the response. forceEventStream overrides an upstream
+// Content-Type with text/event-stream; when false an existing upstream
+// Content-Type is preserved. ok is false when the ResponseWriter cannot
+// flush — callers must return without writing. The caller must defer
+// close(done) to stop the keepalive pinger.
+func startSSE(c *gin.Context, resp *http.Response, forceEventStream bool) (sw *streamWriter, done chan struct{}, ok bool) {
+	c.Status(http.StatusOK)
+	copyResponseHeaders(c, resp.Header)
+	if forceEventStream || resp.Header.Get("Content-Type") == "" {
+		c.Header("Content-Type", "text/event-stream")
+	}
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+
+	flusher, canFlush := c.Writer.(http.Flusher)
+	if !canFlush {
+		return nil, nil, false
+	}
+	done = make(chan struct{})
+	sw = newStreamWriter(c.Writer, flusher)
+	startKeepAlive(sw, done)
+	return sw, done, true
+}
+
+// responsesBuffer detects Responses-API format streams mid-flight ("type":"response."
+// split across chunk boundaries), buffers them whole, and at end-of-stream turns
+// the known "Empty message" failure text into a clean error instead of forwarding
+// it as content.
+type responsesBuffer struct {
+	active     bool
+	carry      string
+	buf        bytes.Buffer
+	deltaAccum strings.Builder
+	finalText  string
+}
+
+// observe inspects one raw chunk. It returns true when the chunk belongs to a
+// Responses-API stream and was buffered instead of being forwarded; the caller
+// must then not write the chunk to the client.
+func (rb *responsesBuffer) observe(chunk []byte) bool {
+	chunkStr := string(chunk)
+	if !rb.active && strings.Contains(rb.carry+chunkStr, `"type":"response.`) {
+		rb.active = true
+	}
+	if len(chunkStr) > 15 {
+		rb.carry = chunkStr[len(chunkStr)-15:]
+	} else {
+		rb.carry = chunkStr
+	}
+	if !rb.active {
+		return false
+	}
+	rb.buf.Write(chunk)
+	extractResponsesOutputText(chunkStr, &rb.deltaAccum, &rb.finalText)
+	return true
+}
+
+// failureText returns the accumulated failure text when the buffered stream
+// ends with the known upstream failure content, else "".
+func (rb *responsesBuffer) failureText() string {
+	if !rb.active {
+		return ""
+	}
+	text := rb.finalText
+	if text == "" {
+		text = rb.deltaAccum.String()
+	}
+	if isUpstreamErrorContent(text) {
+		return text
+	}
+	return ""
+}
+
+func (rb *responsesBuffer) flush(sw *streamWriter) {
+	if rb.active {
+		sw.Write(rb.buf.Bytes())
+	}
+}
+
+// writeResponsesFailure reports a detected Responses-API stream failure:
+// a clean error status when nothing was written yet, an in-stream error
+// event otherwise. Always returns true so callers can `return` unconditionally.
+func (e *Engine) writeResponsesFailure(c *gin.Context, sw *streamWriter, u usageContext, text string, latencyMs int64) bool {
+	e.logUpstreamError(u, text, latencyMs)
+	if !c.Writer.Written() {
+		writeStreamUpstreamError(c, text)
+		return true
+	}
+	errFmt := apiresponse.FormatFromContext(c)
+	errType := "server_error"
+	if errFmt == apiresponse.FormatAnthropic {
+		errType = "overloaded_error"
+	}
+	sw.Write([]byte("data: " + string(reformatError(upstreamError{ErrType: errType, Message: text, Code: "upstream_error"}, errFmt, c.GetString("request_id"))) + "\n\n"))
+	return true
+}
+
 func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapter Adapter, apiKeyID, providerID int64, fullModelID string, dbModel *models.Model, userID int64, providerType string, inputTokens int64) {
 	start := time.Now()
 	buf := make([]byte, 4096)
@@ -120,21 +218,11 @@ func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapt
 		return
 	}
 
-	c.Status(http.StatusOK)
-	copyResponseHeaders(c, resp.Header)
-	c.Header("Content-Type", "text/event-stream")
-	c.Header("Cache-Control", "no-cache")
-	c.Header("Connection", "keep-alive")
-
-	flusher, ok := c.Writer.(http.Flusher)
+	sw, done, ok := startSSE(c, resp, true)
 	if !ok {
 		return
 	}
-
-	done := make(chan struct{})
 	defer close(done)
-	sw := newStreamWriter(c.Writer, flusher)
-	startKeepAlive(sw, done)
 
 	var totalInputTokens, totalOutputTokens int64
 	var outputTextAccum strings.Builder
@@ -143,16 +231,7 @@ func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapt
 	sentDone := false
 	var firstTokenAt *time.Time
 	var ttftMs *int64
-
-	// Responses-API format streams (e.g. conduit relay) carry the "Empty
-	// message" failure text in output_text.delta events, split across chunks.
-	// Buffer the whole stream and decide at the end so the failure can still
-	// become a clean 503.
-	responsesMode := false
-	responsesCarry := ""
-	var respBuf bytes.Buffer
-	var respDeltaAccum strings.Builder
-	respFinalText := ""
+	var rb responsesBuffer
 
 	flushHead := func() {
 		if headOpen {
@@ -190,18 +269,7 @@ func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapt
 				break
 			}
 
-			if !responsesMode && strings.Contains(responsesCarry+chunkStr, `"type":"response.`) {
-				responsesMode = true
-			}
-			responsesCarry = ""
-			if len(chunkStr) > 15 {
-				responsesCarry = chunkStr[len(chunkStr)-15:]
-			} else {
-				responsesCarry = chunkStr
-			}
-			if responsesMode {
-				respBuf.Write(chunk)
-				extractResponsesOutputText(chunkStr, &respDeltaAccum, &respFinalText)
+			if rb.observe(chunk) {
 				n, err = resp.Body.Read(buf)
 				continue
 			}
@@ -241,32 +309,13 @@ func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapt
 		return
 	}
 
-	if responsesMode {
-		text := respFinalText
-		if text == "" {
-			text = respDeltaAccum.String()
-		}
-		if isUpstreamErrorContent(text) {
-			e.logUpstreamError(usageContext{apiKeyID: apiKeyID, providerID: providerID, userID: userID, fullModelID: fullModelID}, text, latencyMs)
-			if !c.Writer.Written() {
-				writeStreamUpstreamError(c, text)
-				return
-			}
-			errFmt := apiresponse.FormatFromContext(c)
-			errType := "server_error"
-			if errFmt == apiresponse.FormatAnthropic {
-				errType = "overloaded_error"
-			}
-			sw.Write([]byte("data: " + string(reformatError(upstreamError{ErrType: errType, Message: text, Code: "upstream_error"}, errFmt, c.GetString("request_id"))) + "\n\n"))
-			return
-		}
+	if text := rb.failureText(); text != "" {
+		e.writeResponsesFailure(c, sw, usageContext{apiKeyID: apiKeyID, providerID: providerID, userID: userID, fullModelID: fullModelID}, text, latencyMs)
+		return
 	}
 
 	flushHead()
-
-	if responsesMode {
-		sw.Write(respBuf.Bytes())
-	}
+	rb.flush(sw)
 
 	if !sentDone {
 		sw.Write([]byte("data: [DONE]\n\n"))
@@ -324,46 +373,18 @@ func (e *Engine) handleRawStreamResponse(c *gin.Context, resp *http.Response, ap
 		return
 	}
 
-	c.Status(http.StatusOK)
-	copyResponseHeaders(c, resp.Header)
-	if resp.Header.Get("Content-Type") == "" {
-		c.Header("Content-Type", "text/event-stream")
-	}
-	c.Header("Cache-Control", "no-cache")
-	c.Header("Connection", "keep-alive")
-
-	flusher, ok := c.Writer.(http.Flusher)
+	sw, done, ok := startSSE(c, resp, false)
 	if !ok {
 		return
 	}
-
-	done := make(chan struct{})
 	defer close(done)
-	sw := newStreamWriter(c.Writer, flusher)
-	startKeepAlive(sw, done)
 
-	responsesMode := false
-	responsesCarry := ""
-	var respBuf bytes.Buffer
-	var respDeltaAccum strings.Builder
-	respFinalText := ""
+	var rb responsesBuffer
 
 	for {
 		if n > 0 {
 			chunk := buf[:n]
-			chunkStr := string(chunk)
-			if !responsesMode && strings.Contains(responsesCarry+chunkStr, `"type":"response.`) {
-				responsesMode = true
-			}
-			responsesCarry = ""
-			if len(chunkStr) > 15 {
-				responsesCarry = chunkStr[len(chunkStr)-15:]
-			} else {
-				responsesCarry = chunkStr
-			}
-			if responsesMode {
-				respBuf.Write(chunk)
-				extractResponsesOutputText(chunkStr, &respDeltaAccum, &respFinalText)
+			if rb.observe(chunk) {
 				n, err = resp.Body.Read(buf)
 				continue
 			}
@@ -375,27 +396,11 @@ func (e *Engine) handleRawStreamResponse(c *gin.Context, resp *http.Response, ap
 		n, err = resp.Body.Read(buf)
 	}
 
-	if responsesMode {
-		text := respFinalText
-		if text == "" {
-			text = respDeltaAccum.String()
-		}
-		if isUpstreamErrorContent(text) {
-			e.logUpstreamError(usageContext{apiKeyID: apiKeyID, providerID: providerID, userID: userID, fullModelID: fullModelID}, text, time.Since(start).Milliseconds())
-			if !c.Writer.Written() {
-				writeStreamUpstreamError(c, text)
-				return
-			}
-			errFmt := apiresponse.FormatFromContext(c)
-			errType := "server_error"
-			if errFmt == apiresponse.FormatAnthropic {
-				errType = "overloaded_error"
-			}
-			sw.Write([]byte("data: " + string(reformatError(upstreamError{ErrType: errType, Message: text, Code: "upstream_error"}, errFmt, c.GetString("request_id"))) + "\n\n"))
-			return
-		}
-		sw.Write(respBuf.Bytes())
+	if text := rb.failureText(); text != "" {
+		e.writeResponsesFailure(c, sw, usageContext{apiKeyID: apiKeyID, providerID: providerID, userID: userID, fullModelID: fullModelID}, text, time.Since(start).Milliseconds())
+		return
 	}
+	rb.flush(sw)
 
 	e.usageService.Log(models.UsageLog{
 		APIKeyID:   &apiKeyID,
@@ -458,21 +463,11 @@ func (e *Engine) handleMessagesStreamResponse(c *gin.Context, resp *http.Respons
 		return
 	}
 
-	c.Status(http.StatusOK)
-	copyResponseHeaders(c, resp.Header)
-	c.Header("Content-Type", "text/event-stream")
-	c.Header("Cache-Control", "no-cache")
-	c.Header("Connection", "keep-alive")
-
-	flusher, ok := c.Writer.(http.Flusher)
+	sw, done, ok := startSSE(c, resp, true)
 	if !ok {
 		return
 	}
-
-	done := make(chan struct{})
 	defer close(done)
-	sw := newStreamWriter(c.Writer, flusher)
-	startKeepAlive(sw, done)
 
 	sw.Write(streamBuf.Bytes())
 

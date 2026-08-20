@@ -36,7 +36,10 @@ func (e *Engine) executeChat(c *gin.Context, provider *models.Provider, dbModel 
 		return
 	}
 
-	handleNonStreamChatResponse(c, respBody, resp.Header, adapter, fullModelID, dbModel, apiKeyID, provider.ID, startTime, userID, e.usageService, provider.ProviderType, inputTokens)
+	finalResponse, wrote := parseNonStreamChatResponse(c, respBody, resp.Header, adapter, fullModelID, dbModel, apiKeyID, provider.ID, startTime, userID, e.usageService, provider.ProviderType, inputTokens)
+	if !wrote && finalResponse != nil {
+		c.JSON(http.StatusOK, finalResponse)
+	}
 }
 
 // buildAndSendChatRequest builds the upstream chat request, sends it, and

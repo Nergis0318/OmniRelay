@@ -4,13 +4,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
-	"strings"
 	"time"
 
 	"omnirelay/internal/apiresponse"
 	"omnirelay/internal/models"
+	"omnirelay/internal/service"
 
 	"github.com/gin-gonic/gin"
 )
@@ -36,7 +35,7 @@ func (rc *requestContext) executeUpstream(adaptedBody map[string]interface{}, en
 	}
 
 	if provider.ProviderType == "gemini" && isStream {
-		endpoint = applyGeminiStreamOverrides(endpoint)
+		endpoint = applyGeminiStreamingURL("gemini", endpoint, true)
 	}
 
 	adaptedJSON, _ := json.Marshal(adaptedBody)
@@ -77,16 +76,6 @@ func (rc *requestContext) executeUpstream(adaptedBody map[string]interface{}, en
 	return resp, startTime, false
 }
 
-func applyGeminiStreamOverrides(endpoint string) string {
-	endpoint = strings.Replace(endpoint, ":generateContent", ":streamGenerateContent", 1)
-	if strings.Contains(endpoint, "?") {
-		endpoint += "&alt=sse"
-	} else {
-		endpoint += "?alt=sse"
-	}
-	return endpoint
-}
-
 func logErrorResponse(e *Engine, apiKeyID, providerID int64, fullModelID string, statusCode int, latencyMs int64, userID int64) {
 	e.usageService.Log(models.UsageLog{
 		APIKeyID:     &apiKeyID,
@@ -99,17 +88,11 @@ func logErrorResponse(e *Engine, apiKeyID, providerID int64, fullModelID string,
 	})
 }
 
-func handleNonStreamChatResponse(c *gin.Context, respBody []byte, respHeader http.Header, adapter Adapter, fullModelID string, dbModel *models.Model, apiKeyID, providerID int64, startTime time.Time, userID int64, usageService UsageLogger, providerType string, inputTokens int64) {
-	finalResponse, wrote := parseNonStreamChatResponse(c, respBody, respHeader, adapter, fullModelID, dbModel, apiKeyID, providerID, startTime, userID, usageService, providerType, inputTokens)
-	if !wrote && finalResponse != nil {
-		c.JSON(http.StatusOK, finalResponse)
-	}
-}
-
 // parseNonStreamChatResponse parses an upstream chat completions response,
-// logs usage, and returns the final chat-format response map. The bool is
-// true when an error response was already written to c (nothing to send).
-func parseNonStreamChatResponse(c *gin.Context, respBody []byte, respHeader http.Header, adapter Adapter, fullModelID string, dbModel *models.Model, apiKeyID, providerID int64, startTime time.Time, userID int64, usageService UsageLogger, providerType string, inputTokens int64) (map[string]interface{}, bool) {
+// logs usage, writes the final chat-format response to c, and returns it.
+// The bool is true when an error response was already written to c (nothing
+// to send).
+func parseNonStreamChatResponse(c *gin.Context, respBody []byte, respHeader http.Header, adapter Adapter, fullModelID string, dbModel *models.Model, apiKeyID, providerID int64, startTime time.Time, userID int64, usageService *service.UsageService, providerType string, inputTokens int64) (map[string]interface{}, bool) {
 	if isEmptyResponseBody(respBody) {
 		latencyMs := time.Since(startTime).Milliseconds()
 		usageService.Log(models.UsageLog{
@@ -205,27 +188,9 @@ func parseNonStreamChatResponse(c *gin.Context, respBody []byte, respHeader http
 	return finalResponse, false
 }
 
-func readBodyAndParse(c *gin.Context) (map[string]interface{}, error) {
-	bodyBytes, err := io.ReadAll(c.Request.Body)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read request body"})
-		return nil, err
-	}
-	var body map[string]interface{}
-	if err := json.Unmarshal(bodyBytes, &body); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON"})
-		return nil, err
-	}
-	return body, nil
-}
-
 func extractStreamFlag(body map[string]interface{}) bool {
 	if stream, ok := body["stream"].(bool); ok {
 		return stream
 	}
 	return false
-}
-
-type UsageLogger interface {
-	Log(log models.UsageLog) error
 }

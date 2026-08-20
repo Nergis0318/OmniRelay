@@ -21,66 +21,26 @@ type TestProviderResult struct {
 // first available model and the given API key. It returns the result without
 // writing any response to the client.
 func TestProvider(provider *models.Provider, apiKey, modelID string, adapters map[string]Adapter, httpClient *http.Client) TestProviderResult {
-	adapter := adapters[provider.ProviderType]
-	if adapter != nil {
-		return testViaAdapter(adapter, provider, apiKey, modelID, httpClient)
-	}
-	return testDirect(provider, apiKey, modelID, httpClient)
-}
-
-func testViaAdapter(adapter Adapter, provider *models.Provider, apiKey, modelID string, httpClient *http.Client) TestProviderResult {
 	body := map[string]interface{}{
 		"model":      modelID,
 		"messages":   []map[string]interface{}{{"role": "user", "content": "ping"}},
 		"max_tokens": 1,
 		"stream":     false,
 	}
+	endpoint := "/chat/completions"
 
-	endpoint, adaptedBody, err := adapter.BuildChatRequest(body)
-	if err != nil {
-		return TestProviderResult{Ok: false, Error: err.Error()}
-	}
-
-	if isOpenAICompat(provider.ProviderType) {
-		if _, ok := adaptedBody["stream_options"]; !ok {
-			adaptedBody["stream_options"] = map[string]interface{}{"include_usage": true}
+	if adapter := adapters[provider.ProviderType]; adapter != nil {
+		var err error
+		endpoint, body, err = adapter.BuildChatRequest(body)
+		if err != nil {
+			return TestProviderResult{Ok: false, Error: err.Error()}
 		}
-	}
-	endpoint = applyGeminiStreamingURL(provider.ProviderType, endpoint, false)
-
-	jsonBody, err := json.Marshal(adaptedBody)
-	if err != nil {
-		return TestProviderResult{Ok: false, Error: err.Error()}
-	}
-
-	upstreamURL := joinUpstreamURL(provider.APiBaseURL, endpoint)
-	req, err := http.NewRequest(http.MethodPost, upstreamURL, bytes.NewReader(jsonBody))
-	if err != nil {
-		return TestProviderResult{Ok: false, Error: err.Error()}
-	}
-	req.Header.Set("Content-Type", "application/json")
-	setProviderAuthHeaders(req, provider.ProviderType, apiKey)
-
-	start := time.Now()
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return TestProviderResult{Ok: false, LatencyMs: time.Since(start).Milliseconds(), Error: err.Error()}
-	}
-	defer resp.Body.Close()
-	io.Copy(io.Discard, resp.Body)
-
-	if !isSuccessStatus(resp.StatusCode) {
-		return TestProviderResult{Ok: false, LatencyMs: time.Since(start).Milliseconds(), Error: fmt.Sprintf("upstream returned %d", resp.StatusCode)}
-	}
-	return TestProviderResult{Ok: true, LatencyMs: time.Since(start).Milliseconds()}
-}
-
-func testDirect(provider *models.Provider, apiKey, modelID string, httpClient *http.Client) TestProviderResult {
-	body := map[string]interface{}{
-		"model":      modelID,
-		"messages":   []map[string]interface{}{{"role": "user", "content": "ping"}},
-		"max_tokens": 1,
-		"stream":     false,
+		if isOpenAICompat(provider.ProviderType) {
+			if _, ok := body["stream_options"]; !ok {
+				body["stream_options"] = map[string]interface{}{"include_usage": true}
+			}
+		}
+		endpoint = applyGeminiStreamingURL(provider.ProviderType, endpoint, false)
 	}
 
 	jsonBody, err := json.Marshal(body)
@@ -88,8 +48,7 @@ func testDirect(provider *models.Provider, apiKey, modelID string, httpClient *h
 		return TestProviderResult{Ok: false, Error: err.Error()}
 	}
 
-	upstreamURL := joinUpstreamURL(provider.APiBaseURL, "/chat/completions")
-	req, err := http.NewRequest(http.MethodPost, upstreamURL, bytes.NewReader(jsonBody))
+	req, err := http.NewRequest(http.MethodPost, joinUpstreamURL(provider.APiBaseURL, endpoint), bytes.NewReader(jsonBody))
 	if err != nil {
 		return TestProviderResult{Ok: false, Error: err.Error()}
 	}
@@ -98,14 +57,15 @@ func testDirect(provider *models.Provider, apiKey, modelID string, httpClient *h
 
 	start := time.Now()
 	resp, err := httpClient.Do(req)
+	latency := time.Since(start).Milliseconds()
 	if err != nil {
-		return TestProviderResult{Ok: false, LatencyMs: time.Since(start).Milliseconds(), Error: err.Error()}
+		return TestProviderResult{Ok: false, LatencyMs: latency, Error: err.Error()}
 	}
 	defer resp.Body.Close()
 	io.Copy(io.Discard, resp.Body)
 
 	if !isSuccessStatus(resp.StatusCode) {
-		return TestProviderResult{Ok: false, LatencyMs: time.Since(start).Milliseconds(), Error: fmt.Sprintf("upstream returned %d", resp.StatusCode)}
+		return TestProviderResult{Ok: false, LatencyMs: latency, Error: fmt.Sprintf("upstream returned %d", resp.StatusCode)}
 	}
-	return TestProviderResult{Ok: true, LatencyMs: time.Since(start).Milliseconds()}
+	return TestProviderResult{Ok: true, LatencyMs: latency}
 }
