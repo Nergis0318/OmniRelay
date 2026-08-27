@@ -15,6 +15,7 @@ import (
 	"omnirelay/internal/handlers"
 	"omnirelay/internal/hub"
 	"omnirelay/internal/middleware"
+	"omnirelay/internal/passthrough"
 	"omnirelay/internal/proxy"
 	"omnirelay/internal/service"
 
@@ -41,6 +42,7 @@ func main() {
 	usageService := service.NewUsageService(db)
 	usageService.SetAPIKeyService(apiKeyService)
 	performanceService := service.NewPerformanceService(db)
+	passthroughService := service.NewPassthroughService(db)
 
 	h := hub.New()
 	handlers.SetHub(h)
@@ -113,6 +115,11 @@ func main() {
 				adminOnly.POST("/users/:id/reset-password", handlers.GenerateResetCode(authService))
 				adminOnly.GET("/users/:id/providers", handlers.GetUserProviders(authService))
 				adminOnly.PUT("/users/:id/providers", handlers.SetUserProviders(authService))
+
+				// Relay measurements are global rather than per-user, so they
+				// stay behind the admin gate.
+				adminOnly.GET("/passthrough/performance", handlers.GetPassthroughPerformance(passthroughService))
+				adminOnly.GET("/passthrough/logs", handlers.ListPassthroughLogs(passthroughService))
 			}
 		}
 	}
@@ -134,9 +141,22 @@ func main() {
 	pbr.Any("/:provider_key/v1beta/*endpoint", proxyEngine.HandlePathRouted)
 	pbr.Any("/:provider_key/api/*endpoint", proxyEngine.HandlePathRouted)
 
+	passthroughRelay := passthrough.New(passthrough.Options{
+		AllowPrivate: cfg.PassthroughAllowPrivate,
+		Timeout:      cfg.PassthroughTimeout,
+	}, passthroughService.Log, r)
+
+	var handler http.Handler = r
+	if cfg.PassthroughEnabled {
+		handler = passthroughRelay
+		log.Printf("url passthrough enabled (private targets allowed: %v, timeout: %s)", cfg.PassthroughAllowPrivate, cfg.PassthroughTimeout)
+	} else {
+		log.Println("url passthrough disabled (set PASSTHROUGH_ENABLED=true to turn on)")
+	}
+
 	srv := &http.Server{
 		Addr:    cfg.ListenAddr,
-		Handler: r,
+		Handler: handler,
 	}
 
 	go func() {
@@ -157,6 +177,9 @@ func main() {
 
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Fatalf("server forced to shutdown: %v", err)
+	}
+	if err := passthroughService.Close(); err != nil {
+		log.Printf("failed to close passthrough service: %v", err)
 	}
 
 	log.Println("server exited")

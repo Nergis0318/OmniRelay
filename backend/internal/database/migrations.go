@@ -322,6 +322,39 @@ var migrations = []migration{
 			return nil
 		},
 	},
+	{
+		version: 14,
+		up: func(tx *sql.Tx) error {
+			if _, err := tx.Exec(`CREATE TABLE IF NOT EXISTS passthrough_logs (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				host TEXT NOT NULL DEFAULT '',
+				path TEXT NOT NULL DEFAULT '',
+				method TEXT NOT NULL DEFAULT '',
+				status_code INTEGER NOT NULL DEFAULT 0,
+				is_error INTEGER NOT NULL DEFAULT 0,
+				error_message TEXT NOT NULL DEFAULT '',
+				dns_ms INTEGER,
+				connect_ms INTEGER,
+				tls_ms INTEGER,
+				ttfb_ms INTEGER,
+				ttft_ms INTEGER,
+				total_ms INTEGER NOT NULL DEFAULT 0,
+				request_bytes INTEGER NOT NULL DEFAULT 0,
+				response_bytes INTEGER NOT NULL DEFAULT 0,
+				started_at DATETIME,
+				created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+			)`); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(`CREATE INDEX IF NOT EXISTS idx_passthrough_created ON passthrough_logs(created_at)`); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(`CREATE INDEX IF NOT EXISTS idx_passthrough_host ON passthrough_logs(host, created_at)`); err != nil {
+				return err
+			}
+			return nil
+		},
+	},
 }
 
 func hasColumn(tx *sql.Tx, tableName, columnName string) (bool, error) {

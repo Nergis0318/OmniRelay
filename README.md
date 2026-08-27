@@ -8,6 +8,7 @@ OmniRelay는 여러 AI 제공자(OpenAI, Anthropic, Gemini, Ollama, LM Studio)�
 
 - **OpenAI / Anthropic 호환 API** — `/v1/chat/completions`, `/v1/messages`, `/v1/models`
 - **제공자 경로 라우팅** — `/:provider/v1/*`, `/:provider/v1beta/*`, `/:provider/api/*`
+- **URL 패스스루 릴레이** — `/https://api.openai.com/v1/...` 형태는 무변환 중계 + 성능(DNS/연결/TTFB/TTFT/전송량)만 별도 측정
 - **5개 제공자 지원** — OpenAI, Anthropic, Gemini, Ollama, LM Studio
 - **스트리밍** — SSE 스트리밍 및 토큰/비용 추출
 - **모델 자동 동기화** — 제공자 API에서 모델 목록 자동 조회 및 등록
@@ -122,6 +123,9 @@ docker run --rm -p 80:80 --env-file .env -v omnirelay-data:/app/data omnirelay
 | `JWT_SECRET`    | (개발용 기본값)                               | 대시보드 JWT 서명 키                   |
 | `ENCRYPT_KEY`   | (개발용 기본값)                               | 제공자 API 키 암호화용 32바이트 hex 키 |
 | `CORS_ORIGINS`  | `http://localhost:5173,http://localhost:3000` | 허용할 CORS 출처 (쉼표 구분)           |
+| `PASSTHROUGH_ENABLED` | `true`                                | URL 패스스루 릴레이(`/<upstream-url>`) 열기/닫기 |
+| `PASSTHROUGH_ALLOW_PRIVATE` | `false`                     | `true`면 사설/루프백 주소로 릴레이 허용 (로컬 Ollama·LM Studio 측정용) |
+| `PASSTHROUGH_TIMEOUT_SECONDS` | `900`                       | 릴레이 1건 상한(초). 스트리밍 본문 읽기까지 포함 |
 
 > **프로덕션**에서는 반드시 `JWT_SECRET`과 `ENCRYPT_KEY`를 강력한 값으로 설정하세요. `ENCRYPT_KEY`는 64자리 hex 문자열이어야 합니다 (`openssl rand -hex 32`).
 
@@ -204,6 +208,43 @@ curl http://localhost:8080/openai/v1/chat/completions \
 | `/:provider/api/*`    | `/ollama/api/chat`            | Native API (Ollama 등) |
 
 > Caddy가 `:80`에서 위 패턴들을 내부 Go 서버 `:8080`으로 프록시합니다.
+
+### URL 패스스루 (성능 전용 측정)
+
+경로에 **업스트림 URL 전체**를 넣으면 어떤 변환도 없이 그대로 중계합니다. 제공자 등록, 모델 해석, 포맷 변환, 토큰·비용 집계는 전혀 작동하지 않고 **성능만** 별도 테이블에 기록됩니다.
+
+```bash
+curl https://omni.xeon.kr/https://api.openai.com/v1/chat/completions \
+  -H "Authorization: Bearer sk-업스트림-자체-키" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"gpt-4o","messages":[{"role":"user","content":"Hello"}]}'
+```
+
+- 메서드·헤더·쿼리스트링·본문 바이트가 원본 그대로 전달됩니다. `Authorization`과 `x-api-key`도 그대로 통과시키므로 **호출자가 업스트림 키를 직접** 보유해야 합니다 (리레이 키로 주입하지 않음).
+- 응답은 버퍼링 없이 청크 단위로 플러시하므로 SSE가 업스트림 발생 시점 그대로 도착합니다.
+- `http:`/`https:`만 허용하고, 사설·루프백·링크로컬(169.254.169.254 포함)·CGNAT 주소는 연결 직전에 해석된 IP로 차단합니다(SSRF 가드). 로컬 모델 서버를 측정할 때는 `PASSTHROUGH_ALLOW_PRIVATE=true`로 켭니다.
+
+응답 헤더로 측정치가 함께 반환됩니다.
+
+| 헤더                | 의미                                  |
+| ------------------- | ------------------------------------- |
+| `X-Omni-Relay`      | `passthrough` (패스스루 경로임을 표시) |
+| `X-Omni-Target`     | 실제 접속한 업스트림 호스트            |
+| `X-Omni-Dns-Ms`     | DNS 해석 시간 (연결 재사용이면 없음)   |
+| `X-Omni-Connect-Ms` | TCP 연결 시간                         |
+| `X-Omni-Tls-Ms`     | TLS 악수 시간                         |
+| `X-Omni-Ttfb-Ms`    | 업스트림 응답 헤더까지의 시간          |
+
+DB 기록은 `usage_logs`와 분리된 `passthrough_logs` 테이블로, 별도 goroutine에서 비동기로 씁니다(측정 경로에 지연을 주지 않음). 조회는 관리자 JWT로 합니다.
+
+```bash
+# 집계: p50/p95/p99, TTFB/TTFT, DNS/연결/TLS 평균, 에러율, 초당 요청
+curl http://localhost:8080/admin/passthrough/performance -H "Authorization: Bearer <JWT>"
+curl "http://localhost:8080/admin/passthrough/performance?host=api.openai.com&granularity=minute" -H "Authorization: Bearer <JWT>"
+
+# 개별 측정 기록
+curl "http://localhost:8080/admin/passthrough/logs?limit=50" -H "Authorization: Bearer <JWT>"
+```
 
 ### Gemini
 
@@ -349,16 +390,17 @@ bun run preview              # 빌드 결과물 미리보기
 
 ## 데이터베이스
 
-SQLite (`modernc.org/sqlite`, CGO 불필요). 시작 시 자동 마이그레이션 (v9).
+SQLite (`modernc.org/sqlite`, CGO 불필요). 시작 시 자동 마이그레이션 (v14).
 
-| 테이블              | 설명                                 |
-| ------------------- | ------------------------------------ |
-| `users`             | 사용자 계정 (이메일 기반 인증)       |
-| `providers`         | 업스트림 제공자 연결 정보            |
-| `models`            | 등록된 모델 및 가격                  |
-| `api_keys`          | API 키 (SHA-256 해시, RPM/토큰 제한) |
-| `usage_logs`        | 요청별 사용량 로그 (캐시 토큰 포함)  |
-| `schema_migrations` | 마이그레이션 버전 관리               |
+| 테이블               | 설명                                          |
+| -------------------- | --------------------------------------------- |
+| `users`              | 사용자 계정 (이메일 기반 인증)                |
+| `providers`          | 업스트림 제공자 연결 정보                     |
+| `models`             | 등록된 모델 및 가격                           |
+| `api_keys`           | API 키 (SHA-256 해시, RPM/토큰 제한)          |
+| `usage_logs`         | 요청별 사용량 로그 (캐시 토큰 포함)           |
+| `passthrough_logs`   | URL 패스스루 릴레이의 성능 측정 (토큰/비용 없음) |
+| `schema_migrations`  | 마이그레이션 버전 관리                        |
 
 기본 경로: 로컬 `data/omnirelay.db`, Docker `/app/data/omnirelay.db`
 

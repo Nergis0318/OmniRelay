@@ -10,6 +10,7 @@ OmniRelay is a single-Docker-image AI proxy: Go backend (Gin) + Vue 3 dashboard 
   - `internal/service/` — business logic (auth, providers, models, usage); `provider_service.go` is the single source of truth for upstream model-list fetching (`FetchModelsFromProvider`)
   - `internal/database/` — SQLite via `modernc.org/sqlite` (pure Go, no CGO); `migrations.go` auto-runs on startup
   - `internal/middleware/` — JWT and API key auth
+  - `internal/passthrough/` — raw URL-embedded relay (`/https://host/v1/...`), performance-only, deliberately bypasses Gin and the proxy/adapter layer
   - `internal/models/` — shared structs
   - `internal/crypto/` — AES encryption helpers for provider API keys
   - `internal/config/` — environment config loading
@@ -81,6 +82,18 @@ Migration v1 creates: `users`, `providers`, `models`, `api_keys`, `usage_logs`.
 Migration v2 creates: `schema_migrations` tracking table.
 Migration v3 adds: `users.email`.
 Migration v4 adds: `providers.user_id` (idempotent).
+Migration v14 creates: `passthrough_logs` (relay timings only — no token or cost columns).
+
+## URL Passthrough Relay
+
+`/https://api.openai.com/v1/chat/completions` (the whole upstream URL inside the path) relays byte-for-byte and measures **performance only**. Non-obvious constraints:
+
+- The relay is mounted **in front of** the Gin engine in `cmd/server/main.go` (`http.Server.Handler = passthrough.New(...)` wrapping `r`), not as a Gin route. A `/*catchall` route cannot coexist with `/:provider_key/v1/*endpoint` in Gin's tree, and NoRoute would miss paths that happen to match an existing pattern.
+- The relay **never** consults `providers`, `models`, adapters, `stream_options` injection, or `usage_logs`. Client `Authorization` / `x-api-key` headers are forwarded untouched, so callers bring their own upstream key.
+- Front ends (Caddy included) may collapse the duplicate slash, arriving as `/https:/host/...`. `ParseTarget` re-adds it, and `frontend/Caddyfile` matches `^/https?:/` so both forms reach the backend. Keep that tolerance if you touch the matcher.
+- The SSRF guard resolves the host inside `Transport.DialContext` and rejects loopback/private/link-local (169.254.169.254)/multicast/CGNAT addresses at dial time, which also closes the DNS-rebinding window. `PASSTHROUGH_ALLOW_PRIVATE=true` disables it for local Ollama/LM Studio benchmarking.
+- Timing is collected with `httptrace` plus a first-byte marker in the stream copy; `passthrough_logs` writes happen on a dedicated goroutine (`service.PassthroughService`) with a non-blocking queue so SQLite never lands in the measured latency.
+- Query APIs are admin-gated: `GET /admin/passthrough/performance`, `GET /admin/passthrough/logs`.
 
 ## Coding Style
 
