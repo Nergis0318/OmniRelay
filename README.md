@@ -246,6 +246,8 @@ curl "http://localhost:8080/admin/passthrough/performance?host=api.openai.com&gr
 curl "http://localhost:8080/admin/passthrough/logs?limit=50" -H "Authorization: Bearer <JWT>"
 ```
 
+**대시보드 → 패스스루**(`/passthrough`, 관리자만 메뉴에 표시)에서도 같은 데이터를 볼 수 있습니다. 지연 단계별 평균과 P50/P95/P99를 하나의 척도로 비교하는 사다리, 호스트별 비교(행 클릭 시 필터), 최근 측정 테이블, 5초 간격 LIVE 갱신을 제공합니다.
+
 ### Gemini
 
 Gemini 제공자는 OpenAI 또는 Anthropic 호환 요청을 Gemini Native API로 변환합니다.

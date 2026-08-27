@@ -8,9 +8,18 @@ interface User {
   is_admin: boolean;
 }
 
+function readStoredUser(): User | null {
+  try {
+    const raw = localStorage.getItem("user");
+    return raw ? (JSON.parse(raw) as User) : null;
+  } catch {
+    return null;
+  }
+}
+
 export const useAuthStore = defineStore("auth", () => {
   const token = ref(localStorage.getItem("token") || "");
-  const user = ref<User | null>(null);
+  const user = ref<User | null>(readStoredUser());
   const error = ref<string | null>(null);
   const loading = ref(false);
 
@@ -20,6 +29,9 @@ export const useAuthStore = defineStore("auth", () => {
     token.value = t;
     user.value = u;
     localStorage.setItem("token", t);
+    // Without this the admin-only routes bounce to the dashboard on reload,
+    // because the guard can only see is_admin in memory.
+    localStorage.setItem("user", JSON.stringify(u));
   }
 
   function logout() {
@@ -27,6 +39,7 @@ export const useAuthStore = defineStore("auth", () => {
     user.value = null;
     error.value = null;
     localStorage.removeItem("token");
+    localStorage.removeItem("user");
   }
 
   async function login(email: string, password: string) {

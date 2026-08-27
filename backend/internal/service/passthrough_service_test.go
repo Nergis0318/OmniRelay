@@ -111,6 +111,8 @@ func TestPassthroughGetPerformance(t *testing.T) {
 	}
 	insertPassthroughRow(t, svc, "api.openai.com", 9999, 9999, true, day)
 	insertPassthroughRow(t, svc, "localhost:11434", 15, 30, false, day)
+	// A host that only ever failed must report unknown latency, never 0ms.
+	insertPassthroughRow(t, svc, "dead.example", 8000, 8000, true, day)
 
 	if err := svc.Close(); err != nil {
 		t.Fatalf("close: %v", err)
@@ -121,34 +123,39 @@ func TestPassthroughGetPerformance(t *testing.T) {
 		t.Fatalf("GetPerformance: %v", err)
 	}
 
-	if resp.Summary.TotalRequests != 7 {
-		t.Errorf("total_requests = %d, want 7", resp.Summary.TotalRequests)
+	if resp.Summary.TotalRequests != 8 {
+		t.Errorf("total_requests = %d, want 8", resp.Summary.TotalRequests)
 	}
-	if resp.Summary.ErrorRate < 0.14 || resp.Summary.ErrorRate > 0.15 {
-		t.Errorf("error_rate = %v, want ~0.143", resp.Summary.ErrorRate)
+	if resp.Summary.ErrorRate < 0.24 || resp.Summary.ErrorRate > 0.26 {
+		t.Errorf("error_rate = %v, want ~0.25", resp.Summary.ErrorRate)
 	}
 	// Errors are excluded from latency averages and percentiles.
-	if resp.Summary.AvgTotalMs != 27.5 { // (10+20+30+40+50+15)/6
-		t.Errorf("avg_total_ms = %v, want 27.5", resp.Summary.AvgTotalMs)
+	if got := derefFloat(t, resp.Summary.AvgTotalMs); got != 27.5 { // (10+20+30+40+50+15)/6
+		t.Errorf("avg_total_ms = %v, want 27.5", got)
 	}
-	if resp.Summary.P50TotalMs != 20 {
-		t.Errorf("p50_total_ms = %v, want 20", resp.Summary.P50TotalMs)
+	if got := derefFloat(t, resp.Summary.P50TotalMs); got != 20 {
+		t.Errorf("p50_total_ms = %v, want 20", got)
 	}
-	if resp.Summary.P95TotalMs != 50 {
-		t.Errorf("p95_total_ms = %v, want 50", resp.Summary.P95TotalMs)
+	if got := derefFloat(t, resp.Summary.P95TotalMs); got != 50 {
+		t.Errorf("p95_total_ms = %v, want 50", got)
 	}
 	if resp.Summary.AvgTTFBMs == nil {
 		t.Error("avg_ttfb_ms is nil, want a value")
 	}
 
-	if len(resp.ByHost) != 2 {
-		t.Fatalf("by_host = %+v, want 2 hosts", resp.ByHost)
+	if len(resp.ByHost) != 3 {
+		t.Fatalf("by_host = %+v, want 3 hosts", resp.ByHost)
 	}
 	if resp.ByHost[0].Host != "api.openai.com" || resp.ByHost[0].Requests != 6 {
 		t.Errorf("top host = %+v, want api.openai.com with 6 requests", resp.ByHost[0])
 	}
 	if resp.ByHost[0].Errors != 1 {
 		t.Errorf("top host errors = %d, want 1", resp.ByHost[0].Errors)
+	}
+	for _, h := range resp.ByHost {
+		if h.Host == "dead.example" && h.AvgTotalMs != nil {
+			t.Errorf("all-error host avg_total_ms = %v, want nil", *h.AvgTotalMs)
+		}
 	}
 	if len(resp.Timeseries) != 1 {
 		t.Errorf("timeseries buckets = %d, want 1", len(resp.Timeseries))
@@ -158,8 +165,11 @@ func TestPassthroughGetPerformance(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetPerformance(host): %v", err)
 	}
-	if filtered.Summary.TotalRequests != 1 || filtered.ByHost[0].AvgTotalMs != 15 {
-		t.Errorf("host filter = %+v", filtered.Summary)
+	if filtered.Summary.TotalRequests != 1 || derefFloat(t, filtered.ByHost[0].AvgTotalMs) != 15 {
+		t.Errorf("host filter = %+v, by_host = %+v", filtered.Summary, filtered.ByHost)
+	}
+	if filtered.ByHost[0].AvgTTFTMs != nil {
+		t.Errorf("avg_ttft_ms = %v, want nil for a non-streamed row", *filtered.ByHost[0].AvgTTFTMs)
 	}
 }
 
@@ -185,3 +195,11 @@ func TestPassthroughListFiltersByTime(t *testing.T) {
 }
 
 func ptrInt64(v int64) *int64 { return &v }
+
+func derefFloat(t *testing.T, v *float64) float64 {
+	t.Helper()
+	if v == nil {
+		t.Fatal("expected a value, got nil")
+	}
+	return *v
+}

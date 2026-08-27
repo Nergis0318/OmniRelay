@@ -98,7 +98,7 @@
   <!-- Mobile bottom tab bar -->
   <nav v-else class="mobile-tab-bar">
     <router-link
-      v-for="item in menuItems"
+      v-for="item in visibleItems"
       :key="item.to"
       :to="item.to"
       class="mobile-tab"
@@ -150,6 +150,7 @@ const menuItems = [
   { i18nKey: "nav.usage", icon: "mdi-chart-line", to: "/usage" },
   { i18nKey: "nav.logs", icon: "mdi-text-box-search-outline", to: "/logs" },
   { i18nKey: "nav.performance", icon: "mdi-chart-timeline-variant", to: "/performance" },
+  { i18nKey: "nav.passthrough", icon: "mdi-connection", to: "/passthrough", adminOnly: true },
   { i18nKey: "nav.users", icon: "mdi-account-group-outline", to: "/users", adminOnly: true },
 ];
 
@@ -402,9 +403,14 @@ function handleLogout() {
   display: flex;
   align-items: center;
   justify-content: space-around;
+  overflow-x: auto;
+  scrollbar-width: none;
   padding-bottom: env(safe-area-inset-bottom, 0px);
   padding-inline: env(safe-area-inset-left, 0px) env(safe-area-inset-right, 0px);
   z-index: 1000;
+}
+.mobile-tab-bar::-webkit-scrollbar {
+  display: none;
 }
 .mobile-tab {
   display: flex;
@@ -412,7 +418,8 @@ function handleLogout() {
   align-items: center;
   justify-content: center;
   gap: 2px;
-  flex: 1;
+  flex: 1 0 auto;
+  min-width: 56px;
   height: 100%;
   text-decoration: none;
   color: #4a4844;

@@ -37,10 +37,10 @@ type PassthroughSummary struct {
 	TotalRequests    int64    `json:"total_requests"`
 	ErrorRate        float64  `json:"error_rate"`
 	RequestsPerSec   float64  `json:"requests_per_sec"`
-	AvgTotalMs       float64  `json:"avg_total_ms"`
-	P50TotalMs       float64  `json:"p50_total_ms"`
-	P95TotalMs       float64  `json:"p95_total_ms"`
-	P99TotalMs       float64  `json:"p99_total_ms"`
+	AvgTotalMs       *float64 `json:"avg_total_ms"`
+	P50TotalMs       *float64 `json:"p50_total_ms"`
+	P95TotalMs       *float64 `json:"p95_total_ms"`
+	P99TotalMs       *float64 `json:"p99_total_ms"`
 	AvgTTFBMs        *float64 `json:"avg_ttfb_ms"`
 	AvgTTFTMs        *float64 `json:"avg_ttft_ms"`
 	AvgDNSMs         *float64 `json:"avg_dns_ms"`
@@ -53,7 +53,7 @@ type PassthroughBucket struct {
 	Bucket           string   `json:"bucket"`
 	RequestCount     int64    `json:"request_count"`
 	ErrorCount       int64    `json:"error_count"`
-	AvgTotalMs       float64  `json:"avg_total_ms"`
+	AvgTotalMs       *float64 `json:"avg_total_ms"`
 	MaxTotalMs       int64    `json:"max_total_ms"`
 	AvgTTFBMs        *float64 `json:"avg_ttfb_ms"`
 	AvgResponseBytes float64  `json:"avg_response_bytes"`
@@ -63,7 +63,7 @@ type PassthroughHostStats struct {
 	Host             string   `json:"host"`
 	Requests         int64    `json:"requests"`
 	Errors           int64    `json:"errors"`
-	AvgTotalMs       float64  `json:"avg_total_ms"`
+	AvgTotalMs       *float64 `json:"avg_total_ms"`
 	AvgTTFBMs        *float64 `json:"avg_ttfb_ms"`
 	AvgTTFTMs        *float64 `json:"avg_ttft_ms"`
 	AvgResponseBytes float64  `json:"avg_response_bytes"`

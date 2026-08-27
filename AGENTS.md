@@ -94,6 +94,8 @@ Migration v14 creates: `passthrough_logs` (relay timings only — no token or co
 - The SSRF guard resolves the host inside `Transport.DialContext` and rejects loopback/private/link-local (169.254.169.254)/multicast/CGNAT addresses at dial time, which also closes the DNS-rebinding window. `PASSTHROUGH_ALLOW_PRIVATE=true` disables it for local Ollama/LM Studio benchmarking.
 - Timing is collected with `httptrace` plus a first-byte marker in the stream copy; `passthrough_logs` writes happen on a dedicated goroutine (`service.PassthroughService`) with a non-blocking queue so SQLite never lands in the measured latency.
 - Query APIs are admin-gated: `GET /admin/passthrough/performance`, `GET /admin/passthrough/logs`.
+- Aggregates that describe *successful* traffic (`avg_total_ms`, `p50/p95/p99_total_ms`, per-host and per-bucket averages) are nullable — a window or host containing only errors reports `null`, never `0ms`. Keep that if you touch the queries; `PassthroughView.vue` renders null as `-`.
+- The dashboard page is `/passthrough` (`PassthroughView.vue`, `stores/passthrough.ts`), route + nav entry both `requiresAdmin`/`adminOnly` because the records are global, not per-user.
 
 ## Coding Style
 

@@ -184,7 +184,7 @@ func (s *PassthroughService) querySummary(where string, args []interface{}) (*mo
 	err := s.db.QueryRow(
 		`SELECT COUNT(*),
 		        COALESCE(SUM(is_error),0),
-		        COALESCE(AVG(CASE WHEN is_error = 0 THEN total_ms END),0),
+		        AVG(CASE WHEN is_error = 0 THEN total_ms END),
 		        AVG(ttfb_ms),
 		        AVG(ttft_ms),
 		        AVG(dns_ms),
@@ -205,7 +205,7 @@ func (s *PassthroughService) querySummary(where string, args []interface{}) (*mo
 		out := v.Float64
 		return &out
 	}
-	summary.AvgTotalMs = avgTotal.Float64
+	summary.AvgTotalMs = avg(avgTotal)
 	summary.AvgTTFBMs = avg(avgTTFB)
 	summary.AvgTTFTMs = avg(avgTTFT)
 	summary.AvgDNSMs = avg(avgDNS)
@@ -263,10 +263,10 @@ func (s *PassthroughService) requestsPerSecond(where string, args []interface{},
 	return float64(total) / seconds
 }
 
-func (s *PassthroughService) queryPercentiles(where string, args []interface{}) (float64, float64, float64, error) {
+func (s *PassthroughService) queryPercentiles(where string, args []interface{}) (*float64, *float64, *float64, error) {
 	rows, err := s.db.Query(`SELECT total_ms FROM passthrough_logs WHERE `+where+` AND is_error = 0 ORDER BY total_ms ASC LIMIT `+strconv.Itoa(perfRowLimit), args...)
 	if err != nil {
-		return 0, 0, 0, err
+		return nil, nil, nil, err
 	}
 	defer rows.Close()
 
@@ -274,24 +274,27 @@ func (s *PassthroughService) queryPercentiles(where string, args []interface{}) 
 	for rows.Next() {
 		var v int64
 		if err := rows.Scan(&v); err != nil {
-			return 0, 0, 0, err
+			return nil, nil, nil, err
 		}
 		sorted = append(sorted, float64(v))
 	}
 	if err := rows.Err(); err != nil {
-		return 0, 0, 0, err
+		return nil, nil, nil, err
 	}
+	// No successful requests in the window: report unknown, never 0ms.
 	if len(sorted) == 0 {
-		return 0, 0, 0, nil
+		return nil, nil, nil, nil
 	}
-	return percentile(sorted, 0.50), percentile(sorted, 0.95), percentile(sorted, 0.99), nil
+	return fptr(percentile(sorted, 0.50)), fptr(percentile(sorted, 0.95)), fptr(percentile(sorted, 0.99)), nil
 }
+
+func fptr(v float64) *float64 { return &v }
 
 func (s *PassthroughService) queryTimeseries(where string, args []interface{}, granularity string) ([]models.PassthroughBucket, error) {
 	query := `SELECT strftime('` + bucketFormat(granularity) + `', created_at) AS bucket,
 		        COUNT(*),
 		        COALESCE(SUM(is_error),0),
-		        COALESCE(AVG(CASE WHEN is_error = 0 THEN total_ms END),0),
+		        AVG(CASE WHEN is_error = 0 THEN total_ms END),
 		        COALESCE(MAX(total_ms),0),
 		        AVG(ttfb_ms),
 		        COALESCE(AVG(response_bytes),0)
@@ -306,9 +309,13 @@ func (s *PassthroughService) queryTimeseries(where string, args []interface{}, g
 	buckets := []models.PassthroughBucket{}
 	for rows.Next() {
 		var b models.PassthroughBucket
-		var avgTTFB sql.NullFloat64
-		if err := rows.Scan(&b.Bucket, &b.RequestCount, &b.ErrorCount, &b.AvgTotalMs, &b.MaxTotalMs, &avgTTFB, &b.AvgResponseBytes); err != nil {
+		var avgTotal, avgTTFB sql.NullFloat64
+		if err := rows.Scan(&b.Bucket, &b.RequestCount, &b.ErrorCount, &avgTotal, &b.MaxTotalMs, &avgTTFB, &b.AvgResponseBytes); err != nil {
 			return nil, err
+		}
+		if avgTotal.Valid {
+			v := avgTotal.Float64
+			b.AvgTotalMs = &v
 		}
 		if avgTTFB.Valid {
 			v := avgTTFB.Float64
@@ -324,7 +331,7 @@ func (s *PassthroughService) queryByHost(where string, args []interface{}) ([]mo
 	query := `SELECT host,
 		        COUNT(*),
 		        COALESCE(SUM(is_error),0),
-		        COALESCE(AVG(CASE WHEN is_error = 0 THEN total_ms END),0),
+		        AVG(CASE WHEN is_error = 0 THEN total_ms END),
 		        AVG(ttfb_ms),
 		        AVG(ttft_ms),
 		        COALESCE(AVG(response_bytes),0)
@@ -339,9 +346,13 @@ func (s *PassthroughService) queryByHost(where string, args []interface{}) ([]mo
 	stats := []models.PassthroughHostStats{}
 	for rows.Next() {
 		var st models.PassthroughHostStats
-		var avgTTFB, avgTTFT sql.NullFloat64
-		if err := rows.Scan(&st.Host, &st.Requests, &st.Errors, &st.AvgTotalMs, &avgTTFB, &avgTTFT, &st.AvgResponseBytes); err != nil {
+		var avgTotal, avgTTFB, avgTTFT sql.NullFloat64
+		if err := rows.Scan(&st.Host, &st.Requests, &st.Errors, &avgTotal, &avgTTFB, &avgTTFT, &st.AvgResponseBytes); err != nil {
 			return nil, err
+		}
+		if avgTotal.Valid {
+			v := avgTotal.Float64
+			st.AvgTotalMs = &v
 		}
 		if avgTTFB.Valid {
 			v := avgTTFB.Float64
