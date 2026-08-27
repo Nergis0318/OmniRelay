@@ -153,14 +153,13 @@ func parseNonStreamChatResponse(c *gin.Context, respBody []byte, respHeader http
 		cacheWrite5m, cacheWrite1h, cacheReadTokens = extractCacheTokens(usage)
 	}
 
-	// Prefer locally counted tokens over upstream values
-	reqTokens := inputTokens
+	reqTokens := upstreamReqTokens
 	if reqTokens == 0 {
-		reqTokens = upstreamReqTokens
+		reqTokens = inputTokens
 	}
-	respTokens := localOutput
+	respTokens := upstreamRespTokens
 	if respTokens == 0 {
-		respTokens = upstreamRespTokens
+		respTokens = localOutput
 	}
 	totalTokens := reqTokens + respTokens
 

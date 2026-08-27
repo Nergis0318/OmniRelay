@@ -327,11 +327,11 @@ func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapt
 		ttftMs = &v
 	}
 
+	if totalInputTokens == 0 && inputTokens > 0 {
+		totalInputTokens = inputTokens
+	}
 	if totalOutputTokens == 0 && outputTextAccum.Len() > 0 {
 		totalOutputTokens = countTextTokens(outputTextAccum.String(), fullModelID)
-	}
-	if inputTokens > 0 {
-		totalInputTokens = inputTokens
 	}
 
 	cacheWrite5m, _ := state["cache_write_5m_tokens"].(int64)
@@ -479,13 +479,11 @@ func (e *Engine) handleMessagesStreamResponse(c *gin.Context, resp *http.Respons
 		ttftMs = &v
 	}
 
-	// Prefer locally counted output tokens over upstream values
+	if totalInputTokens == 0 && inputTokens > 0 {
+		totalInputTokens = inputTokens
+	}
 	if totalOutputTokens == 0 && outputTextAccum.Len() > 0 {
 		totalOutputTokens = countTextTokens(outputTextAccum.String(), fullModelID)
-	}
-	// Prefer locally counted input tokens over upstream values
-	if inputTokens > 0 {
-		totalInputTokens = inputTokens
 	}
 
 	cacheWrite5m, _ := state["cache_write_5m_tokens"].(int64)

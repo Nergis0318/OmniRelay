@@ -359,19 +359,25 @@ func (e *Engine) executeMessages(c *gin.Context, body map[string]interface{}, fu
 	// Extract upstream token data (for cache tokens and fallback)
 	usage, hasUsage := finalResponse["usage"].(map[string]interface{})
 
-	// Prefer locally counted tokens over upstream values
-	inputTokens := localInputTokens
-	outputTokens := localOutputTokens
+	var upstreamInput, upstreamOutput int64
+	if hasUsage {
+		upstreamInput = numberToInt64(usage["input_tokens"])
+		if upstreamInput == 0 {
+			upstreamInput = numberToInt64(usage["prompt_tokens"])
+		}
+		upstreamOutput = numberToInt64(usage["output_tokens"])
+		if upstreamOutput == 0 {
+			upstreamOutput = numberToInt64(usage["completion_tokens"])
+		}
+	}
 
-	if inputTokens == 0 && hasUsage {
-		inputTokens = numberToInt64(usage["input_tokens"])
+	inputTokens := upstreamInput
+	if inputTokens == 0 {
+		inputTokens = localInputTokens
 	}
-	if outputTokens == 0 && hasUsage {
-		outputTokens = numberToInt64(usage["output_tokens"])
-	}
-	if inputTokens == 0 && outputTokens == 0 && hasUsage {
-		inputTokens = numberToInt64(usage["prompt_tokens"])
-		outputTokens = numberToInt64(usage["completion_tokens"])
+	outputTokens := upstreamOutput
+	if outputTokens == 0 {
+		outputTokens = localOutputTokens
 	}
 
 	if inputTokens == 0 && outputTokens == 0 {
@@ -512,14 +518,13 @@ func (e *Engine) handlePathRoutedProxy(c *gin.Context, provider *models.Provider
 		// Extract upstream token data (for cache tokens and fallback)
 		upstreamReq, upstreamResp, _, cacheWrite5m, cacheWrite1h, cacheReadTokens := extractUsageFromRawResponse(provider.ProviderType, respJSON)
 
-		// Prefer locally counted tokens
-		requestTokens := localInputTokens
+		requestTokens := upstreamReq
 		if requestTokens == 0 {
-			requestTokens = upstreamReq
+			requestTokens = localInputTokens
 		}
-		responseTokens := localOutputTokens
-		if responseTokens == 0 && upstreamResp > 0 {
-			responseTokens = upstreamResp
+		responseTokens := upstreamResp
+		if responseTokens == 0 {
+			responseTokens = localOutputTokens
 		}
 		totalTokens := requestTokens + responseTokens
 
