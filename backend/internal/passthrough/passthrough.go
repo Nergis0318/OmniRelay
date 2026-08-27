@@ -38,7 +38,10 @@ const (
 	HeaderTargetHost = "X-Omni-Target"
 )
 
-const copyBufferSize = 32 << 10
+const (
+	copyBufferSize      = 32 << 10
+	maxModelCaptureBytes = 64 << 10 // bound the buffered request prefix for model extraction
+)
 
 // Options configures a Relay.
 type Options struct {
@@ -206,6 +209,7 @@ func (rl *Relay) relay(w http.ResponseWriter, req *http.Request) {
 	record.InputTokens, record.OutputTokens,
 		record.CacheWrite5MTokens, record.CacheWrite1HTokens,
 		record.CacheReadTokens = capture.result()
+	record.Model = sent.modelName()
 	if record.IsError {
 		record.ErrMessage = fmt.Sprintf("upstream returned %d", resp.StatusCode)
 	}
@@ -235,10 +239,14 @@ func newUpstreamRequest(req *http.Request, upstreamURL string) (*http.Request, *
 
 // countingReader tracks how many request-body bytes the transport pulled. The
 // value is only meaningful once the exchange finished, which is when callers
-// read it.
+// read it. It also buffers a bounded prefix of the body so the requested
+// model name can be recorded after the fact.
 type countingReader struct {
-	reader io.Reader
-	n      atomic.Int64
+	reader    io.Reader
+	n         atomic.Int64
+	modelBuf  []byte
+	model     string
+	modelDone bool
 }
 
 func (c *countingReader) Read(p []byte) (int, error) {
@@ -247,6 +255,17 @@ func (c *countingReader) Read(p []byte) (int, error) {
 	}
 	n, err := c.reader.Read(p)
 	c.n.Add(int64(n))
+	if n > 0 && !c.modelDone {
+		if len(c.modelBuf) < maxModelCaptureBytes {
+			c.modelBuf = append(c.modelBuf, p[:n]...)
+			if len(c.modelBuf) >= maxModelCaptureBytes {
+				c.modelBuf = c.modelBuf[:maxModelCaptureBytes]
+				c.modelDone = true
+			}
+		} else {
+			c.modelDone = true
+		}
+	}
 	return n, err
 }
 
@@ -255,6 +274,19 @@ func (c *countingReader) bytes() int64 {
 		return 0
 	}
 	return c.n.Load()
+}
+
+// modelName returns the "model" field from the buffered request body prefix, or
+// "" when the body was not a small JSON object carrying one.
+func (c *countingReader) modelName() string {
+	if c == nil {
+		return ""
+	}
+	if c.model != "" {
+		return c.model
+	}
+	c.model = extractModel(c.modelBuf)
+	return c.model
 }
 
 // stream copies the upstream body to the client chunk by chunk, flushing as it

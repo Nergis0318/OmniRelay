@@ -272,6 +272,7 @@ export default {
     filterByHost: "이 호스트로 필터",
     errors: "건 오류",
     time: "시각",
+    model: "모델",
     path: "경로",
     status: "상태",
     total: "총",

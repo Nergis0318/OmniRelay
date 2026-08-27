@@ -9,6 +9,7 @@ type PassthroughLog struct {
 	Host               string     `json:"host"`
 	Path               string     `json:"path"`
 	Method             string     `json:"method"`
+	Model              string     `json:"model"`
 	StatusCode         int        `json:"status_code"`
 	IsError            bool       `json:"is_error"`
 	ErrMessage         string     `json:"error_message,omitempty"`

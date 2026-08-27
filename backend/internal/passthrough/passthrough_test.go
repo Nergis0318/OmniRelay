@@ -191,6 +191,9 @@ func TestRelayForwardsRequestVerbatim(t *testing.T) {
 	if record.RequestBytes != int64(len(`{"model":"gpt-4o"}`)) {
 		t.Errorf("request_bytes = %d, want %d", record.RequestBytes, len(`{"model":"gpt-4o"}`))
 	}
+	if record.Model != "gpt-4o" {
+		t.Errorf("model = %q, want %q", record.Model, "gpt-4o")
+	}
 }
 
 func TestRelayPassesQueryString(t *testing.T) {

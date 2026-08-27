@@ -91,9 +91,9 @@ func (s *PassthroughService) Close() error {
 
 func (s *PassthroughService) insert(rec models.PassthroughLog) {
 	_, err := s.db.Exec(
-		`INSERT INTO passthrough_logs (host, path, method, status_code, is_error, error_message, dns_ms, connect_ms, tls_ms, ttfb_ms, ttft_ms, total_ms, request_bytes, response_bytes, input_tokens, output_tokens, cache_write_5m_tokens, cache_write_1h_tokens, cache_read_tokens, started_at, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		rec.Host, rec.Path, rec.Method, rec.StatusCode, boolToInt(rec.IsError), rec.ErrMessage,
+		`INSERT INTO passthrough_logs (host, path, method, model, status_code, is_error, error_message, dns_ms, connect_ms, tls_ms, ttfb_ms, ttft_ms, total_ms, request_bytes, response_bytes, input_tokens, output_tokens, cache_write_5m_tokens, cache_write_1h_tokens, cache_read_tokens, started_at, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		rec.Host, rec.Path, rec.Method, rec.Model, rec.StatusCode, boolToInt(rec.IsError), rec.ErrMessage,
 		rec.DNSMs, rec.ConnectMs, rec.TLSMs, rec.TTFBMs, rec.TTFTMs, rec.TotalMs,
 		rec.RequestBytes, rec.ResponseBytes,
 		rec.InputTokens, rec.OutputTokens, rec.CacheWrite5MTokens, rec.CacheWrite1HTokens, rec.CacheReadTokens,
@@ -425,7 +425,7 @@ func (s *PassthroughService) List(params models.PassthroughQueryParams) ([]model
 		return nil, 0, err
 	}
 
-	query := `SELECT id, host, path, method, status_code, is_error, error_message, dns_ms, connect_ms, tls_ms, ttfb_ms, ttft_ms, total_ms, request_bytes, response_bytes, input_tokens, output_tokens, cache_write_5m_tokens, cache_write_1h_tokens, cache_read_tokens, started_at, created_at
+	query := `SELECT id, host, path, method, model, status_code, is_error, error_message, dns_ms, connect_ms, tls_ms, ttfb_ms, ttft_ms, total_ms, request_bytes, response_bytes, input_tokens, output_tokens, cache_write_5m_tokens, cache_write_1h_tokens, cache_read_tokens, started_at, created_at
 	          FROM passthrough_logs WHERE ` + where + ` ORDER BY id DESC LIMIT ` + strconv.Itoa(limit) + ` OFFSET ` + strconv.Itoa(offset)
 	rows, err := s.db.Query(query, args...)
 	if err != nil {
@@ -438,7 +438,7 @@ func (s *PassthroughService) List(params models.PassthroughQueryParams) ([]model
 		var l models.PassthroughLog
 		var isErr int
 		var startedAt, createdAt sql.NullString
-		if err := rows.Scan(&l.ID, &l.Host, &l.Path, &l.Method, &l.StatusCode, &isErr, &l.ErrMessage,
+		if err := rows.Scan(&l.ID, &l.Host, &l.Path, &l.Method, &l.Model, &l.StatusCode, &isErr, &l.ErrMessage,
 			&l.DNSMs, &l.ConnectMs, &l.TLSMs, &l.TTFBMs, &l.TTFTMs, &l.TotalMs,
 			&l.RequestBytes, &l.ResponseBytes,
 			&l.InputTokens, &l.OutputTokens, &l.CacheWrite5MTokens, &l.CacheWrite1HTokens, &l.CacheReadTokens,

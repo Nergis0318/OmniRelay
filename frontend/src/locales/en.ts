@@ -272,6 +272,7 @@ export default {
     filterByHost: "Filter by this host",
     errors: " errors",
     time: "Time",
+    model: "Model",
     path: "Path",
     status: "Status",
     total: "Total",

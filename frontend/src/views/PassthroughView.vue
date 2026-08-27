@@ -2,15 +2,10 @@
   <div class="page">
     <PageHeader :title="$t('passthrough.title')" :subtitle="$t('passthrough.subtitle')">
       <div class="head-actions">
-        <button
-          class="preset-chip live-chip"
-          :class="{ 'preset-chip--active': live }"
-          :aria-pressed="live ? 'true' : 'false'"
-          @click="toggleLive"
-        >
-          <span class="live-dot" :class="{ 'live-dot--on': live }" aria-hidden="true" />
+        <span class="preset-chip live-chip live-chip--always">
+          <span class="live-dot live-dot--on" aria-hidden="true" />
           {{ $t("passthrough.live") }}
-        </button>
+        </span>
         <button class="btn-tonal" :disabled="store.loading" @click="load">
           <v-icon size="15">mdi-refresh</v-icon>
           {{ $t("common.refresh") }}
@@ -262,6 +257,7 @@
               <tr>
                 <th>{{ $t("passthrough.time") }}</th>
                 <th>{{ $t("passthrough.host") }}</th>
+                <th>{{ $t("passthrough.model") }}</th>
                 <th>{{ $t("passthrough.path") }}</th>
                 <th>{{ $t("passthrough.status") }}</th>
                 <th class="num">DNS</th>
@@ -280,6 +276,7 @@
               <tr v-for="log in store.logs" :key="log.id">
                 <td class="dim-text">{{ formatTime(log.started_at) }}</td>
                 <td><MonoTag>{{ log.host || "-" }}</MonoTag></td>
+                <td><MonoTag>{{ log.model || "-" }}</MonoTag></td>
                 <td class="path-cell">
                   <span class="method-chip type-chip">{{ log.method }}</span>
                   <span class="path-text mono-val">{{ log.path }}</span>
@@ -316,6 +313,7 @@
             :items="[
               { label: $t('passthrough.time'), value: formatTime(log.started_at) },
               { label: $t('passthrough.host'), value: log.host || '-' },
+              { label: $t('passthrough.model'), value: log.model || '-' },
               { label: $t('passthrough.path'), value: `${log.method} ${log.path}` },
               { label: $t('passthrough.status'), value: String(log.status_code) },
               { label: $t('passthrough.setup'), value: fmtMs(sumPhases(log)) },
@@ -409,7 +407,6 @@ const presets = [
   { key: "30d", label: "30D" },
 ];
 
-const live = ref(false);
 let liveTimer: ReturnType<typeof setInterval> | undefined;
 
 const emptySummary = {
@@ -673,17 +670,12 @@ function prevPage() {
   reloadLogs();
 }
 
-function toggleLive() {
-  live.value = !live.value;
-  if (live.value) {
-    liveTimer = setInterval(() => {
-      store.fetchPerformance(queryFilters());
-      store.fetchLogs({ ...queryFilters(), limit: pageSize.value, offset: offset.value });
-    }, 5000);
-  } else if (liveTimer) {
-    clearInterval(liveTimer);
-    liveTimer = undefined;
-  }
+function startLive() {
+  if (liveTimer) clearInterval(liveTimer);
+  liveTimer = setInterval(() => {
+    store.fetchPerformance(queryFilters());
+    store.fetchLogs({ ...queryFilters(), limit: pageSize.value, offset: offset.value });
+  }, 5000);
 }
 
 watch(filters, () => {
@@ -872,7 +864,10 @@ const tokenOptions = {
   },
 };
 
-onMounted(load);
+onMounted(() => {
+  load();
+  startLive();
+});
 onUnmounted(() => {
   if (liveTimer) clearInterval(liveTimer);
 });
@@ -891,6 +886,11 @@ onUnmounted(() => {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+}
+.live-chip--always {
+  background: rgba(46, 196, 182, 0.12);
+  border-color: var(--color-success);
+  color: var(--color-success);
 }
 .live-dot {
   width: 6px;
@@ -965,8 +965,7 @@ onUnmounted(() => {
 
 .preset-chip:focus-visible,
 .host-row:focus-visible,
-.alert-dismiss:focus-visible,
-.live-chip:focus-visible {
+.alert-dismiss:focus-visible {
   outline: none;
   box-shadow: var(--focus-ring-visible);
   border-radius: var(--radius-sm);

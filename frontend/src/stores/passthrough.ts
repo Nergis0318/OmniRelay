@@ -7,6 +7,7 @@ export interface PassthroughLog {
   host: string;
   path: string;
   method: string;
+  model: string;
   status_code: number;
   is_error: boolean;
   error_message?: string;

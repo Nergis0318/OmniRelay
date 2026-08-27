@@ -373,6 +373,21 @@ var migrations = []migration{
 			return nil
 		},
 	},
+	{
+		version: 16,
+		up: func(tx *sql.Tx) error {
+			exists, err := hasColumn(tx, "passthrough_logs", "model")
+			if err != nil {
+				return err
+			}
+			if !exists {
+				if _, err := tx.Exec(`ALTER TABLE passthrough_logs ADD COLUMN model TEXT NOT NULL DEFAULT ''`); err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+	},
 }
 
 func hasColumn(tx *sql.Tx, tableName, columnName string) (bool, error) {

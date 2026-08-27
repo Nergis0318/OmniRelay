@@ -274,6 +274,7 @@ export default {
     filterByHost: "このホストで絞り込む",
     errors: " 件エラー",
     time: "時刻",
+    model: "モデル",
     path: "パス",
     status: "状態",
     total: "合計",
