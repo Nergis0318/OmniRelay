@@ -370,4 +370,73 @@ func TestRelayStreamsAsUpstreamEmits(t *testing.T) {
 	if *record.TTFTMs > record.TotalMs {
 		t.Errorf("ttft %d ms exceeds total %d ms", *record.TTFTMs, record.TotalMs)
 	}
+	if record.InputTokens != nil || record.OutputTokens != nil {
+		t.Errorf("a stream without usage reported tokens: %v/%v", record.InputTokens, record.OutputTokens)
+	}
+}
+
+// TestRelayRecordsUsageFromSSE wires the capture into the full relay path and
+// checks both the recorded tokens and that the client still receives the
+// response bytes verbatim.
+func TestRelayRecordsUsageFromSSE(t *testing.T) {
+	sent := "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":17,\"completion_tokens\":5}}\n\ndata: [DONE]\n\n"
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		flusher, _ := w.(http.Flusher)
+		fmt.Fprint(w, sent)
+		if flusher != nil {
+			flusher.Flush()
+		}
+	}))
+	defer upstream.Close()
+
+	var sink collector
+	relay := New(Options{AllowPrivate: true, Timeout: 10 * time.Second}, sink.log, http.HandlerFunc(notFound))
+	front := httptest.NewServer(relay)
+	defer front.Close()
+
+	resp, err := http.Get(front.URL + "/" + upstream.URL + "/v1/chat/completions")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	got, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	if string(got) != sent {
+		t.Errorf("client received altered bytes:\n got %q\nwant %q", got, sent)
+	}
+
+	record := sink.last(t)
+	if record.InputTokens == nil || *record.InputTokens != 17 {
+		t.Errorf("recorded input tokens = %v, want 17", record.InputTokens)
+	}
+	if record.OutputTokens == nil || *record.OutputTokens != 5 {
+		t.Errorf("recorded output tokens = %v, want 5", record.OutputTokens)
+	}
+}
+
+// TestRelayRecordsUsageFromJSONBody covers the non-streaming shape: the echoed
+// upstream body carries an OpenAI usage object.
+func TestRelayRecordsUsageFromJSONBody(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"id":"chatcmpl_1","usage":{"prompt_tokens":41,"completion_tokens":9}}`)
+	}))
+	defer upstream.Close()
+
+	var sink collector
+	relay := New(Options{AllowPrivate: true, Timeout: 5 * time.Second}, sink.log, http.HandlerFunc(notFound))
+
+	req := httptest.NewRequest(http.MethodPost, "/"+upstream.URL+"/v1/chat/completions", strings.NewReader(`{}`))
+	rec := httptest.NewRecorder()
+	relay.ServeHTTP(rec, req)
+
+	record := sink.last(t)
+	if record.InputTokens == nil || *record.InputTokens != 41 {
+		t.Errorf("recorded input tokens = %v, want 41", record.InputTokens)
+	}
+	if record.OutputTokens == nil || *record.OutputTokens != 9 {
+		t.Errorf("recorded output tokens = %v, want 9", record.OutputTokens)
+	}
 }

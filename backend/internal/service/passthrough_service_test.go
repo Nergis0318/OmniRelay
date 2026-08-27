@@ -194,6 +194,105 @@ func TestPassthroughListFiltersByTime(t *testing.T) {
 	}
 }
 
+// TestLogPersistsTokenColumns round-trips the five usage columns through Log ->
+// insert -> List, including the all-null case.
+func TestLogPersistsTokenColumns(t *testing.T) {
+	svc := newTestPassthroughService(t)
+
+	svc.Log(models.PassthroughLog{
+		Host: "api.anthropic.com", Method: "POST", StatusCode: 200,
+		InputTokens: ptrInt64(120), OutputTokens: ptrInt64(45),
+		CacheWrite5MTokens: ptrInt64(88), CacheWrite1HTokens: ptrInt64(7), CacheReadTokens: ptrInt64(12),
+	})
+	svc.Log(models.PassthroughLog{Host: "api.openai.com", Method: "POST", StatusCode: 200})
+
+	if err := svc.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	logs, total, err := svc.List(models.PassthroughQueryParams{Limit: 10})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if total != 2 {
+		t.Fatalf("total = %d, want 2", total)
+	}
+	var anthropic, plain models.PassthroughLog
+	for _, l := range logs {
+		switch l.Host {
+		case "api.anthropic.com":
+			anthropic = l
+		case "api.openai.com":
+			plain = l
+		}
+	}
+	if anthropic.Host != "api.anthropic.com" || plain.Host != "api.openai.com" {
+		t.Fatalf("records not found: %+v", logs)
+	}
+	if *anthropic.InputTokens != 120 || *anthropic.OutputTokens != 45 {
+		t.Errorf("tokens = %v/%v, want 120/45", anthropic.InputTokens, anthropic.OutputTokens)
+	}
+	if *anthropic.CacheWrite5MTokens != 88 || *anthropic.CacheWrite1HTokens != 7 || *anthropic.CacheReadTokens != 12 {
+		t.Errorf("cache = %v/%v/%v, want 88/7/12",
+			anthropic.CacheWrite5MTokens, anthropic.CacheWrite1HTokens, anthropic.CacheReadTokens)
+	}
+	if plain.InputTokens != nil || plain.OutputTokens != nil ||
+		plain.CacheWrite5MTokens != nil || plain.CacheWrite1HTokens != nil || plain.CacheReadTokens != nil {
+		t.Errorf("usage-less relay must store NULLs, got %+v", plain)
+	}
+}
+
+func TestPerformanceTokenAggregatesAreNullWithoutUsage(t *testing.T) {
+	svc := newTestPassthroughService(t)
+
+	day := "2026-08-27 10:00:00"
+	insertPassthroughRow(t, svc, "api.openai.com", 10, 20, false, day)
+
+	usageSvc := svc
+	usageSvc.Log(models.PassthroughLog{
+		Host: "api.anthropic.com", Method: "POST", StatusCode: 200,
+		InputTokens: ptrInt64(100), OutputTokens: ptrInt64(30),
+		CacheReadTokens: ptrInt64(50),
+	})
+
+	if err := svc.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	resp, err := svc.GetPerformance(models.PassthroughQueryParams{})
+	if err != nil {
+		t.Fatalf("GetPerformance: %v", err)
+	}
+	summary := resp.Summary
+	if summary.TotalInputTokens == nil || *summary.TotalInputTokens != 100 {
+		t.Errorf("total_input_tokens = %v, want 100", summary.TotalInputTokens)
+	}
+	if summary.TotalOutputTokens == nil || *summary.TotalOutputTokens != 30 {
+		t.Errorf("total_output_tokens = %v, want 30", summary.TotalOutputTokens)
+	}
+	if summary.TotalCacheReadTokens == nil || *summary.TotalCacheReadTokens != 50 {
+		t.Errorf("total_cache_read_tokens = %v, want 50", summary.TotalCacheReadTokens)
+	}
+	// Anthropic never reported a 1h cache write; nothing else did either.
+	if summary.TotalCacheWrite1HToks != nil {
+		t.Errorf("total_cache_write_1h_tokens = %v, want null", *summary.TotalCacheWrite1HToks)
+	}
+
+	for _, h := range resp.ByHost {
+		if h.Host == "api.anthropic.com" && (h.OutputTokens == nil || *h.OutputTokens != 30) {
+			t.Errorf("by_host output_tokens = %v, want 30 for api.anthropic.com", h.OutputTokens)
+		}
+		if h.Host == "api.openai.com" && h.OutputTokens != nil {
+			t.Errorf("by_host output_tokens = %v, want null for the usage-less host", *h.OutputTokens)
+		}
+	}
+
+	bucket := resp.Timeseries[0]
+	if bucket.InputTokens == nil || *bucket.InputTokens != 100 {
+		t.Errorf("bucket input_tokens = %v, want 100", bucket.InputTokens)
+	}
+}
+
 func ptrInt64(v int64) *int64 { return &v }
 
 func derefFloat(t *testing.T, v *float64) float64 {

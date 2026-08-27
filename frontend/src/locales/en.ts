@@ -224,7 +224,7 @@ export default {
   },
   passthrough: {
     title: "URL Passthrough",
-    subtitle: "Relay latency without translation · excluded from cost and token totals",
+    subtitle: "Relay latency without translation · records the usage upstream reports on its own responses",
     live: "LIVE",
     host: "Upstream host",
     hostPlaceholder: "api.openai.com",
@@ -252,6 +252,13 @@ export default {
     errorRate: "Error rate",
     avgResponse: "Avg response",
     responseSize: "Response",
+    tokens: "Tokens",
+    tokensHint: "as reported by upstream",
+    inTok: "In tok",
+    outTok: "Out tok",
+    cacheTok: "Cache W/R",
+    cacheRead: "Cache read",
+    tokenFlow: "Token flow",
     ladder: "Latency breakdown",
     ladderNote:
       "Every bar shares one 0 – total time scale. Phase bars average only the requests where that phase actually happened, so a reused keep-alive connection records no DNS, TCP or TLS. TTFB and TTFT are cumulative from the start of the request.",

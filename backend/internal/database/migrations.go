@@ -2,6 +2,7 @@ package database
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
 )
 
@@ -351,6 +352,23 @@ var migrations = []migration{
 			}
 			if _, err := tx.Exec(`CREATE INDEX IF NOT EXISTS idx_passthrough_host ON passthrough_logs(host, created_at)`); err != nil {
 				return err
+			}
+			return nil
+		},
+	},
+	{
+		version: 15,
+		up: func(tx *sql.Tx) error {
+			for _, col := range []string{"input_tokens", "output_tokens", "cache_write_5m_tokens", "cache_write_1h_tokens", "cache_read_tokens"} {
+				exists, err := hasColumn(tx, "passthrough_logs", col)
+				if err != nil {
+					return err
+				}
+				if !exists {
+					if _, err := tx.Exec(fmt.Sprintf(`ALTER TABLE passthrough_logs ADD COLUMN %s INTEGER`, col)); err != nil {
+						return err
+					}
+				}
 			}
 			return nil
 		},

@@ -226,7 +226,7 @@ export default {
   },
   passthrough: {
     title: "URL パススルー",
-    subtitle: "変換なしのリレー遅延 · トークンとコスト集計の対象外",
+    subtitle: "変換なしのリレー遅延 · アップストリームが報告するトークン使用量を記録",
     live: "LIVE",
     host: "アップストリームホスト",
     hostPlaceholder: "api.openai.com",
@@ -254,6 +254,13 @@ export default {
     errorRate: "エラー率",
     avgResponse: "平均レスポンス",
     responseSize: "レスポンス",
+    tokens: "トークン",
+    tokensHint: "アップストリームの報告値",
+    inTok: "入力",
+    outTok: "出力",
+    cacheTok: "キャッシュ W/R",
+    cacheRead: "キャッシュ読み",
+    tokenFlow: "トークン流量",
     ladder: "遅延の内訳",
     ladderNote:
       "すべてのバーは 0 – 合計時間の同一スケールです。各段階の値はその段階が実際に発生したリクエストだけを平均しており、コネクションを再利用すると DNS・TCP・TLS は発生しません。TTFB と TTFT はリクエスト開始からの累計値です。",

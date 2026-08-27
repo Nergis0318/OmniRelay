@@ -224,7 +224,7 @@ export default {
   },
   passthrough: {
     title: "URL 패스스루",
-    subtitle: "무변환 릴레이 지연 측정 · 토큰·비용 집계 제외",
+    subtitle: "무변환 릴레이 지연 측정 · 업스트림이 알려주는 토큰 사용량 기록",
     live: "LIVE",
     host: "업스트림 호스트",
     hostPlaceholder: "api.openai.com",
@@ -252,6 +252,13 @@ export default {
     errorRate: "에러율",
     avgResponse: "평균 응답",
     responseSize: "응답 크기",
+    tokens: "토큰",
+    tokensHint: "업스트림 보고 기준",
+    inTok: "입력",
+    outTok: "출력",
+    cacheTok: "캐시 W/R",
+    cacheRead: "캐시 읽기",
+    tokenFlow: "토큰 흐름",
     ladder: "지연 단계 분해",
     ladderNote:
       "모든 막대는 0 – 총 소요 척도 기준입니다. 단계별 값은 그 단계가 실제로 일어난 요청만 평균낸 것으로, 연결을 재사용하면 DNS·TCP·TLS가 발생하지 않습니다. TTFB·TTFT는 시작 시점부터 누적된 값입니다.",

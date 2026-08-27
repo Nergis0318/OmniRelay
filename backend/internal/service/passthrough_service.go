@@ -91,11 +91,13 @@ func (s *PassthroughService) Close() error {
 
 func (s *PassthroughService) insert(rec models.PassthroughLog) {
 	_, err := s.db.Exec(
-		`INSERT INTO passthrough_logs (host, path, method, status_code, is_error, error_message, dns_ms, connect_ms, tls_ms, ttfb_ms, ttft_ms, total_ms, request_bytes, response_bytes, started_at, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO passthrough_logs (host, path, method, status_code, is_error, error_message, dns_ms, connect_ms, tls_ms, ttfb_ms, ttft_ms, total_ms, request_bytes, response_bytes, input_tokens, output_tokens, cache_write_5m_tokens, cache_write_1h_tokens, cache_read_tokens, started_at, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		rec.Host, rec.Path, rec.Method, rec.StatusCode, boolToInt(rec.IsError), rec.ErrMessage,
 		rec.DNSMs, rec.ConnectMs, rec.TLSMs, rec.TTFBMs, rec.TTFTMs, rec.TotalMs,
-		rec.RequestBytes, rec.ResponseBytes, utcStamp(rec.StartedAt), utcStamp(time.Now()),
+		rec.RequestBytes, rec.ResponseBytes,
+		rec.InputTokens, rec.OutputTokens, rec.CacheWrite5MTokens, rec.CacheWrite1HTokens, rec.CacheReadTokens,
+		utcStamp(rec.StartedAt), utcStamp(time.Now()),
 	)
 	if err != nil {
 		log.Printf("failed to write passthrough log: %v", err)
@@ -180,6 +182,11 @@ func (s *PassthroughService) querySummary(where string, args []interface{}) (*mo
 		avgConnect       sql.NullFloat64
 		avgTLS           sql.NullFloat64
 		avgResponseBytes sql.NullFloat64
+		totalIn          sql.NullInt64
+		totalOut         sql.NullInt64
+		totalCacheW5m    sql.NullInt64
+		totalCacheW1h    sql.NullInt64
+		totalCacheR      sql.NullInt64
 	)
 	err := s.db.QueryRow(
 		`SELECT COUNT(*),
@@ -190,10 +197,16 @@ func (s *PassthroughService) querySummary(where string, args []interface{}) (*mo
 		        AVG(dns_ms),
 		        AVG(connect_ms),
 		        AVG(tls_ms),
-		        COALESCE(AVG(response_bytes),0)
+		        COALESCE(AVG(response_bytes),0),
+		        SUM(input_tokens),
+		        SUM(output_tokens),
+		        SUM(cache_write_5m_tokens),
+		        SUM(cache_write_1h_tokens),
+		        SUM(cache_read_tokens)
 		 FROM passthrough_logs WHERE `+where,
 		args...,
-	).Scan(&summary.TotalRequests, &errorCount, &avgTotal, &avgTTFB, &avgTTFT, &avgDNS, &avgConnect, &avgTLS, &avgResponseBytes)
+	).Scan(&summary.TotalRequests, &errorCount, &avgTotal, &avgTTFB, &avgTTFT, &avgDNS, &avgConnect, &avgTLS, &avgResponseBytes,
+		&totalIn, &totalOut, &totalCacheW5m, &totalCacheW1h, &totalCacheR)
 	if err != nil {
 		return nil, err
 	}
@@ -212,6 +225,11 @@ func (s *PassthroughService) querySummary(where string, args []interface{}) (*mo
 	summary.AvgConnectMs = avg(avgConnect)
 	summary.AvgTLSMs = avg(avgTLS)
 	summary.AvgResponseBytes = avgResponseBytes.Float64
+	summary.TotalInputTokens = iptr(totalIn)
+	summary.TotalOutputTokens = iptr(totalOut)
+	summary.TotalCacheWrite5MToks = iptr(totalCacheW5m)
+	summary.TotalCacheWrite1HToks = iptr(totalCacheW1h)
+	summary.TotalCacheReadTokens = iptr(totalCacheR)
 	if summary.TotalRequests > 0 {
 		summary.ErrorRate = float64(errorCount) / float64(summary.TotalRequests)
 	}
@@ -290,6 +308,14 @@ func (s *PassthroughService) queryPercentiles(where string, args []interface{}) 
 
 func fptr(v float64) *float64 { return &v }
 
+func iptr(v sql.NullInt64) *int64 {
+	if !v.Valid {
+		return nil
+	}
+	out := v.Int64
+	return &out
+}
+
 func (s *PassthroughService) queryTimeseries(where string, args []interface{}, granularity string) ([]models.PassthroughBucket, error) {
 	query := `SELECT strftime('` + bucketFormat(granularity) + `', created_at) AS bucket,
 		        COUNT(*),
@@ -297,7 +323,12 @@ func (s *PassthroughService) queryTimeseries(where string, args []interface{}, g
 		        AVG(CASE WHEN is_error = 0 THEN total_ms END),
 		        COALESCE(MAX(total_ms),0),
 		        AVG(ttfb_ms),
-		        COALESCE(AVG(response_bytes),0)
+		        COALESCE(AVG(response_bytes),0),
+		        SUM(input_tokens),
+		        SUM(output_tokens),
+		        SUM(cache_write_5m_tokens),
+		        SUM(cache_write_1h_tokens),
+		        SUM(cache_read_tokens)
 		 FROM passthrough_logs WHERE ` + where + ` GROUP BY bucket ORDER BY bucket ASC LIMIT 500`
 
 	rows, err := s.db.Query(query, args...)
@@ -310,7 +341,9 @@ func (s *PassthroughService) queryTimeseries(where string, args []interface{}, g
 	for rows.Next() {
 		var b models.PassthroughBucket
 		var avgTotal, avgTTFB sql.NullFloat64
-		if err := rows.Scan(&b.Bucket, &b.RequestCount, &b.ErrorCount, &avgTotal, &b.MaxTotalMs, &avgTTFB, &b.AvgResponseBytes); err != nil {
+		var inToks, outToks, cw5m, cw1h, cr sql.NullInt64
+		if err := rows.Scan(&b.Bucket, &b.RequestCount, &b.ErrorCount, &avgTotal, &b.MaxTotalMs, &avgTTFB, &b.AvgResponseBytes,
+			&inToks, &outToks, &cw5m, &cw1h, &cr); err != nil {
 			return nil, err
 		}
 		if avgTotal.Valid {
@@ -321,6 +354,11 @@ func (s *PassthroughService) queryTimeseries(where string, args []interface{}, g
 			v := avgTTFB.Float64
 			b.AvgTTFBMs = &v
 		}
+		b.InputTokens = iptr(inToks)
+		b.OutputTokens = iptr(outToks)
+		b.CacheWrite5MToks = iptr(cw5m)
+		b.CacheWrite1HToks = iptr(cw1h)
+		b.CacheReadTokens = iptr(cr)
 		buckets = append(buckets, b)
 	}
 	return buckets, rows.Err()
@@ -334,7 +372,8 @@ func (s *PassthroughService) queryByHost(where string, args []interface{}) ([]mo
 		        AVG(CASE WHEN is_error = 0 THEN total_ms END),
 		        AVG(ttfb_ms),
 		        AVG(ttft_ms),
-		        COALESCE(AVG(response_bytes),0)
+		        COALESCE(AVG(response_bytes),0),
+		        SUM(output_tokens)
 		 FROM passthrough_logs WHERE ` + where + ` GROUP BY host ORDER BY COUNT(*) DESC LIMIT 20`
 
 	rows, err := s.db.Query(query, args...)
@@ -347,7 +386,8 @@ func (s *PassthroughService) queryByHost(where string, args []interface{}) ([]mo
 	for rows.Next() {
 		var st models.PassthroughHostStats
 		var avgTotal, avgTTFB, avgTTFT sql.NullFloat64
-		if err := rows.Scan(&st.Host, &st.Requests, &st.Errors, &avgTotal, &avgTTFB, &avgTTFT, &st.AvgResponseBytes); err != nil {
+		var outToks sql.NullInt64
+		if err := rows.Scan(&st.Host, &st.Requests, &st.Errors, &avgTotal, &avgTTFB, &avgTTFT, &st.AvgResponseBytes, &outToks); err != nil {
 			return nil, err
 		}
 		if avgTotal.Valid {
@@ -362,6 +402,7 @@ func (s *PassthroughService) queryByHost(where string, args []interface{}) ([]mo
 			v := avgTTFT.Float64
 			st.AvgTTFTMs = &v
 		}
+		st.OutputTokens = iptr(outToks)
 		stats = append(stats, st)
 	}
 	return stats, rows.Err()
@@ -384,7 +425,7 @@ func (s *PassthroughService) List(params models.PassthroughQueryParams) ([]model
 		return nil, 0, err
 	}
 
-	query := `SELECT id, host, path, method, status_code, is_error, error_message, dns_ms, connect_ms, tls_ms, ttfb_ms, ttft_ms, total_ms, request_bytes, response_bytes, started_at, created_at
+	query := `SELECT id, host, path, method, status_code, is_error, error_message, dns_ms, connect_ms, tls_ms, ttfb_ms, ttft_ms, total_ms, request_bytes, response_bytes, input_tokens, output_tokens, cache_write_5m_tokens, cache_write_1h_tokens, cache_read_tokens, started_at, created_at
 	          FROM passthrough_logs WHERE ` + where + ` ORDER BY id DESC LIMIT ` + strconv.Itoa(limit) + ` OFFSET ` + strconv.Itoa(offset)
 	rows, err := s.db.Query(query, args...)
 	if err != nil {
@@ -399,7 +440,9 @@ func (s *PassthroughService) List(params models.PassthroughQueryParams) ([]model
 		var startedAt, createdAt sql.NullString
 		if err := rows.Scan(&l.ID, &l.Host, &l.Path, &l.Method, &l.StatusCode, &isErr, &l.ErrMessage,
 			&l.DNSMs, &l.ConnectMs, &l.TLSMs, &l.TTFBMs, &l.TTFTMs, &l.TotalMs,
-			&l.RequestBytes, &l.ResponseBytes, &startedAt, &createdAt); err != nil {
+			&l.RequestBytes, &l.ResponseBytes,
+			&l.InputTokens, &l.OutputTokens, &l.CacheWrite5MTokens, &l.CacheWrite1HTokens, &l.CacheReadTokens,
+			&startedAt, &createdAt); err != nil {
 			return nil, 0, err
 		}
 		l.IsError = isErr == 1

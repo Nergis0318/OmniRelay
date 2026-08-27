@@ -18,6 +18,11 @@ export interface PassthroughLog {
   total_ms: number;
   request_bytes: number;
   response_bytes: number;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  cache_write_5m_tokens: number | null;
+  cache_write_1h_tokens: number | null;
+  cache_read_tokens: number | null;
   started_at: string;
   created_at?: string;
 }
@@ -36,6 +41,11 @@ export interface PassthroughSummary {
   avg_connect_ms: number | null;
   avg_tls_ms: number | null;
   avg_response_bytes: number;
+  total_input_tokens: number | null;
+  total_output_tokens: number | null;
+  total_cache_write_5m_tokens: number | null;
+  total_cache_write_1h_tokens: number | null;
+  total_cache_read_tokens: number | null;
 }
 
 export interface PassthroughBucket {
@@ -46,6 +56,11 @@ export interface PassthroughBucket {
   max_total_ms: number;
   avg_ttfb_ms: number | null;
   avg_response_bytes: number;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  cache_write_5m_tokens: number | null;
+  cache_write_1h_tokens: number | null;
+  cache_read_tokens: number | null;
 }
 
 export interface PassthroughHostStats {
@@ -56,6 +71,7 @@ export interface PassthroughHostStats {
   avg_ttfb_ms: number | null;
   avg_ttft_ms: number | null;
   avg_response_bytes: number;
+  output_tokens: number | null;
 }
 
 export interface PassthroughPerformance {

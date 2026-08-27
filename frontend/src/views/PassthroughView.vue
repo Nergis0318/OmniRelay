@@ -138,6 +138,14 @@
         >
           {{ (summary.error_rate * 100).toFixed(1) }}%
         </StatCard>
+        <StatCard
+          v-if="hasTokenData"
+          :label="$t('passthrough.tokens')"
+          :hint="$t('passthrough.tokensHint')"
+          :sub="`${$t('passthrough.cacheRead')} ${fmtTok(totalCacheTokens)}`"
+        >
+          {{ fmtTok(tokenSummaryTotal) }}
+        </StatCard>
       </div>
 
       <!-- Latency ladder: every phase and tail percentile on one shared scale -->
@@ -199,6 +207,7 @@
                   <th class="num">{{ $t("passthrough.requests") }}</th>
                   <th class="num">{{ $t("passthrough.avgTotal") }}</th>
                   <th class="num">TTFB</th>
+                  <th v-if="hasTokenData" class="num">{{ $t("passthrough.outTok") }}</th>
                 </tr>
               </thead>
               <tbody>
@@ -220,11 +229,23 @@
                   </td>
                   <td class="num mono-val">{{ fmtMs(h.avg_total_ms) }}</td>
                   <td class="num mono-val">{{ fmtMs(h.avg_ttfb_ms) }}</td>
+                  <td v-if="hasTokenData" class="num mono-val mono-val--dim">{{ fmtTok(h.output_tokens) }}</td>
                 </tr>
               </tbody>
             </table>
             <EmptyState v-else icon="mdi-server-network" :text="$t('passthrough.noData')" small />
           </div>
+        </div>
+      </div>
+
+      <!-- Token flow, only when upstreams actually reported usage -->
+      <div v-if="hasTokenData && store.perf.timeseries.length > 1" class="table-card chart-section">
+        <div class="card-head">
+          <h2 class="chart-heading">{{ $t("passthrough.tokenFlow") }}</h2>
+          <span class="card-note">{{ $t("passthrough.tokensHint") }}</span>
+        </div>
+        <div class="chart-area">
+          <Line :data="tokenChart" :options="tokenOptions" />
         </div>
       </div>
 
@@ -249,6 +270,9 @@
                 <th class="num">TTFB</th>
                 <th class="num">TTFT</th>
                 <th class="num">{{ $t("passthrough.total") }}</th>
+                <th v-if="hasTokenData" class="num">{{ $t("passthrough.inTok") }}</th>
+                <th v-if="hasTokenData" class="num">{{ $t("passthrough.outTok") }}</th>
+                <th v-if="hasTokenData" class="num">{{ $t("passthrough.cacheTok") }}</th>
                 <th class="num">{{ $t("passthrough.responseSize") }}</th>
               </tr>
             </thead>
@@ -272,6 +296,11 @@
                 <td class="num mono-val" :class="log.total_ms >= 5000 ? 'mono-val--slow' : 'mono-val--accent'">
                   {{ fmtMs(log.total_ms) }}
                 </td>
+                <template v-if="hasTokenData">
+                  <td class="num mono-val">{{ log.input_tokens === null ? "-" : fmtTok(log.input_tokens) }}</td>
+                  <td class="num mono-val">{{ log.output_tokens === null ? "-" : fmtTok(log.output_tokens) }}</td>
+                  <td class="num mono-val mono-val--dim" :title="cacheTitle(log)">{{ cacheCell(log) }}</td>
+                </template>
                 <td class="num mono-val mono-val--dim">{{ fmtBytes(log.response_bytes) }}</td>
               </tr>
             </tbody>
@@ -293,6 +322,9 @@
               { label: 'TTFB', value: log.ttfb_ms === null ? '-' : fmtMs(log.ttfb_ms) },
               { label: 'TTFT', value: log.ttft_ms === null ? '-' : fmtMs(log.ttft_ms) },
               { label: $t('passthrough.total'), value: fmtMs(log.total_ms) },
+              { label: $t('passthrough.inTok'), value: log.input_tokens === null ? '-' : fmtTok(log.input_tokens) },
+              { label: $t('passthrough.outTok'), value: log.output_tokens === null ? '-' : fmtTok(log.output_tokens) },
+              { label: $t('passthrough.cacheTok'), value: cacheCell(log) },
               { label: $t('passthrough.responseSize'), value: fmtBytes(log.response_bytes) },
             ]"
           />
@@ -394,6 +426,11 @@ const emptySummary = {
   avg_connect_ms: null,
   avg_tls_ms: null,
   avg_response_bytes: 0,
+  total_input_tokens: null,
+  total_output_tokens: null,
+  total_cache_write_5m_tokens: null,
+  total_cache_write_1h_tokens: null,
+  total_cache_read_tokens: null,
 };
 
 const summary = computed(() => store.perf?.summary ?? emptySummary);
@@ -445,6 +482,56 @@ const streamMs = computed(() => {
   return Math.max(0, avg_total_ms - avg_ttft_ms);
 });
 const slowTotal = computed(() => (summary.value.avg_total_ms ?? 0) > 5000);
+
+// Token visibility gates the extra columns/cards so a usage-less window (plain
+// web relays, OpenAI streams without include_usage) stays uncluttered.
+const hasTokenData = computed(
+  () =>
+    summary.value.total_input_tokens !== null ||
+    summary.value.total_output_tokens !== null ||
+    summary.value.total_cache_write_5m_tokens !== null ||
+    summary.value.total_cache_write_1h_tokens !== null ||
+    summary.value.total_cache_read_tokens !== null,
+);
+const totalCacheTokens = computed(
+  () => (summary.value.total_cache_read_tokens ?? 0) + (summary.value.total_cache_write_5m_tokens ?? 0) + (summary.value.total_cache_write_1h_tokens ?? 0),
+);
+const tokenSummaryTotal = computed(
+  () => (summary.value.total_input_tokens ?? 0) + (summary.value.total_output_tokens ?? 0),
+);
+
+function fmtTok(v: number | null | undefined): string {
+  if (v === null || v === undefined) return "-";
+  return v.toLocaleString();
+}
+
+function sumOrNull(...vals: Array<number | null | undefined>): number | null {
+  const defined = vals.filter((v): v is number => v !== null && v !== undefined);
+  if (!defined.length) return null;
+  return defined.reduce((a, b) => a + b, 0);
+}
+
+interface TokLog {
+  input_tokens: number | null;
+  output_tokens: number | null;
+  cache_write_5m_tokens: number | null;
+  cache_write_1h_tokens: number | null;
+  cache_read_tokens: number | null;
+}
+
+// One narrow column for three cache numbers, e.g. "+1,204/88".
+function cacheCell(log: TokLog): string {
+  const w = sumOrNull(log.cache_write_5m_tokens, log.cache_write_1h_tokens);
+  if (w === null && log.cache_read_tokens === null) return "-";
+  const parts = [];
+  if (w !== null) parts.push(`+${w.toLocaleString()}`);
+  if (log.cache_read_tokens !== null) parts.push(log.cache_read_tokens.toLocaleString());
+  return parts.join("/");
+}
+
+function cacheTitle(log: TokLog): string {
+  return `W ${fmtTok(sumOrNull(log.cache_write_5m_tokens, log.cache_write_1h_tokens))} · R ${fmtTok(log.cache_read_tokens)}`;
+}
 
 type Tone = "muted" | "amber" | "teal" | "violet" | "error";
 interface LadderRow {
@@ -696,6 +783,91 @@ const seriesOptions = {
       position: "right" as const,
       grid: { drawOnChartArea: false },
       ticks: { color: "#7b61ff", font: { family: "JetBrains Mono", size: 10 } },
+    },
+  },
+};
+
+// Input/output/cache-read per bucket. Buckets without usage report null and the
+// lines simply gap over them.
+const tokenChart = computed(() => ({
+  labels: bucketLabels.value,
+  datasets: [
+    {
+      label: t("passthrough.inTok"),
+      data: store.perf?.timeseries.map((b) => b.input_tokens) ?? [],
+      borderColor: "#2ec4b6",
+      backgroundColor: "rgba(46,196,182,0.06)",
+      fill: true,
+      tension: 0.35,
+      pointRadius: 2,
+      pointHoverRadius: 4,
+      borderWidth: 1.5,
+      spanGaps: true,
+    },
+    {
+      label: t("passthrough.outTok"),
+      data: store.perf?.timeseries.map((b) => b.output_tokens) ?? [],
+      borderColor: "#e8a020",
+      backgroundColor: "transparent",
+      fill: false,
+      tension: 0.35,
+      pointRadius: 2,
+      pointHoverRadius: 4,
+      borderWidth: 1.5,
+      spanGaps: true,
+    },
+    {
+      label: t("passthrough.cacheRead"),
+      data: store.perf?.timeseries.map((b) => b.cache_read_tokens) ?? [],
+      borderColor: "#7b61ff",
+      backgroundColor: "transparent",
+      borderDash: [5, 4],
+      fill: false,
+      tension: 0.35,
+      pointRadius: 2,
+      borderWidth: 1.2,
+      spanGaps: true,
+    },
+  ],
+}));
+
+const tokenOptions = {
+  responsive: true,
+  maintainAspectRatio: false,
+  interaction: { intersect: false, mode: "index" as const },
+  plugins: {
+    legend: {
+      labels: {
+        color: "#7c7a75",
+        font: { family: '"DM Sans", sans-serif', size: 11 },
+        usePointStyle: true,
+        pointStyleWidth: 8,
+        boxHeight: 6,
+      },
+    },
+    tooltip: {
+      backgroundColor: "#1a1a1f",
+      borderColor: "rgba(46,196,182,0.25)",
+      borderWidth: 1,
+      titleColor: "#e8e6e1",
+      bodyColor: "#7c7a75",
+      titleFont: { family: "DM Sans", size: 12 },
+      bodyFont: { family: "JetBrains Mono", size: 11 },
+      padding: 10,
+    },
+  },
+  scales: {
+    x: {
+      grid: { color: "rgba(255,255,255,0.04)" },
+      ticks: { color: "#4a4844", font: { family: "JetBrains Mono", size: 10 }, maxRotation: 0, autoSkip: true },
+    },
+    y: {
+      grid: { color: "rgba(255,255,255,0.04)" },
+      ticks: {
+        color: "#4a4844",
+        font: { family: "JetBrains Mono", size: 10 },
+        callback: (v: number | string) => fmtTok(Number(v)),
+      },
     },
   },
 };
@@ -992,7 +1164,7 @@ onUnmounted(() => {
   text-align: right;
 }
 .logs-table {
-  min-width: 880px;
+  min-width: 1060px;
 }
 .host-row {
   cursor: pointer;

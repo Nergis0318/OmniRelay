@@ -3,9 +3,10 @@
 //
 // Unlike the provider-routed paths, nothing is translated here: the method,
 // headers, query string and body bytes go upstream as they arrived, and the
-// upstream response is streamed back untouched. No provider lookup, model
-// resolution, token accounting or cost calculation happens - only performance
-// is measured, into its own table.
+// upstream response is streamed back untouched. No provider lookup or model
+// resolution happens; performance is always measured into its own table, and
+// usage the upstream itself reports in its response (usage fields, SSE events)
+// is picked up along the way - no tokens are estimated and none are injected.
 package passthrough
 
 import (
@@ -184,6 +185,12 @@ func (rl *Relay) relay(w http.ResponseWriter, req *http.Request) {
 	timings.setHeaders(w.Header())
 	w.WriteHeader(resp.StatusCode)
 
+	var capture *tokenCapture
+	if mode := captureModeFor(resp.Header.Get("Content-Type")); mode != modeNone {
+		capture = newTokenCapture(resp.Body, mode)
+		resp.Body = capture
+	}
+
 	written, _ := rl.stream(w, resp.Body, timings)
 
 	record.StatusCode = resp.StatusCode
@@ -196,6 +203,9 @@ func (rl *Relay) relay(w http.ResponseWriter, req *http.Request) {
 	record.TotalMs = time.Since(startedAt).Milliseconds()
 	record.RequestBytes = sent.bytes()
 	record.ResponseBytes = written
+	record.InputTokens, record.OutputTokens,
+		record.CacheWrite5MTokens, record.CacheWrite1HTokens,
+		record.CacheReadTokens = capture.result()
 	if record.IsError {
 		record.ErrMessage = fmt.Sprintf("upstream returned %d", resp.StatusCode)
 	}

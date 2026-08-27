@@ -10,9 +10,9 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// GetPassthroughPerformance reports latency-only stats for URL-passthrough
-// relays. These records live outside usage_logs, so they never touch token or
-// cost dashboards.
+// GetPassthroughPerformance reports relay stats for URL-passthrough traffic,
+// including the usage the upstream reported on its own responses. These records
+// live outside usage_logs and never carry cost.
 func GetPassthroughPerformance(svc *service.PassthroughService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		resp, err := svc.GetPerformance(passthroughQueryParams(c))
