@@ -3,16 +3,6 @@
 
 	header /assets/* Cache-Control "public, max-age=31536000, immutable"
 
-	# URL passthrough: /https://api.openai.com/v1/chat/completions relays straight
-	# upstream. The regex also accepts "/https:/host" (a front end that collapses
-	# duplicate slashes); the backend restores the authority either way.
-	@passthrough path_regexp passthrough ^/https?:/
-	handle @passthrough {
-		reverse_proxy localhost:8080 {
-			flush_interval -1
-		}
-	}
-
 	@admin path /admin /admin/*
 	handle @admin {
 		reverse_proxy localhost:8080 {

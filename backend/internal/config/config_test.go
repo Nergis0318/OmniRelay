@@ -3,7 +3,6 @@ package config
 import (
 	"os"
 	"testing"
-	"time"
 )
 
 func TestLoadDefaults(t *testing.T) {
@@ -51,41 +50,6 @@ func TestLoadFromEnv(t *testing.T) {
 	}
 	if cfg.CORSOrigins != "https://example.com,https://app.example.com" {
 		t.Errorf("expected cors origins, got %s", cfg.CORSOrigins)
-	}
-}
-
-func TestPassthroughDefaults(t *testing.T) {
-	cfg := Load()
-	if !cfg.PassthroughEnabled {
-		t.Error("passthrough should default to enabled")
-	}
-	if cfg.PassthroughAllowPrivate {
-		t.Error("private targets should be blocked by default")
-	}
-	if cfg.PassthroughTimeout <= 0 {
-		t.Errorf("passthrough timeout = %v, want a positive duration", cfg.PassthroughTimeout)
-	}
-}
-
-func TestPassthroughFromEnv(t *testing.T) {
-	os.Setenv("PASSTHROUGH_ENABLED", "false")
-	os.Setenv("PASSTHROUGH_ALLOW_PRIVATE", "1")
-	os.Setenv("PASSTHROUGH_TIMEOUT_SECONDS", "45")
-	defer func() {
-		os.Unsetenv("PASSTHROUGH_ENABLED")
-		os.Unsetenv("PASSTHROUGH_ALLOW_PRIVATE")
-		os.Unsetenv("PASSTHROUGH_TIMEOUT_SECONDS")
-	}()
-
-	cfg := Load()
-	if cfg.PassthroughEnabled {
-		t.Error("PASSTHROUGH_ENABLED=false should disable the relay")
-	}
-	if !cfg.PassthroughAllowPrivate {
-		t.Error("PASSTHROUGH_ALLOW_PRIVATE=1 should allow private targets")
-	}
-	if cfg.PassthroughTimeout != 45*time.Second {
-		t.Errorf("timeout = %v, want 45s", cfg.PassthroughTimeout)
 	}
 }
 

@@ -150,7 +150,6 @@ const menuItems = [
   { i18nKey: "nav.usage", icon: "mdi-chart-line", to: "/usage" },
   { i18nKey: "nav.logs", icon: "mdi-text-box-search-outline", to: "/logs" },
   { i18nKey: "nav.performance", icon: "mdi-chart-timeline-variant", to: "/performance" },
-  { i18nKey: "nav.passthrough", icon: "mdi-connection", to: "/passthrough", adminOnly: true },
   { i18nKey: "nav.users", icon: "mdi-account-group-outline", to: "/users", adminOnly: true },
 ];
 

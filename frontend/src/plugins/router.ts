@@ -57,12 +57,6 @@ const router = createRouter({
           component: () => import("../views/PerformanceView.vue"),
         },
         {
-          path: "passthrough",
-          name: "Passthrough",
-          component: () => import("../views/PassthroughView.vue"),
-          meta: { requiresAdmin: true },
-        },
-        {
           path: "users",
           name: "Users",
           component: () => import("../views/UsersView.vue"),
