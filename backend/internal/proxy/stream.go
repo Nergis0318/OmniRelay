@@ -90,7 +90,7 @@ func writeStreamUpstreamError(c *gin.Context, errMsg string) {
 	}
 	// Interruptions and "Empty message" are temporary upstream failures →
 	// 503 retryable (server_error / overloaded_error).
-	if isInterruptionText(errMsg) || isUpstreamErrorContent(errMsg) {
+	if isErrorContent(errMsg) {
 		errType := "overloaded_error"
 		if errFmt != apiresponse.FormatAnthropic {
 			errType = "server_error"
@@ -173,7 +173,7 @@ func (rb *responsesBuffer) failureText() string {
 	if text == "" {
 		text = rb.deltaAccum.String()
 	}
-	if isUpstreamErrorContent(text) {
+	if isErrorContent(text) {
 		return text
 	}
 	return ""

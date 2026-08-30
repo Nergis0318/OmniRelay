@@ -230,6 +230,15 @@ func (a *GeminiAdapter) ParseChatResponse(body map[string]interface{}) (map[stri
 			"cached_content_token_count":  numberToInt64(usage["cached_content_token_count"]),
 		}
 	}
+	// Gemini may also return the failure as normal content; normalize it so
+	// non-streaming callers can turn it into a standard error.
+	if len(choices) > 0 {
+		if msg, ok := choices[0]["message"].(map[string]interface{}); ok {
+			if text, ok := msg["content"].(string); ok && isErrorContent(text) {
+				return response, nil
+			}
+		}
+	}
 
 	return response, nil
 }
@@ -269,6 +278,10 @@ func (a *GeminiAdapter) ParseStreamChunk(data []byte, state map[string]interface
 					deltaText += t
 				}
 			}
+		}
+		if isErrorContent(deltaText) {
+			state["upstream_error"] = deltaText
+			return nil, totalInput, totalOutput, nil
 		}
 
 		chunk := map[string]interface{}{
@@ -361,6 +374,10 @@ func (a *GeminiAdapter) ParseMessagesStreamChunk(data []byte, state map[string]i
 			for _, rawPart := range parts {
 				part, _ := rawPart.(map[string]interface{})
 				if t, ok := part["text"].(string); ok && t != "" {
+					if isErrorContent(t) {
+						state["upstream_error"] = t
+						return nil, int64State(state, "input_tokens", totalInput), int64State(state, "output_tokens", totalOutput), nil
+					}
 					w.textDelta(t)
 				}
 			}

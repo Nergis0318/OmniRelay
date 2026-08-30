@@ -56,7 +56,7 @@ func (a *OpenAIAdapter) ParseStreamChunk(data []byte, state map[string]interface
 			for _, rawChoice := range choices {
 				choice, _ := rawChoice.(map[string]interface{})
 				delta, _ := choice["delta"].(map[string]interface{})
-				if content, ok := delta["content"].(string); ok && isUpstreamErrorContent(content) {
+				if content, ok := delta["content"].(string); ok && isErrorContent(content) {
 					state["upstream_error"] = content
 					return nil, int64State(state, "input_tokens", inputTokens), int64State(state, "output_tokens", outputTokens), nil
 				}
@@ -161,7 +161,7 @@ func (a *OpenAIAdapter) ParseMessagesStreamChunk(data []byte, state map[string]i
 			}
 
 			if content, ok := delta["content"].(string); ok {
-				if isUpstreamErrorContent(content) {
+				if isErrorContent(content) {
 					state["upstream_error"] = content
 					return nil, int64State(state, "input_tokens", inputTokens), int64State(state, "output_tokens", outputTokens), nil
 				}

@@ -33,16 +33,26 @@ func isUpstreamErrorContent(text string) bool {
 // interruptions (error type "interruption").
 const interruptionMarker = "Temporary service interruption"
 
+const generationFailureMarker = "The response did not generate correctly"
+
 // isInterruptionText reports whether text is Anthropic's temporary service
 // interruption message. Prefix match so variants stay detected.
 func isInterruptionText(text string) bool {
 	return strings.HasPrefix(strings.TrimSpace(text), interruptionMarker)
 }
 
+// isGenerationFailureText reports whether text is the upstream generation
+// failure message that is sometimes returned as normal content instead of a
+// standard error (e.g. "The response did not generate correctly. Please
+// resend the last message and I will continue without resetting the session").
+func isGenerationFailureText(text string) bool {
+	return strings.HasPrefix(strings.TrimSpace(text), generationFailureMarker)
+}
+
 // isErrorContent reports whether a response text is a known non-standard
 // upstream error embedded in an otherwise successful response.
 func isErrorContent(text string) bool {
-	return isUpstreamErrorContent(text) || isInterruptionText(text)
+	return isUpstreamErrorContent(text) || isInterruptionText(text) || isGenerationFailureText(text)
 }
 
 // abortErrorContent writes a standard error for upstream error text embedded
@@ -50,7 +60,7 @@ func isErrorContent(text string) bool {
 // 503 retryable; other cases keep the legacy 200 api_error behavior.
 func abortErrorContent(c *gin.Context, errMsg string) {
 	errFmt := apiresponse.FormatFromContext(c)
-	if isInterruptionText(errMsg) || isUpstreamErrorContent(errMsg) {
+	if isErrorContent(errMsg) {
 		apiresponse.AbortServiceUnavailable(c, errFmt, errMsg)
 		return
 	}
