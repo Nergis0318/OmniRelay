@@ -137,6 +137,7 @@ func startSSE(c *gin.Context, resp *http.Response, forceEventStream bool) (sw *s
 type responsesBuffer struct {
 	active     bool
 	carry      string
+	lineCarry  string
 	buf        bytes.Buffer
 	deltaAccum strings.Builder
 	finalText  string
@@ -159,7 +160,15 @@ func (rb *responsesBuffer) observe(chunk []byte) bool {
 		return false
 	}
 	rb.buf.Write(chunk)
-	extractResponsesOutputText(chunkStr, &rb.deltaAccum, &rb.finalText)
+	// Reassemble complete SSE lines across chunk boundaries so text
+	// extraction never sees a partial "data: ..." line.
+	joined := rb.lineCarry + chunkStr
+	if idx := strings.LastIndex(joined, "\n"); idx >= 0 {
+		rb.lineCarry = joined[idx+1:]
+		extractResponsesOutputText(joined[:idx+1], &rb.deltaAccum, &rb.finalText)
+	} else {
+		rb.lineCarry = joined
+	}
 	return true
 }
 
@@ -168,6 +177,11 @@ func (rb *responsesBuffer) observe(chunk []byte) bool {
 func (rb *responsesBuffer) failureText() string {
 	if !rb.active {
 		return ""
+	}
+	if rb.lineCarry != "" {
+		rest := rb.lineCarry
+		rb.lineCarry = ""
+		extractResponsesOutputText(rest, &rb.deltaAccum, &rb.finalText)
 	}
 	text := rb.finalText
 	if text == "" {
@@ -183,6 +197,92 @@ func (rb *responsesBuffer) flush(sw *streamWriter) {
 	if rb.active {
 		sw.Write(rb.buf.Bytes())
 	}
+}
+
+// buildResponsesToolCallEvents synthesizes a Responses-API SSE stream whose
+// output items are function_call entries recovered from leaked text. The
+// buffered stream never reached the client, so a complete event sequence is
+// emitted: response.created, per-call item events, and response.completed.
+// The original response id and usage are salvaged from the buffered events
+// when possible.
+func buildResponsesToolCallEvents(rb *responsesBuffer, toolCalls []map[string]interface{}, fullModelID string) []byte {
+	respID := ""
+	var usage map[string]interface{}
+	for _, line := range strings.Split(rb.buf.String(), "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		payload := strings.TrimPrefix(line, "data: ")
+		if payload == "[DONE]" {
+			continue
+		}
+		var ev map[string]interface{}
+		if err := json.Unmarshal([]byte(payload), &ev); err != nil {
+			continue
+		}
+		if ev["type"] != "response.created" && ev["type"] != "response.completed" {
+			continue
+		}
+		r, ok := ev["response"].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if respID == "" {
+			if id, ok := r["id"].(string); ok && id != "" {
+				respID = id
+			}
+		}
+		if ev["type"] == "response.completed" {
+			if u, ok := r["usage"].(map[string]interface{}); ok {
+				usage = u
+			}
+		}
+	}
+	if respID == "" {
+		respID = randomID("resp_")
+	}
+	if usage == nil {
+		usage = map[string]interface{}{}
+	}
+
+	var b bytes.Buffer
+	emit := func(ev map[string]interface{}) {
+		jb, _ := json.Marshal(ev)
+		b.WriteString("data: " + string(jb) + "\n\n")
+	}
+	emit(map[string]interface{}{"type": "response.created", "response": map[string]interface{}{
+		"id": respID, "object": "response", "status": "in_progress", "model": fullModelID, "output": []interface{}{},
+	}})
+	var outputItems []interface{}
+	for _, tc := range toolCalls {
+		fn, _ := tc["function"].(map[string]interface{})
+		name, _ := fn["name"].(string)
+		args, _ := fn["arguments"].(string)
+		callID, _ := tc["id"].(string)
+		if callID == "" {
+			callID = randomID("call_")
+		}
+		itemID := randomID("fc_")
+		idx := len(outputItems)
+		emit(map[string]interface{}{"type": "response.output_item.added", "output_index": idx, "item": map[string]interface{}{
+			"id": itemID, "type": "function_call", "status": "in_progress", "call_id": callID, "name": name, "arguments": "",
+		}})
+		if args != "" {
+			emit(map[string]interface{}{"type": "response.function_call_arguments.delta", "item_id": itemID, "output_index": idx, "delta": args})
+		}
+		emit(map[string]interface{}{"type": "response.function_call_arguments.done", "item_id": itemID, "output_index": idx, "arguments": args})
+		itemObj := map[string]interface{}{
+			"id": itemID, "type": "function_call", "status": "completed", "call_id": callID, "name": name, "arguments": args,
+		}
+		emit(map[string]interface{}{"type": "response.output_item.done", "output_index": idx, "item": itemObj})
+		outputItems = append(outputItems, itemObj)
+	}
+	emit(map[string]interface{}{"type": "response.completed", "response": map[string]interface{}{
+		"id": respID, "object": "response", "created_at": time.Now().Unix(), "status": "completed",
+		"model": fullModelID, "output": outputItems, "output_text": "", "usage": usage,
+	}})
+	return b.Bytes()
 }
 
 // writeResponsesFailure reports a detected Responses-API stream failure:
@@ -366,6 +466,62 @@ func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapt
 	if text := rb.failureText(); text != "" {
 		e.writeResponsesFailure(c, sw, usageContext{apiKeyID: apiKeyID, providerID: providerID, userID: userID, fullModelID: fullModelID}, text, latencyMs)
 		return
+	}
+
+	// Responses-API streams buffered by rb bypassed the chat-path recovery
+	// below. When the request carried tools, the stream contained no real
+	// function_call item, and the whole output text parses as leaked tool
+	// calls, rewrite the stream into function_call items instead of
+	// forwarding the leak as plain text.
+	if rb.active && toolGate && !bytes.Contains(rb.buf.Bytes(), []byte(`"function_call"`)) {
+		text := rb.finalText
+		if text == "" {
+			text = rb.deltaAccum.String()
+		}
+		if tcs, ok := tryFixStreamAccumulatedContent(text, validTools); ok {
+			var argsText strings.Builder
+			for _, tc := range tcs {
+				if fn, ok := tc["function"].(map[string]interface{}); ok {
+					if args, ok := fn["arguments"].(string); ok {
+						argsText.WriteString(args)
+					}
+				}
+			}
+			sw.Write(buildResponsesToolCallEvents(&rb, tcs, fullModelID))
+			sw.Write([]byte("data: [DONE]\n\n"))
+			completedAt := time.Now()
+			if totalInputTokens == 0 && inputTokens > 0 {
+				totalInputTokens = inputTokens
+			}
+			if totalOutputTokens == 0 && argsText.Len() > 0 {
+				totalOutputTokens = countTextTokens(argsText.String(), fullModelID)
+			}
+			cacheWrite5m, _ := state["cache_write_5m_tokens"].(int64)
+			cacheWrite1h, _ := state["cache_write_1h_tokens"].(int64)
+			cacheReadTokens, _ := state["cache_read_tokens"].(int64)
+			var cost float64
+			if dbModel != nil && (totalInputTokens > 0 || totalOutputTokens > 0) {
+				cost = calculateCost(dbModel, totalInputTokens, totalOutputTokens, cacheWrite5m, cacheWrite1h, cacheReadTokens)
+			}
+			e.usageService.Log(models.UsageLog{
+				APIKeyID:           &apiKeyID,
+				ProviderID:         &providerID,
+				Model:              fullModelID,
+				RequestTokens:      totalInputTokens,
+				ResponseTokens:     totalOutputTokens,
+				TotalTokens:        totalInputTokens + totalOutputTokens,
+				CacheWrite5MTokens: cacheWrite5m,
+				CacheWrite1HTokens: cacheWrite1h,
+				CacheReadTokens:    cacheReadTokens,
+				LatencyMs:          latencyMs,
+				TTFTMs:             ttftMs,
+				Cost:               cost,
+				StartedAt:          &start,
+				CompletedAt:        &completedAt,
+				UserID:             &userID,
+			})
+			return
+		}
 	}
 
 	// If stream was buffered and never emitted tool_calls, try to synthesize them from accumulated text

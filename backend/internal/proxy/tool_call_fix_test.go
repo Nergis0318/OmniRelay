@@ -65,6 +65,32 @@ func TestParsePlainJSONStillWorks(t *testing.T) {
 	}
 }
 
+// Exact shape from the Codex 0.151 "list files" session: the model leaks a
+// functions.exec call whose single parameter is the nested tool name
+// (tools.exec_command) with a JSON object value.
+func TestParseCodexFunctionsExecLeak(t *testing.T) {
+	content := "<tool_call>\n" +
+		"<function=functions.exec>\n" +
+		"<parameter=tools.exec_command>{\"cmd\": \"ls -la\"}</parameter>\n" +
+		"</function>\n" +
+		"</tool_call>"
+	tcs, ok := parseContentAsToolCalls(content, nil)
+	if !ok {
+		t.Fatal("expected functions.exec leak to parse")
+	}
+	if len(tcs) != 1 {
+		t.Fatalf("got %d tool calls, want 1", len(tcs))
+	}
+	fn, _ := tcs[0]["function"].(map[string]interface{})
+	if name, _ := fn["name"].(string); name != "functions.exec" {
+		t.Errorf("name = %q, want functions.exec", name)
+	}
+	args, _ := fn["arguments"].(string)
+	if args != `{"tools.exec_command":{"cmd":"ls -la"}}` {
+		t.Errorf("args = %q, want tools.exec_command object arg", args)
+	}
+}
+
 // Code-style <function=name> body with <parameter=key>value</parameter> chunks
 // should be recovered into a real tool_calls entry without a closing tag in
 // the wrapper.

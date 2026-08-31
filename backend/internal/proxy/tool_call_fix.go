@@ -463,11 +463,27 @@ func extractFunctionCallXMLBody(inner string, name string) string {
 			args += ","
 		}
 		first = false
-		args += quoteJSONString(k) + ":" + quoteJSONString(v)
+		args += quoteJSONString(k) + ":" + jsonOrQuoted(v)
 	}
 	args += "}"
 	parts = append(parts, `"arguments":`+args)
 	return "{" + strings.Join(parts, ",") + "}"
+}
+
+// jsonOrQuoted returns v verbatim when it already is valid JSON (object,
+// array, number, bool, null) so structured parameter values — e.g. the
+// nested-tool argument object of a leaked functions.exec call — survive as
+// structures, and a quoted JSON string otherwise.
+func jsonOrQuoted(v string) string {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return `""`
+	}
+	var js json.RawMessage
+	if err := json.Unmarshal([]byte(v), &js); err == nil {
+		return v
+	}
+	return quoteJSONString(v)
 }
 
 // extractXMLParameters parses <parameter=key>value</parameter> chunks out of
@@ -494,7 +510,8 @@ func extractXMLParameters(inner string) map[string]string {
 		openTag := rest[start : start+tagEnd+1]
 		key := ""
 		if eq := strings.Index(openTag, "="); eq > 0 {
-			key = strings.TrimSpace(openTag[eq+1:])
+			key = strings.Trim(strings.TrimSpace(openTag[eq+1:]), ">")
+			key = strings.Trim(strings.TrimSpace(key), "\"'")
 		}
 		innerStart := start + tagEnd + 1
 		closeStart := strings.Index(rest[innerStart:], "</parameter>")
