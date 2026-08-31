@@ -481,7 +481,7 @@ func (e *Engine) handlePathRoutedProxy(c *gin.Context, provider *models.Provider
 	responseContentType := strings.ToLower(resp.Header.Get("Content-Type"))
 	if isSuccessStatus(resp.StatusCode) && (bodyStream || strings.Contains(responseContentType, "text/event-stream") || strings.Contains(responseContentType, "x-ndjson")) {
 		if adapter := e.getAdapter(provider.ProviderType); adapter != nil {
-			e.handleStreamResponse(c, resp, adapter, u.apiKeyID, u.providerID, u.fullModelID, dbModel, u.userID, provider.ProviderType, localInputTokens)
+			e.handleStreamResponse(c, resp, adapter, u.apiKeyID, u.providerID, u.fullModelID, dbModel, u.userID, provider.ProviderType, localInputTokens, body)
 		} else {
 			e.handleRawStreamResponse(c, resp, u.apiKeyID, u.providerID, u.fullModelID, startTime, u.userID)
 		}
@@ -506,6 +506,11 @@ func (e *Engine) handlePathRoutedProxy(c *gin.Context, provider *models.Provider
 
 	var respJSON map[string]interface{}
 	if json.Unmarshal(respBody, &respJSON) == nil {
+		if tryFixOpenAIChatResponse(respJSON, body) {
+			if fixed, err := json.Marshal(respJSON); err == nil {
+				respBody = fixed
+			}
+		}
 		if errMsg := extractErrorContent(respJSON); errMsg != "" {
 			e.logUpstreamError(u, errMsg, latencyMs)
 			abortErrorContent(c, errMsg)

@@ -212,7 +212,7 @@ func (e *Engine) HandleResponses(c *gin.Context) {
 		return
 	}
 
-	chatResp, wrote := parseNonStreamChatResponse(c, respBody, resp.Header, adapter, fullModelID, dbModel, apiKeyID, provider.ID, startTime, userID, e.usageService, provider.ProviderType, inputTokens)
+	chatResp, wrote := parseNonStreamChatResponse(c, respBody, resp.Header, adapter, fullModelID, dbModel, apiKeyID, provider.ID, startTime, userID, e.usageService, provider.ProviderType, inputTokens, chatBody)
 	if wrote || chatResp == nil {
 		return
 	}

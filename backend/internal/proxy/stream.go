@@ -203,7 +203,7 @@ func (e *Engine) writeResponsesFailure(c *gin.Context, sw *streamWriter, u usage
 	return true
 }
 
-func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapter Adapter, apiKeyID, providerID int64, fullModelID string, dbModel *models.Model, userID int64, providerType string, inputTokens int64) {
+func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapter Adapter, apiKeyID, providerID int64, fullModelID string, dbModel *models.Model, userID int64, providerType string, inputTokens int64, reqBody ...map[string]interface{}) {
 	start := time.Now()
 	buf := make([]byte, 4096)
 	state := make(map[string]interface{})
@@ -217,6 +217,15 @@ func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapt
 		apiresponse.AbortBadGateway(c, apiresponse.FormatFromContext(c), "the model returned an empty response")
 		return
 	}
+
+	var origBody map[string]interface{}
+	if len(reqBody) > 0 {
+		origBody = reqBody[0]
+	}
+	validTools := extractValidToolNames(origBody)
+	var bufferedChunks [][]byte
+	var bufferedSentDone bool
+	streamHasToolCalls := false
 
 	sw, done, ok := startSSE(c, resp, true)
 	if !ok {
@@ -274,6 +283,57 @@ func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapt
 				continue
 			}
 
+			// Track whether any chunk carried real tool_calls (not auto-fix)
+			checkPayload := chunk
+			if transformed != nil {
+				checkPayload = transformed
+			}
+			if bytes.Contains(checkPayload, []byte("\"tool_calls\"")) {
+				streamHasToolCalls = true
+			}
+
+			// Buffer entire stream when we are not yet sure it is safe to forward:
+			// if validTools is non-empty and no tool_calls have appeared yet, holding
+			// buffers lets us replace a text-leaked tool call at stream end.
+			shouldBuffer := validTools != nil && !streamHasToolCalls && !rb.active
+			if shouldBuffer {
+				var out []byte
+				if transformed != nil {
+					out = transformed
+				} else {
+					out = chunk
+				}
+				if bytes.Contains(out, []byte("data: [DONE]")) {
+					bufferedSentDone = true
+				}
+				bufferedChunks = append(bufferedChunks, append([]byte(nil), out...))
+				if headOpen && (bytes.Contains(out, []byte("content")) || bytes.Contains(out, []byte("finish_reason")) || bufferedSentDone) {
+					sentDone = bufferedSentDone
+				}
+				n, err = resp.Body.Read(buf)
+				continue
+			}
+			// If we buffered earlier but now saw tool_calls, flush buffer first
+			if len(bufferedChunks) > 0 {
+				for _, bc := range bufferedChunks {
+					if headOpen && (bytes.Contains(bc, []byte("content")) || bytes.Contains(bc, []byte("finish_reason")) || bytes.Contains(bc, []byte("data: [DONE]"))) {
+						flushHead()
+					}
+					if headOpen {
+						head.Write(bc)
+					} else {
+						sw.Write(bc)
+					}
+					if bytes.Contains(bc, []byte("data: [DONE]")) {
+						sentDone = true
+					}
+				}
+				bufferedChunks = nil
+				if sentDone {
+					flushHead()
+				}
+			}
+
 			var out []byte
 			if transformed != nil {
 				if strings.Contains(string(transformed), "data: [DONE]") {
@@ -314,10 +374,94 @@ func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapt
 		return
 	}
 
-	flushHead()
-	rb.flush(sw)
+	// If stream was buffered and never emitted tool_calls, try to synthesize them from accumulated text
+	if validTools != nil && !streamHasToolCalls && len(bufferedChunks) > 0 && outputTextAccum.Len() > 0 {
+		if tcs, ok := tryFixStreamAccumulatedContent(outputTextAccum.String(), validTools); ok {
+			sentDone = false
+			for _, fc := range buildToolCallStreamChunks(tcs) {
+				if strings.Contains(fc, "data: [DONE]") {
+					sentDone = true
+				}
+			}
+			outputTextAccum.Reset()
+			for _, tc := range tcs {
+				if fn, ok := tc["function"].(map[string]interface{}); ok {
+					if args, ok := fn["arguments"].(string); ok {
+						outputTextAccum.WriteString(args)
+					}
+				}
+			}
+			fixChunks := buildToolCallStreamChunks(tcs)
+			for _, fc := range fixChunks {
+				sw.Write([]byte(fc))
+			}
+			if !sentDone {
+				sw.Write([]byte("data: [DONE]\n\n"))
+			}
+			completedAt := time.Now()
+			if firstTokenAt != nil {
+				v := firstTokenAt.Sub(start).Milliseconds()
+				ttftMs = &v
+			}
+			if totalInputTokens == 0 && inputTokens > 0 {
+				totalInputTokens = inputTokens
+			}
+			if totalOutputTokens == 0 && outputTextAccum.Len() > 0 {
+				totalOutputTokens = countTextTokens(outputTextAccum.String(), fullModelID)
+			}
+			cacheWrite5m, _ := state["cache_write_5m_tokens"].(int64)
+			cacheWrite1h, _ := state["cache_write_1h_tokens"].(int64)
+			cacheReadTokens, _ := state["cache_read_tokens"].(int64)
+			var cost float64
+			if dbModel != nil && (totalInputTokens > 0 || totalOutputTokens > 0) {
+				cost = calculateCost(dbModel, totalInputTokens, totalOutputTokens, cacheWrite5m, cacheWrite1h, cacheReadTokens)
+			}
+			e.usageService.Log(models.UsageLog{
+				APIKeyID:           &apiKeyID,
+				ProviderID:         &providerID,
+				Model:              fullModelID,
+				RequestTokens:      totalInputTokens,
+				ResponseTokens:     totalOutputTokens,
+				TotalTokens:        totalInputTokens + totalOutputTokens,
+				CacheWrite5MTokens: cacheWrite5m,
+				CacheWrite1HTokens: cacheWrite1h,
+				CacheReadTokens:    cacheReadTokens,
+				LatencyMs:          latencyMs,
+				TTFTMs:             ttftMs,
+				Cost:               cost,
+				StartedAt:          &start,
+				CompletedAt:        &completedAt,
+				UserID:             &userID,
+			})
+			return
+		}
+	}
+	// Otherwise flush buffered chunks as-is
+	if len(bufferedChunks) > 0 {
+		for _, bc := range bufferedChunks {
+			if headOpen && (bytes.Contains(bc, []byte("content")) || bytes.Contains(bc, []byte("finish_reason")) || bytes.Contains(bc, []byte("data: [DONE]"))) {
+				flushHead()
+			}
+			if headOpen {
+				head.Write(bc)
+			} else {
+				sw.Write(bc)
+			}
+			if bytes.Contains(bc, []byte("data: [DONE]")) {
+				sentDone = true
+			}
+		}
+		flushHead()
+		rb.flush(sw)
+	} else {
+		flushHead()
+		rb.flush(sw)
+	}
 
 	if !sentDone {
+		if len(bufferedChunks) > 0 && !streamHasToolCalls {
+			_ = bufferedSentDone
+		}
 		sw.Write([]byte("data: [DONE]\n\n"))
 	}
 

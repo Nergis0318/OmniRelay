@@ -92,7 +92,7 @@ func logErrorResponse(e *Engine, apiKeyID, providerID int64, fullModelID string,
 // logs usage, writes the final chat-format response to c, and returns it.
 // The bool is true when an error response was already written to c (nothing
 // to send).
-func parseNonStreamChatResponse(c *gin.Context, respBody []byte, respHeader http.Header, adapter Adapter, fullModelID string, dbModel *models.Model, apiKeyID, providerID int64, startTime time.Time, userID int64, usageService *service.UsageService, providerType string, inputTokens int64) (map[string]interface{}, bool) {
+func parseNonStreamChatResponse(c *gin.Context, respBody []byte, respHeader http.Header, adapter Adapter, fullModelID string, dbModel *models.Model, apiKeyID, providerID int64, startTime time.Time, userID int64, usageService *service.UsageService, providerType string, inputTokens int64, reqBody ...map[string]interface{}) (map[string]interface{}, bool) {
 	if isEmptyResponseBody(respBody) {
 		latencyMs := time.Since(startTime).Milliseconds()
 		usageService.Log(models.UsageLog{
@@ -119,6 +119,12 @@ func parseNonStreamChatResponse(c *gin.Context, respBody []byte, respHeader http
 		c.Data(http.StatusOK, contentTypeOrDefault(respHeader), respBody)
 		return nil, true
 	}
+
+	var fixBody map[string]interface{}
+	if len(reqBody) > 0 {
+		fixBody = reqBody[0]
+	}
+	tryFixOpenAIChatResponse(finalResponse, fixBody)
 
 	latencyMs := time.Since(startTime).Milliseconds()
 

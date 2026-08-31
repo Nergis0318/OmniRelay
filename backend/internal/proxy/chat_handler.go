@@ -11,6 +11,7 @@ import (
 )
 
 func (e *Engine) executeChat(c *gin.Context, provider *models.Provider, dbModel *models.Model, adapter Adapter, body map[string]interface{}, fullModelID string, apiKeyID, userID int64) {
+	origBody := shallowCopyBody(body)
 	resp, startTime, inputTokens, wroteError := e.buildAndSendChatRequest(c, provider, dbModel, adapter, body, fullModelID, apiKeyID, userID)
 	if wroteError {
 		return
@@ -18,7 +19,7 @@ func (e *Engine) executeChat(c *gin.Context, provider *models.Provider, dbModel 
 	defer resp.Body.Close()
 
 	if extractStreamFlag(body) {
-		e.handleStreamResponse(c, resp, adapter, apiKeyID, provider.ID, fullModelID, dbModel, userID, provider.ProviderType, inputTokens)
+		e.handleStreamResponse(c, resp, adapter, apiKeyID, provider.ID, fullModelID, dbModel, userID, provider.ProviderType, inputTokens, origBody)
 		return
 	}
 
@@ -36,7 +37,7 @@ func (e *Engine) executeChat(c *gin.Context, provider *models.Provider, dbModel 
 		return
 	}
 
-	finalResponse, wrote := parseNonStreamChatResponse(c, respBody, resp.Header, adapter, fullModelID, dbModel, apiKeyID, provider.ID, startTime, userID, e.usageService, provider.ProviderType, inputTokens)
+	finalResponse, wrote := parseNonStreamChatResponse(c, respBody, resp.Header, adapter, fullModelID, dbModel, apiKeyID, provider.ID, startTime, userID, e.usageService, provider.ProviderType, inputTokens, origBody)
 	if !wrote && finalResponse != nil {
 		c.JSON(http.StatusOK, finalResponse)
 	}
