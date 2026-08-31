@@ -167,8 +167,9 @@ func requestHasTools(body map[string]interface{}) bool {
 }
 
 // extractToolCallTags pulls the inner payloads out of <tool_call>...</tool_call>
-// (and <function_call>) wrappers — the format some models emit when they leak
-// tool calls into content. Returns nil when no tags are present.
+// (and <function_call>, <function=name>) wrappers — the format some models
+// emit when they leak tool calls into content. Returns nil when no tags are
+// present.
 func extractToolCallTags(s string) []string {
 	var out []string
 	for _, open := range []string{"<tool_call>", "<function_call>"} {
@@ -193,7 +194,89 @@ func extractToolCallTags(s string) []string {
 			rest = rest[end+len(closeTag):]
 		}
 	}
+	// <function=name …>…</function> variant: the tool name is carried as an
+	// attribute (Codex emits this with optional "name=" / "function=" and an
+	// XML-style body of "<parameter=key>value</parameter>"). We pull out the
+	// inner payload and, if it is XML-style, synthesize a JSON object so the
+	// parser ladder can take over.
+	rest := s
+	for {
+		start := strings.Index(rest, "<function")
+		if start < 0 {
+			break
+		}
+		closeOpen := strings.Index(rest[start:], ">")
+		if closeOpen < 0 {
+			break
+		}
+		openTag := rest[start : start+closeOpen+1]
+		rest = rest[start+closeOpen+1:]
+		end := strings.Index(rest, "</function>")
+		body := rest
+		if end >= 0 {
+			body = rest[:end]
+			rest = rest[end+len("</function>"):]
+		} else {
+			rest = ""
+		}
+		attrs := funcNameFromFunctionTag(openTag)
+		inner := strings.TrimSpace(body)
+		if attrs.name == "" && inner == "" {
+			continue
+		}
+		if inner == "" {
+			out = append(out, `{"name":`+quoteJSONString(attrs.name)+`}`)
+		} else if strings.Contains(inner, "<parameter=") || strings.Contains(inner, "<parameter>") {
+			out = append(out, extractFunctionCallXMLBody(inner, attrs.name))
+		} else if attrs.name != "" {
+			// Body has prose but no parameter tags. Use the body text as the
+			// single "input" argument so the tool still receives a payload.
+			out = append(out, `{"name":`+quoteJSONString(attrs.name)+`,"arguments":{"input":`+quoteJSONString(inner)+`}}`)
+		} else {
+			out = append(out, inner)
+		}
+	}
 	return out
+}
+
+// stripResidualTags removes leftover XML-ish tags (e.g. <parameter=cmd>...</parameter>,
+// <invoke …>, </invoke>) that some clients leak into the JSON body. This is
+// only invoked as a fallback when the literal JSON parse fails — the goal is
+// to reduce the body to its JSON skeleton so the parser ladder can take over.
+func stripResidualTags(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c == '<' {
+			// Find matching '>' while ignoring any '"' inside attributes — the
+			// contents of an attribute are not a tag boundary.
+			j := i + 1
+			inQuote := false
+			for j < len(s) {
+				ch := s[j]
+				if ch == '"' {
+					inQuote = !inQuote
+				} else if ch == '>' && !inQuote {
+					break
+				}
+				j++
+			}
+			if j < len(s) && s[j] == '>' {
+				// Drop the tag and any whitespace that follows up to the next
+				// non-space character, so we don't leave stray spaces inside the
+				// JSON string we are trying to repair.
+				k := j + 1
+				for k < len(s) && (s[k] == ' ' || s[k] == '\t' || s[k] == '\n' || s[k] == '\r') {
+					k++
+				}
+				i = k - 1
+				continue
+			}
+		}
+		b.WriteByte(c)
+	}
+	return b.String()
 }
 
 // stripWrappedNewlines removes \r and \n to rejoin JSON that a model or
@@ -248,9 +331,10 @@ func escapeInnerQuotes(s string) string {
 }
 
 // parseJSONLadder tries increasingly aggressive repairs on leaked tool-call
-// JSON: as-is, newline-stripped, quote-escaped.
+// JSON: as-is, newline-stripped, quote-escaped, residual-tag-stripped.
 func parseJSONLadder(s string) (interface{}, bool) {
-	for _, cand := range []string{s, stripWrappedNewlines(s), escapeInnerQuotes(stripWrappedNewlines(s)), escapeInnerQuotes(s)} {
+	stripped := stripResidualTags(s)
+	for _, cand := range []string{s, stripped, stripWrappedNewlines(s), stripWrappedNewlines(stripped), escapeInnerQuotes(stripWrappedNewlines(s)), escapeInnerQuotes(stripWrappedNewlines(stripped)), escapeInnerQuotes(s), escapeInnerQuotes(stripped)} {
 		var v interface{}
 		if err := json.Unmarshal([]byte(cand), &v); err == nil {
 			return v, true
@@ -355,6 +439,120 @@ func parseContentAsToolCalls(content string, validTools map[string]bool) ([]map[
 	default:
 		return nil, false
 	}
+}
+
+// extractFunctionCallXMLBody converts an XML-style function body where
+// parameters are encoded as <parameter=key>value</parameter> into a synthetic
+// JSON object string the rest of the ladder can parse. The supplied `name` is
+// used as the `name` field and the collected parameters are placed under
+// `arguments`. Returns the original input when no XML-style parameters are
+// detected so callers can fall back to other ladders.
+func extractFunctionCallXMLBody(inner string, name string) string {
+	if !strings.Contains(inner, "<parameter=") && !strings.Contains(inner, "<parameter>") {
+		return inner
+	}
+	params := extractXMLParameters(inner)
+	if len(params) == 0 {
+		return inner
+	}
+	parts := []string{`"name":` + quoteJSONString(name)}
+	args := "{"
+	first := true
+	for k, v := range params {
+		if !first {
+			args += ","
+		}
+		first = false
+		args += quoteJSONString(k) + ":" + quoteJSONString(v)
+	}
+	args += "}"
+	parts = append(parts, `"arguments":`+args)
+	return "{" + strings.Join(parts, ",") + "}"
+}
+
+// extractXMLParameters parses <parameter=key>value</parameter> chunks out of
+// the body and returns a map of key→value. The map is empty when no chunks
+// are found.
+func extractXMLParameters(inner string) map[string]string {
+	out := map[string]string{}
+	if !strings.Contains(inner, "<parameter=") && !strings.Contains(inner, "<parameter>") {
+		return out
+	}
+	rest := inner
+	for {
+		start := strings.Index(rest, "<parameter=")
+		if start < 0 {
+			start = strings.Index(rest, "<parameter>")
+		}
+		if start < 0 {
+			break
+		}
+		tagEnd := strings.Index(rest[start:], ">")
+		if tagEnd < 0 {
+			break
+		}
+		openTag := rest[start : start+tagEnd+1]
+		key := ""
+		if eq := strings.Index(openTag, "="); eq > 0 {
+			key = strings.TrimSpace(openTag[eq+1:])
+		}
+		innerStart := start + tagEnd + 1
+		closeStart := strings.Index(rest[innerStart:], "</parameter>")
+		if closeStart < 0 {
+			break
+		}
+		innerVal := strings.TrimSpace(rest[innerStart : innerStart+closeStart])
+		if key == "" {
+			key = "text"
+		}
+		out[key] = innerVal
+		rest = rest[innerStart+closeStart+len("</parameter>"):]
+	}
+	return out
+}
+
+type functionTagAttrs struct {
+	name string
+}
+
+func funcNameFromFunctionTag(s string) functionTagAttrs {
+	start := strings.Index(s, "<function")
+	if start < 0 {
+		return functionTagAttrs{}
+	}
+	end := strings.Index(s[start:], ">")
+	if end < 0 {
+		return functionTagAttrs{}
+	}
+	tag := s[start : start+end+1]
+	for _, attr := range []string{"name", "function"} {
+		marker := attr + "="
+		idx := strings.Index(tag, marker)
+		if idx < 0 {
+			continue
+		}
+		rest := tag[idx+len(marker):]
+		if rest == "" {
+			continue
+		}
+		if rest[0] == '"' {
+			closeQ := strings.Index(rest[1:], "\"")
+			if closeQ >= 0 {
+				return functionTagAttrs{name: rest[1 : 1+closeQ]}
+			}
+		}
+		stop := 0
+		for stop < len(rest) && rest[stop] != ' ' && rest[stop] != '>' && rest[stop] != '\t' {
+			stop++
+		}
+		return functionTagAttrs{name: rest[:stop]}
+	}
+	return functionTagAttrs{}
+}
+
+func quoteJSONString(s string) string {
+	b, _ := json.Marshal(s)
+	return string(b)
 }
 
 func extractJSONSubstring(s string) string {
