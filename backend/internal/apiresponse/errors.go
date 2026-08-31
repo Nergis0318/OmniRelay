@@ -188,12 +188,4 @@ func AbortAdminInternal(c *gin.Context, message string) {
 	AbortAdminError(c, http.StatusInternalServerError, message, "internal_error")
 }
 
-// AbortAdminBadGateway writes a 502 admin error.
-func AbortAdminBadGateway(c *gin.Context, message string) {
-	AbortAdminError(c, http.StatusBadGateway, message, "bad_gateway")
-}
-
-// AbortAdminUnauthorized writes a 401 admin error.
-func AbortAdminUnauthorized(c *gin.Context, message string) {
-	AbortAdminError(c, http.StatusUnauthorized, message, "unauthorized")
-}
+// AbortAdminInternal writes a 500 admin error.

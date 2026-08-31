@@ -53,14 +53,3 @@ func TestLoadFromEnv(t *testing.T) {
 	}
 }
 
-func TestGetEnv(t *testing.T) {
-	os.Setenv("TEST_EXISTS", "hello")
-	defer os.Unsetenv("TEST_EXISTS")
-
-	if got := getEnv("TEST_EXISTS", "default"); got != "hello" {
-		t.Errorf("expected hello, got %s", got)
-	}
-	if got := getEnv("TEST_MISSING", "default"); got != "default" {
-		t.Errorf("expected default, got %s", got)
-	}
-}

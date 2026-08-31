@@ -38,7 +38,7 @@ func Login(svc *service.AuthService) gin.HandlerFunc {
 
 		resp, err := svc.Login(req)
 		if err != nil {
-			apiresponse.AbortAdminUnauthorized(c, err.Error())
+			apiresponse.AbortAdminError(c, http.StatusUnauthorized, err.Error(), "unauthorized")
 			return
 		}
 

@@ -237,7 +237,12 @@ var openaiCompatPriority = []string{"openai", "lmstudio", "ollama"}
 // APiBaseURL are overridden by the endpoint matching the request format, or the
 // original provider when no matching endpoint exists.
 func effectiveProvider(provider *models.Provider, format apiFormat) *models.Provider {
-	types := formatEndpointTypes(format)
+	var types []string
+	if format == apiFormatAnthropic {
+		types = []string{"anthropic"}
+	} else {
+		types = openaiCompatPriority
+	}
 	for _, t := range types {
 		for i := range provider.Endpoints {
 			if provider.Endpoints[i].APIType == t {
@@ -249,11 +254,4 @@ func effectiveProvider(provider *models.Provider, format apiFormat) *models.Prov
 		}
 	}
 	return provider
-}
-
-func formatEndpointTypes(format apiFormat) []string {
-	if format == apiFormatAnthropic {
-		return []string{"anthropic"}
-	}
-	return openaiCompatPriority
 }

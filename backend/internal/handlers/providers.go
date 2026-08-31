@@ -169,7 +169,7 @@ func SyncProviderModels(ps *service.ProviderService, ms *service.ModelService) g
 
 		modelIDs, err := ps.FetchModelsFromProvider(provider)
 		if err != nil {
-			apiresponse.AbortAdminBadGateway(c, "failed to fetch models: "+err.Error())
+			apiresponse.AbortAdminError(c, http.StatusBadGateway, "failed to fetch models: "+err.Error(), "bad_gateway")
 			return
 		}
 

@@ -1,13 +1,14 @@
 package proxy
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"omnirelay/internal/apiresponse"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 // upstreamError is a provider-agnostic representation of an upstream error.
@@ -150,7 +151,9 @@ func ensureRequestID(c *gin.Context) string {
 		c.Set("request_id", id)
 		return id
 	}
-	id := uuid.New().String()
+	b := make([]byte, 16)
+	rand.Read(b)
+	id := hex.EncodeToString(b)
 	c.Set("request_id", id)
 	return id
 }
