@@ -154,10 +154,136 @@ func tryParseSingleToolCall(obj map[string]interface{}, validTools map[string]bo
 	return buildToolCallEntry(name, argsRaw, id), true
 }
 
+// requestHasTools reports whether the request body carried a tools field at
+// all — used as the gate for stream buffering. Distinct from
+// extractValidToolNames, which may be nil when the tools list is empty or
+// uses a format we don't recognize.
+func requestHasTools(body map[string]interface{}) bool {
+	if body == nil {
+		return false
+	}
+	_, ok := body["tools"]
+	return ok
+}
+
+// extractToolCallTags pulls the inner payloads out of <tool_call>...</tool_call>
+// (and <function_call>) wrappers — the format some models emit when they leak
+// tool calls into content. Returns nil when no tags are present.
+func extractToolCallTags(s string) []string {
+	var out []string
+	for _, open := range []string{"<tool_call>", "<function_call>"} {
+		rest := s
+		for {
+			start := strings.Index(rest, open)
+			if start < 0 {
+				break
+			}
+			rest = rest[start+len(open):]
+			closeTag := "</" + open[1:]
+			end := strings.Index(rest, closeTag)
+			if end < 0 {
+				if inner := strings.TrimSpace(rest); inner != "" {
+					out = append(out, inner)
+				}
+				break
+			}
+			if inner := strings.TrimSpace(rest[:end]); inner != "" {
+				out = append(out, inner)
+			}
+			rest = rest[end+len(closeTag):]
+		}
+	}
+	return out
+}
+
+// stripWrappedNewlines removes \r and \n to rejoin JSON that a model or
+// terminal wrapped mid-string. Only applied when the JSON is already invalid.
+func stripWrappedNewlines(s string) string {
+	s = strings.ReplaceAll(s, "\r", "")
+	return strings.ReplaceAll(s, "\n", "")
+}
+
+// escapeInnerQuotes escapes string-internal quotes that were not escaped by
+// the model (e.g. "cmd": "echo "VAR" && ls""). A quote inside a string is
+// treated as the closing quote only when the next significant character is a
+// JSON structural character (, } ] :) or end of input.
+func escapeInnerQuotes(s string) string {
+	var b strings.Builder
+	inStr := false
+	esc := false
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if esc {
+			b.WriteByte(c)
+			esc = false
+			continue
+		}
+		if c == '\\' && inStr {
+			b.WriteByte(c)
+			esc = true
+			continue
+		}
+		if c == '"' {
+			if !inStr {
+				inStr = true
+				b.WriteByte(c)
+				continue
+			}
+			j := i + 1
+			for j < len(s) && (s[j] == ' ' || s[j] == '\t' || s[j] == '\n' || s[j] == '\r') {
+				j++
+			}
+			if j >= len(s) || s[j] == ',' || s[j] == '}' || s[j] == ']' || s[j] == ':' {
+				inStr = false
+				b.WriteByte(c)
+			} else {
+				b.WriteByte('\\')
+				b.WriteByte(c)
+			}
+			continue
+		}
+		b.WriteByte(c)
+	}
+	return b.String()
+}
+
+// parseJSONLadder tries increasingly aggressive repairs on leaked tool-call
+// JSON: as-is, newline-stripped, quote-escaped.
+func parseJSONLadder(s string) (interface{}, bool) {
+	for _, cand := range []string{s, stripWrappedNewlines(s), escapeInnerQuotes(stripWrappedNewlines(s)), escapeInnerQuotes(s)} {
+		var v interface{}
+		if err := json.Unmarshal([]byte(cand), &v); err == nil {
+			return v, true
+		}
+	}
+	return nil, false
+}
+
 func parseContentAsToolCalls(content string, validTools map[string]bool) ([]map[string]interface{}, bool) {
-	cleaned := stripMarkdownFences(content)
-	cleaned = strings.TrimSpace(cleaned)
+	cleaned := strings.TrimSpace(stripMarkdownFences(content))
 	if cleaned == "" {
+		return nil, false
+	}
+
+	// <tool_call> tag format: the tag itself is a strong signal, so tool-name
+	// validation is bypassed (the model may name tools the client listed in a
+	// format we didn't parse).
+	if tags := extractToolCallTags(cleaned); len(tags) > 0 {
+		var out []map[string]interface{}
+		for _, tag := range tags {
+			v, ok := parseJSONLadder(tag)
+			if !ok {
+				continue
+			}
+			if obj, ok := v.(map[string]interface{}); ok {
+				if tc, ok := tryParseSingleToolCall(obj, nil); ok {
+					out = append(out, tc)
+				}
+			}
+		}
+		if len(out) > 0 {
+			return out, true
+		}
 		return nil, false
 	}
 
@@ -170,20 +296,18 @@ func parseContentAsToolCalls(content string, validTools map[string]bool) ([]map[
 			return nil, false
 		}
 		cleaned = extracted
-		trimmed = strings.TrimSpace(cleaned)
 	}
 
-	var asInterface interface{}
-	if err := json.Unmarshal([]byte(cleaned), &asInterface); err != nil {
+	asInterface, ok := parseJSONLadder(cleaned)
+	if !ok {
 		// Try substring extraction fallback
 		extracted := extractJSONSubstring(cleaned)
 		if extracted == "" || extracted == cleaned {
 			return nil, false
 		}
-		if err := json.Unmarshal([]byte(extracted), &asInterface); err != nil {
+		if asInterface, ok = parseJSONLadder(extracted); !ok {
 			return nil, false
 		}
-		cleaned = extracted
 	}
 
 	switch v := asInterface.(type) {

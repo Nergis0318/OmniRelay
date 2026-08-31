@@ -223,8 +223,8 @@ func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapt
 		origBody = reqBody[0]
 	}
 	validTools := extractValidToolNames(origBody)
+	toolGate := requestHasTools(origBody)
 	var bufferedChunks [][]byte
-	var bufferedSentDone bool
 	streamHasToolCalls := false
 
 	sw, done, ok := startSSE(c, resp, true)
@@ -293,9 +293,9 @@ func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapt
 			}
 
 			// Buffer entire stream when we are not yet sure it is safe to forward:
-			// if validTools is non-empty and no tool_calls have appeared yet, holding
-			// buffers lets us replace a text-leaked tool call at stream end.
-			shouldBuffer := validTools != nil && !streamHasToolCalls && !rb.active
+			// the request carried tools and no tool_calls have appeared yet, so the
+			// stream may end with a text-leaked tool call we want to replace.
+			shouldBuffer := toolGate && !streamHasToolCalls && !rb.active
 			if shouldBuffer {
 				var out []byte
 				if transformed != nil {
@@ -303,13 +303,7 @@ func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapt
 				} else {
 					out = chunk
 				}
-				if bytes.Contains(out, []byte("data: [DONE]")) {
-					bufferedSentDone = true
-				}
 				bufferedChunks = append(bufferedChunks, append([]byte(nil), out...))
-				if headOpen && (bytes.Contains(out, []byte("content")) || bytes.Contains(out, []byte("finish_reason")) || bufferedSentDone) {
-					sentDone = bufferedSentDone
-				}
 				n, err = resp.Body.Read(buf)
 				continue
 			}
@@ -375,14 +369,8 @@ func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapt
 	}
 
 	// If stream was buffered and never emitted tool_calls, try to synthesize them from accumulated text
-	if validTools != nil && !streamHasToolCalls && len(bufferedChunks) > 0 && outputTextAccum.Len() > 0 {
+	if toolGate && !streamHasToolCalls && len(bufferedChunks) > 0 && outputTextAccum.Len() > 0 {
 		if tcs, ok := tryFixStreamAccumulatedContent(outputTextAccum.String(), validTools); ok {
-			sentDone = false
-			for _, fc := range buildToolCallStreamChunks(tcs) {
-				if strings.Contains(fc, "data: [DONE]") {
-					sentDone = true
-				}
-			}
 			outputTextAccum.Reset()
 			for _, tc := range tcs {
 				if fn, ok := tc["function"].(map[string]interface{}); ok {
@@ -395,9 +383,9 @@ func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapt
 			for _, fc := range fixChunks {
 				sw.Write([]byte(fc))
 			}
-			if !sentDone {
-				sw.Write([]byte("data: [DONE]\n\n"))
-			}
+			// fix chunks never carry [DONE]; always terminate the stream ourselves
+			sw.Write([]byte("data: [DONE]\n\n"))
+			sentDone = true
 			completedAt := time.Now()
 			if firstTokenAt != nil {
 				v := firstTokenAt.Sub(start).Milliseconds()
@@ -437,31 +425,23 @@ func (e *Engine) handleStreamResponse(c *gin.Context, resp *http.Response, adapt
 		}
 	}
 	// Otherwise flush buffered chunks as-is
-	if len(bufferedChunks) > 0 {
-		for _, bc := range bufferedChunks {
-			if headOpen && (bytes.Contains(bc, []byte("content")) || bytes.Contains(bc, []byte("finish_reason")) || bytes.Contains(bc, []byte("data: [DONE]"))) {
-				flushHead()
-			}
-			if headOpen {
-				head.Write(bc)
-			} else {
-				sw.Write(bc)
-			}
-			if bytes.Contains(bc, []byte("data: [DONE]")) {
-				sentDone = true
-			}
+	for _, bc := range bufferedChunks {
+		if headOpen && (bytes.Contains(bc, []byte("content")) || bytes.Contains(bc, []byte("finish_reason")) || bytes.Contains(bc, []byte("data: [DONE]"))) {
+			flushHead()
 		}
-		flushHead()
-		rb.flush(sw)
-	} else {
-		flushHead()
-		rb.flush(sw)
+		if headOpen {
+			head.Write(bc)
+		} else {
+			sw.Write(bc)
+		}
+		if bytes.Contains(bc, []byte("data: [DONE]")) {
+			sentDone = true
+		}
 	}
+	flushHead()
+	rb.flush(sw)
 
 	if !sentDone {
-		if len(bufferedChunks) > 0 && !streamHasToolCalls {
-			_ = bufferedSentDone
-		}
 		sw.Write([]byte("data: [DONE]\n\n"))
 	}
 

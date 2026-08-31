@@ -194,7 +194,7 @@ func (e *Engine) HandleResponses(c *gin.Context) {
 	defer resp.Body.Close()
 
 	if extractStreamFlag(chatBody) {
-		e.handleResponsesStream(c, resp, adapter, apiKeyID, provider.ID, fullModelID, dbModel, userID, provider.ProviderType, inputTokens)
+		e.handleResponsesStream(c, resp, adapter, apiKeyID, provider.ID, fullModelID, dbModel, userID, provider.ProviderType, inputTokens, chatBody)
 		return
 	}
 

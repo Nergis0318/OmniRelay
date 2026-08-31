@@ -15,7 +15,7 @@ import (
 
 // handleResponsesStream translates an upstream chat-completions SSE stream
 // into OpenAI Responses API SSE events.
-func (e *Engine) handleResponsesStream(c *gin.Context, resp *http.Response, adapter Adapter, apiKeyID, providerID int64, fullModelID string, dbModel *models.Model, userID int64, providerType string, inputTokens int64) {
+func (e *Engine) handleResponsesStream(c *gin.Context, resp *http.Response, adapter Adapter, apiKeyID, providerID int64, fullModelID string, dbModel *models.Model, userID int64, providerType string, inputTokens int64, reqBody ...map[string]interface{}) {
 	start := time.Now()
 	state := make(map[string]interface{})
 	responseID := randomID("resp_")
@@ -140,6 +140,31 @@ func (e *Engine) handleResponsesStream(c *gin.Context, resp *http.Response, adap
 		}})
 	}
 
+	var origBody map[string]interface{}
+	if len(reqBody) > 0 {
+		origBody = reqBody[0]
+	}
+	validTools := extractValidToolNames(origBody)
+	// Hold text deltas while the response might turn out to be a leaked tool
+	// call, so the stream can end with function_call items instead of text.
+	holding := requestHasTools(origBody)
+	var heldText strings.Builder
+
+	flushHeld := func() {
+		holding = false
+		if heldText.Len() == 0 {
+			return
+		}
+		if current == nil || current.kind != "message" {
+			closeItem()
+			openMessage()
+		}
+		s := heldText.String()
+		current.text.WriteString(s)
+		emit(map[string]interface{}{"type": "response.output_text.delta", "item_id": current.id, "output_index": len(outputItems), "content_index": 0, "delta": s})
+		heldText.Reset()
+	}
+
 	finishReason := ""
 	var totalInputTokens, totalOutputTokens int64
 	var pending []byte
@@ -192,6 +217,10 @@ func (e *Engine) handleResponsesStream(c *gin.Context, resp *http.Response, adap
 					delta, _ := choice["delta"].(map[string]interface{})
 
 					if toolCalls, ok := delta["tool_calls"].([]interface{}); ok {
+						if holding {
+							// Prose seen before real tool calls — emit it as a message first.
+							flushHeld()
+						}
 						for _, rawTC := range toolCalls {
 							tc, _ := rawTC.(map[string]interface{})
 							tcIndex := int(numberToInt64(tc["index"]))
@@ -221,12 +250,16 @@ func (e *Engine) handleResponsesStream(c *gin.Context, resp *http.Response, adap
 							contentStarted = true
 							flushPending()
 						}
+						outputTextAccum.WriteString(content)
+						if holding {
+							heldText.WriteString(content)
+							continue
+						}
 						if current == nil || current.kind != "message" {
 							closeItem()
 							openMessage()
 						}
 						current.text.WriteString(content)
-						outputTextAccum.WriteString(content)
 						emit(map[string]interface{}{"type": "response.output_text.delta", "item_id": current.id, "output_index": len(outputItems), "content_index": 0, "delta": content})
 					}
 
@@ -256,6 +289,41 @@ func (e *Engine) handleResponsesStream(c *gin.Context, resp *http.Response, adap
 	if !contentStarted {
 		contentStarted = true
 		flushPending()
+	}
+
+	// Held text that turns out to be leaked tool calls becomes function_call
+	// items instead of a message.
+	if holding && heldText.Len() > 0 {
+		if tcs, ok := parseContentAsToolCalls(outputTextAccum.String(), validTools); ok {
+			holding = false
+			heldText.Reset()
+			outputTextAccum.Reset()
+			for _, tc := range tcs {
+				fn, _ := tc["function"].(map[string]interface{})
+				name, _ := fn["name"].(string)
+				args, _ := fn["arguments"].(string)
+				callID, _ := tc["id"].(string)
+				if callID == "" {
+					callID = randomID("call_")
+				}
+				itemID := randomID("fc_")
+				idx := len(outputItems)
+				emit(map[string]interface{}{"type": "response.output_item.added", "output_index": idx, "item": map[string]interface{}{
+					"id": itemID, "type": "function_call", "status": "in_progress", "call_id": callID, "name": name, "arguments": "",
+				}})
+				emit(map[string]interface{}{"type": "response.function_call_arguments.done", "item_id": itemID, "output_index": idx, "arguments": args})
+				itemObj := map[string]interface{}{
+					"id": itemID, "type": "function_call", "status": "completed", "call_id": callID, "name": name, "arguments": args,
+				}
+				emit(map[string]interface{}{"type": "response.output_item.done", "output_index": idx, "item": itemObj})
+				outputItems = append(outputItems, itemObj)
+				outputTextAccum.WriteString(args)
+			}
+		} else {
+			flushHeld()
+		}
+	} else if holding {
+		holding = false
 	}
 
 	closeItem()
