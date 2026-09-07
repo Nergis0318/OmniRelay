@@ -10,6 +10,7 @@ import (
 	"omnirelay/internal/crypto"
 	"omnirelay/internal/models"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -67,12 +68,14 @@ func (s *ProviderService) saveEndpoints(providerID int64, endpoints []models.Pro
 }
 
 type ProviderService struct {
-	db  *sql.DB
-	cfg *config.Config
+	db   *sql.DB
+	cfg  *config.Config
+	rrMu sync.Mutex
+	rr   map[int64]uint64
 }
 
 func NewProviderService(db *sql.DB, cfg *config.Config) *ProviderService {
-	return &ProviderService{db: db, cfg: cfg}
+	return &ProviderService{db: db, cfg: cfg, rr: make(map[int64]uint64)}
 }
 
 func (s *ProviderService) List(userID int64) ([]models.Provider, error) {
@@ -99,6 +102,9 @@ func (s *ProviderService) List(userID int64) ([]models.Provider, error) {
 		if err := s.loadEndpoints(&providers[i]); err != nil {
 			return nil, err
 		}
+		if err := s.loadAPIKeys(&providers[i]); err != nil {
+			return nil, err
+		}
 	}
 	return providers, nil
 }
@@ -113,6 +119,9 @@ func (s *ProviderService) GetByKey(providerKey string, userID int64) (*models.Pr
 		return nil, err
 	}
 	if err := s.loadEndpoints(&p); err != nil {
+		return nil, err
+	}
+	if err := s.loadAPIKeys(&p); err != nil {
 		return nil, err
 	}
 	return &p, nil
@@ -131,6 +140,9 @@ func (s *ProviderService) GetByID(id int64, userID int64) (*models.Provider, err
 		s.loadSourceModels(&p)
 	}
 	if err := s.loadEndpoints(&p); err != nil {
+		return nil, err
+	}
+	if err := s.loadAPIKeys(&p); err != nil {
 		return nil, err
 	}
 	return &p, nil
@@ -195,6 +207,11 @@ func (s *ProviderService) Create(req models.CreateProviderRequest, userID int64)
 	}
 
 	id, _ := result.LastInsertId()
+	if encrypted != "" {
+		if err := s.insertKey(id, req.APIKey); err != nil {
+			return nil, err
+		}
+	}
 	if req.ProviderType == "custom" && len(req.Endpoints) > 0 {
 		return nil, &ProviderError{Message: "endpoints are not supported for custom providers", StatusCode: 400}
 	}
@@ -256,6 +273,9 @@ func (s *ProviderService) Update(id int64, userID int64, req models.UpdateProvid
 		if err != nil {
 			return nil, err
 		}
+		if err := s.insertKey(id, *req.APIKey); err != nil {
+			return nil, err
+		}
 	} else {
 		_, err = s.db.Exec(
 			"UPDATE providers SET name=?, api_base_url=?, provider_type=?, is_active=?, show_in_model_list=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=?",
@@ -300,6 +320,223 @@ func (s *ProviderService) Delete(id int64, userID int64) error {
 
 func (s *ProviderService) DecryptAPIKey(encrypted string) (string, error) {
 	return crypto.Decrypt(encrypted, s.cfg.EncryptKey)
+}
+
+func keyPrefix(plaintext string) string {
+	if len(plaintext) <= 8 {
+		return plaintext
+	}
+	return plaintext[:8]
+}
+
+type UpstreamKey struct {
+	ID        int64
+	Plaintext string
+}
+
+func (s *ProviderService) loadAPIKeys(p *models.Provider) error {
+	rows, err := s.db.Query(
+		`SELECT id, key_prefix, is_active, created_at FROM provider_api_keys WHERE provider_id = ? ORDER BY id`,
+		p.ID,
+	)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var k models.ProviderAPIKeyPublic
+		if err := rows.Scan(&k.ID, &k.KeyPrefix, &k.IsActive, &k.CreatedAt); err != nil {
+			return err
+		}
+		p.APIKeys = append(p.APIKeys, k)
+	}
+	return rows.Err()
+}
+
+func (s *ProviderService) insertKey(providerID int64, plaintext string) error {
+	enc, err := crypto.Encrypt(plaintext, s.cfg.EncryptKey)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(
+		`INSERT INTO provider_api_keys (provider_id, api_key_encrypted, key_prefix, is_active) VALUES (?, ?, ?, 1)`,
+		providerID, enc, keyPrefix(plaintext),
+	)
+	return err
+}
+
+func (s *ProviderService) ListActiveKeys(provider *models.Provider) ([]UpstreamKey, error) {
+	rows, err := s.db.Query(
+		`SELECT id, api_key_encrypted FROM provider_api_keys WHERE provider_id = ? AND is_active = 1 ORDER BY id`,
+		provider.ID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var keys []UpstreamKey
+	for rows.Next() {
+		var id int64
+		var enc string
+		if err := rows.Scan(&id, &enc); err != nil {
+			return nil, err
+		}
+		plain, err := s.DecryptAPIKey(enc)
+		if err != nil {
+			continue
+		}
+		keys = append(keys, UpstreamKey{ID: id, Plaintext: plain})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(keys) == 0 {
+		var n int
+		if err := s.db.QueryRow(
+			`SELECT COUNT(*) FROM provider_api_keys WHERE provider_id = ?`,
+			provider.ID,
+		).Scan(&n); err != nil {
+			return nil, err
+		}
+		if n == 0 && provider.APIKeyEncrypted != "" {
+			plain, err := s.DecryptAPIKey(provider.APIKeyEncrypted)
+			if err != nil {
+				return nil, err
+			}
+			return []UpstreamKey{{ID: 0, Plaintext: plain}}, nil
+		}
+	}
+	return keys, nil
+}
+
+func (s *ProviderService) FirstActiveKey(provider *models.Provider) (UpstreamKey, error) {
+	keys, err := s.ListActiveKeys(provider)
+	if err != nil {
+		return UpstreamKey{}, err
+	}
+	if len(keys) == 0 {
+		return UpstreamKey{}, &ProviderError{Message: "no active provider API keys", StatusCode: 400}
+	}
+	return keys[0], nil
+}
+
+func (s *ProviderService) NextStartIndex(providerID int64, n int) int {
+	if n <= 0 {
+		return 0
+	}
+	s.rrMu.Lock()
+	defer s.rrMu.Unlock()
+	// ponytail: in-memory RR cursor, persist to SQLite if multi-process ever matters
+	v := s.rr[providerID]
+	s.rr[providerID] = v + 1
+	return int(v % uint64(n))
+}
+
+func (s *ProviderService) DeactivateKey(id int64) error {
+	if id == 0 {
+		return nil
+	}
+	_, err := s.db.Exec(`UPDATE provider_api_keys SET is_active = 0 WHERE id = ?`, id)
+	return err
+}
+
+func (s *ProviderService) countActiveKeys(providerID int64) (int, error) {
+	var n int
+	err := s.db.QueryRow(
+		`SELECT COUNT(*) FROM provider_api_keys WHERE provider_id = ? AND is_active = 1`,
+		providerID,
+	).Scan(&n)
+	return n, err
+}
+
+func (s *ProviderService) AddKey(providerID, userID int64, plaintext string) (*models.ProviderAPIKeyPublic, error) {
+	if plaintext == "" {
+		return nil, &ProviderError{Message: "api_key is required", StatusCode: 400}
+	}
+	if _, err := s.GetByID(providerID, userID); err != nil {
+		return nil, err
+	}
+	if err := s.insertKey(providerID, plaintext); err != nil {
+		return nil, err
+	}
+	p, err := s.GetByID(providerID, userID)
+	if err != nil {
+		return nil, err
+	}
+	if len(p.APIKeys) == 0 {
+		return nil, fmt.Errorf("key insert failed")
+	}
+	k := p.APIKeys[len(p.APIKeys)-1]
+	return &k, nil
+}
+
+func (s *ProviderService) SetKeyActive(providerID, keyID, userID int64, active bool) error {
+	if _, err := s.GetByID(providerID, userID); err != nil {
+		return err
+	}
+	if !active {
+		n, err := s.countActiveKeys(providerID)
+		if err != nil {
+			return err
+		}
+		var isActive int
+		err = s.db.QueryRow(
+			`SELECT is_active FROM provider_api_keys WHERE id = ? AND provider_id = ?`,
+			keyID, providerID,
+		).Scan(&isActive)
+		if err == sql.ErrNoRows {
+			return &ProviderError{Message: "key not found", StatusCode: 404}
+		}
+		if err != nil {
+			return err
+		}
+		if isActive == 1 && n <= 1 {
+			return &ProviderError{Message: "cannot deactivate the last active key", StatusCode: 400}
+		}
+	}
+	res, err := s.db.Exec(
+		`UPDATE provider_api_keys SET is_active = ? WHERE id = ? AND provider_id = ?`,
+		active, keyID, providerID,
+	)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return &ProviderError{Message: "key not found", StatusCode: 404}
+	}
+	return nil
+}
+
+func (s *ProviderService) DeleteKey(providerID, keyID, userID int64) error {
+	if _, err := s.GetByID(providerID, userID); err != nil {
+		return err
+	}
+	n, err := s.countActiveKeys(providerID)
+	if err != nil {
+		return err
+	}
+	var isActive int
+	err = s.db.QueryRow(
+		`SELECT is_active FROM provider_api_keys WHERE id = ? AND provider_id = ?`,
+		keyID, providerID,
+	).Scan(&isActive)
+	if err == sql.ErrNoRows {
+		return &ProviderError{Message: "key not found", StatusCode: 404}
+	}
+	if err != nil {
+		return err
+	}
+	if isActive == 1 && n <= 1 {
+		return &ProviderError{Message: "cannot delete the last active key", StatusCode: 400}
+	}
+	res, err := s.db.Exec(`DELETE FROM provider_api_keys WHERE id = ? AND provider_id = ?`, keyID, providerID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return &ProviderError{Message: "key not found", StatusCode: 404}
+	}
+	return nil
 }
 
 func (s *ProviderService) importSourceModels(customProvider *models.Provider, sourceModels []string, userID int64) error {
@@ -361,10 +598,11 @@ func (s *ProviderService) FetchModelsFromProvider(provider *models.Provider) ([]
 		return nil, nil
 	}
 
-	apiKey, err := s.DecryptAPIKey(provider.APIKeyEncrypted)
+	uk, err := s.FirstActiveKey(provider)
 	if err != nil {
 		return nil, err
 	}
+	apiKey := uk.Plaintext
 
 	baseURL := strings.TrimRight(provider.APiBaseURL, "/")
 	var url string

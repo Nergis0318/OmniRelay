@@ -55,7 +55,7 @@ func main() {
 	}
 	r.Use(cors.New(cors.Config{
 		AllowOrigins:     allowedOrigins,
-		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "x-api-key"},
 		AllowCredentials: true,
 	}))
@@ -102,6 +102,9 @@ func main() {
 				adminOnly.DELETE("/providers/:id", handlers.DeleteProvider(providerService))
 				adminOnly.POST("/providers/:id/sync", handlers.SyncProviderModels(providerService, modelService))
 				adminOnly.POST("/providers/:id/test", handlers.TestProvider(providerService, proxyEngine))
+				adminOnly.POST("/providers/:id/keys", handlers.AddProviderKey(providerService))
+				adminOnly.PATCH("/providers/:id/keys/:kid", handlers.SetProviderKeyActive(providerService))
+				adminOnly.DELETE("/providers/:id/keys/:kid", handlers.DeleteProviderKey(providerService))
 
 				adminOnly.POST("/models", handlers.CreateModel(modelService))
 				adminOnly.PUT("/models/:id", handlers.UpdateModel(modelService))

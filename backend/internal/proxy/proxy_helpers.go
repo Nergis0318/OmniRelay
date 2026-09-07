@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"omnirelay/internal/apiresponse"
 	"omnirelay/internal/models"
+	"omnirelay/internal/service"
 	"strings"
 	"time"
 
@@ -184,7 +185,7 @@ func writeUpstreamErrorBody(c *gin.Context, resp *http.Response, providerType st
 // proxyJSONRequest is a common scaffolding for "marshal adapted body → POST → status check".
 // On success it returns (resp, startTime, true). On any failure it writes an error response,
 // logs the failure via the engine, and returns ok=false. Callers must close the response body.
-func (e *Engine) proxyJSONRequest(c *gin.Context, u usageContext, providerType, apiKey, upstreamURL string, adaptedBody map[string]interface{}, logNewRequestErrors bool) (*http.Response, time.Time, bool) {
+func (e *Engine) proxyJSONRequest(c *gin.Context, u usageContext, provider *models.Provider, upstreamURL string, adaptedBody map[string]interface{}, logNewRequestErrors bool) (*http.Response, time.Time, bool) {
 	errFmt := apiresponse.FormatFromContext(c)
 
 	adaptedJSON, err := json.Marshal(adaptedBody)
@@ -193,17 +194,14 @@ func (e *Engine) proxyJSONRequest(c *gin.Context, u usageContext, providerType, 
 		return nil, time.Time{}, false
 	}
 
-	req, err := buildUpstreamRequest(c, http.MethodPost, upstreamURL, adaptedJSON, providerType, apiKey)
-	if err != nil {
-		if logNewRequestErrors {
-			e.logUpstreamError(u, err.Error(), 0)
+	resp, start, err := e.tryKeys(provider, func(key service.UpstreamKey) (*http.Response, time.Time, error) {
+		req, err := buildUpstreamRequest(c, http.MethodPost, upstreamURL, adaptedJSON, provider.ProviderType, key.Plaintext)
+		if err != nil {
+			return nil, time.Time{}, err
 		}
-		apiresponse.AbortInternal(c, errFmt, "failed to create upstream request")
-		return nil, time.Time{}, false
-	}
-
-	resp, start, err := e.doUpstream(req)
-	if err != nil {
+		return e.doUpstream(req)
+	})
+	if err != nil && resp == nil {
 		e.logUpstreamError(u, err.Error(), 0)
 		apiresponse.AbortBadGateway(c, errFmt, fmt.Sprintf("upstream request failed: %v", err))
 		return nil, time.Time{}, false
@@ -212,7 +210,7 @@ func (e *Engine) proxyJSONRequest(c *gin.Context, u usageContext, providerType, 
 	if !isSuccessStatus(resp.StatusCode) {
 		latencyMs := time.Since(start).Milliseconds()
 		e.logUpstreamError(u, fmt.Sprintf("upstream returned %d", resp.StatusCode), latencyMs)
-		writeUpstreamErrorBody(c, resp, providerType)
+		writeUpstreamErrorBody(c, resp, provider.ProviderType)
 		resp.Body.Close()
 		return nil, time.Time{}, false
 	}

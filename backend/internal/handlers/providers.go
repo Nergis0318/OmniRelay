@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"database/sql"
 	"errors"
 	"net/http"
 	"omnirelay/internal/apiresponse"
@@ -84,7 +85,7 @@ func UpdateProvider(svc *service.ProviderService) gin.HandlerFunc {
 
 		provider, err := svc.Update(id, userID, req)
 		if err != nil {
-			apiresponse.AbortAdminNotFound(c, err.Error())
+			writeProviderErr(c, err)
 			return
 		}
 
@@ -130,11 +131,12 @@ func TestProvider(ps *service.ProviderService, proxyEngine *proxy.Engine) gin.Ha
 			return
 		}
 
-		apiKey, err := ps.DecryptAPIKey(provider.APIKeyEncrypted)
+		uk, err := ps.FirstActiveKey(provider)
 		if err != nil {
-			apiresponse.AbortAdminInternal(c, "failed to decrypt provider key")
+			writeProviderErr(c, err)
 			return
 		}
+		apiKey := uk.Plaintext
 
 		modelID, err := ps.FirstModelID(id, userID)
 		if err != nil {
@@ -185,3 +187,88 @@ func SyncProviderModels(ps *service.ProviderService, ms *service.ModelService) g
 	}
 }
 
+func writeProviderErr(c *gin.Context, err error) {
+	if errors.Is(err, sql.ErrNoRows) {
+		apiresponse.AbortAdminNotFound(c, "not found")
+		return
+	}
+	var pe *service.ProviderError
+	if errors.As(err, &pe) {
+		apiresponse.AbortAdminError(c, pe.StatusCode, err.Error(), "")
+		return
+	}
+	apiresponse.AbortAdminInternal(c, err.Error())
+}
+
+func AddProviderKey(svc *service.ProviderService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID := c.GetInt64("user_id")
+		id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+		if err != nil {
+			apiresponse.AbortAdminBadRequest(c, "invalid provider ID")
+			return
+		}
+		var req struct {
+			APIKey string `json:"api_key"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			apiresponse.AbortAdminBadRequest(c, err.Error())
+			return
+		}
+		k, err := svc.AddKey(id, userID, req.APIKey)
+		if err != nil {
+			writeProviderErr(c, err)
+			return
+		}
+		c.JSON(http.StatusCreated, gin.H{"key": k})
+	}
+}
+
+func SetProviderKeyActive(svc *service.ProviderService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID := c.GetInt64("user_id")
+		id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+		if err != nil {
+			apiresponse.AbortAdminBadRequest(c, "invalid provider ID")
+			return
+		}
+		kid, err := strconv.ParseInt(c.Param("kid"), 10, 64)
+		if err != nil {
+			apiresponse.AbortAdminBadRequest(c, "invalid key ID")
+			return
+		}
+		var req struct {
+			IsActive *bool `json:"is_active"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil || req.IsActive == nil {
+			apiresponse.AbortAdminBadRequest(c, "is_active is required")
+			return
+		}
+		if err := svc.SetKeyActive(id, kid, userID, *req.IsActive); err != nil {
+			writeProviderErr(c, err)
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	}
+}
+
+func DeleteProviderKey(svc *service.ProviderService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID := c.GetInt64("user_id")
+		id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+		if err != nil {
+			apiresponse.AbortAdminBadRequest(c, "invalid provider ID")
+			return
+		}
+		kid, err := strconv.ParseInt(c.Param("kid"), 10, 64)
+		if err != nil {
+			apiresponse.AbortAdminBadRequest(c, "invalid key ID")
+			return
+		}
+		if err := svc.DeleteKey(id, kid, userID); err != nil {
+			writeProviderErr(c, err)
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"message": "key deleted"})
+	}
+}

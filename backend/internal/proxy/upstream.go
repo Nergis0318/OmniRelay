@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -13,6 +14,51 @@ import (
 
 	"github.com/gin-gonic/gin"
 )
+
+func failoverStatus(err error, status int) bool {
+	if err != nil {
+		return true
+	}
+	switch status {
+	case 401, 403, 429:
+		return true
+	}
+	return status >= 500
+}
+
+func (e *Engine) tryKeys(provider *models.Provider, fn func(key service.UpstreamKey) (*http.Response, time.Time, error)) (*http.Response, time.Time, error) {
+	keys, err := e.providerService.ListActiveKeys(provider)
+	if err != nil {
+		return nil, time.Time{}, err
+	}
+	if len(keys) == 0 {
+		return nil, time.Time{}, fmt.Errorf("failed to decrypt provider key")
+	}
+	startIdx := e.providerService.NextStartIndex(provider.ID, len(keys))
+	var lastResp *http.Response
+	var lastStart time.Time
+	var lastErr error
+	for i := 0; i < len(keys); i++ {
+		key := keys[(startIdx+i)%len(keys)]
+		resp, start, err := fn(key)
+		if lastResp != nil && lastResp != resp {
+			io.Copy(io.Discard, lastResp.Body)
+			lastResp.Body.Close()
+		}
+		lastResp, lastStart, lastErr = resp, start, err
+		status := 0
+		if resp != nil {
+			status = resp.StatusCode
+		}
+		if !failoverStatus(err, status) {
+			return resp, start, err
+		}
+		if status == 401 || status == 403 {
+			_ = e.providerService.DeactivateKey(key.ID)
+		}
+	}
+	return lastResp, lastStart, lastErr
+}
 
 type requestContext struct {
 	c           *gin.Context
@@ -27,41 +73,26 @@ type requestContext struct {
 func (rc *requestContext) executeUpstream(adaptedBody map[string]interface{}, endpoint string, isStream bool) (resp *http.Response, startTime time.Time, wroteError bool) {
 	provider := rc.provider
 	e := rc.engine
-
-	apiKey, err := e.providerService.DecryptAPIKey(provider.APIKeyEncrypted)
-	if err != nil {
-		rc.c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to decrypt provider key"})
-		return nil, time.Time{}, true
-	}
-
 	if provider.ProviderType == "gemini" && isStream {
 		endpoint = applyGeminiStreamingURL("gemini", endpoint, true)
 	}
-
 	adaptedJSON, _ := json.Marshal(adaptedBody)
 	modelURL := joinUpstreamURL(provider.APiBaseURL, endpoint)
-	req, err := http.NewRequest("POST", modelURL, bytes.NewReader(adaptedJSON))
-	if err != nil {
-		e.usageService.Log(models.UsageLog{
-			APIKeyID:     &rc.apiKeyID,
-			ProviderID:   &provider.ID,
-			Model:        rc.fullModelID,
-			IsError:      true,
-			ErrorMessage: err.Error(),
-			UserID:       &rc.userID,
-		})
-		rc.c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create the model request"})
-		return nil, time.Time{}, true
-	}
 
-	req.Header.Set("Content-Type", "application/json")
-	copyForwardableRequestHeaders(rc.c, req)
-	setProviderAuthHeaders(req, provider.ProviderType, apiKey)
-
-	client := &http.Client{Timeout: 5 * time.Minute}
-	startTime = time.Now()
-	resp, err = client.Do(req)
-	if err != nil {
+	resp, startTime, err := e.tryKeys(provider, func(key service.UpstreamKey) (*http.Response, time.Time, error) {
+		req, err := http.NewRequest("POST", modelURL, bytes.NewReader(adaptedJSON))
+		if err != nil {
+			return nil, time.Time{}, err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		copyForwardableRequestHeaders(rc.c, req)
+		setProviderAuthHeaders(req, provider.ProviderType, key.Plaintext)
+		client := &http.Client{Timeout: 5 * time.Minute}
+		start := time.Now()
+		resp, err := client.Do(req)
+		return resp, start, err
+	})
+	if err != nil && resp == nil {
 		e.usageService.Log(models.UsageLog{
 			APIKeyID:     &rc.apiKeyID,
 			ProviderID:   &provider.ID,

@@ -154,3 +154,66 @@ func TestHasColumn(t *testing.T) {
 		t.Error("expected nonexistent column to not exist")
 	}
 }
+
+func TestMigrationV14CopiesProviderKeys(t *testing.T) {
+	db := openTestDB(t)
+
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
+		version INTEGER PRIMARY KEY
+	)`); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, m := range migrations {
+		if m.version >= 14 {
+			break
+		}
+		tx, err := db.Begin()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := m.up(tx); err != nil {
+			tx.Rollback()
+			t.Fatalf("migration v%d: %v", m.version, err)
+		}
+		if _, err := tx.Exec("INSERT INTO schema_migrations (version) VALUES (?)", m.version); err != nil {
+			tx.Rollback()
+			t.Fatal(err)
+		}
+		if err := tx.Commit(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if _, err := db.Exec(`INSERT INTO users (username, password_hash) VALUES ('u', 'h')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(
+		`INSERT INTO providers (provider_key, name, api_base_url, api_key_encrypted, provider_type, user_id)
+		 VALUES ('openai', 'OpenAI', 'https://api.openai.com/v1', 'enc-abc', 'openai', 1)`,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := runMigrations(db); err != nil {
+		t.Fatalf("runMigrations: %v", err)
+	}
+
+	var n int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='provider_api_keys'`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("provider_api_keys missing")
+	}
+
+	var pid int64
+	var enc, prefix string
+	var active int
+	if err := db.QueryRow(`SELECT provider_id, api_key_encrypted, key_prefix, is_active FROM provider_api_keys`).Scan(&pid, &enc, &prefix, &active); err != nil {
+		t.Fatalf("copied row: %v", err)
+	}
+	if enc != "enc-abc" || active != 1 || prefix != "" {
+		t.Fatalf("got enc=%q prefix=%q active=%d", enc, prefix, active)
+	}
+}

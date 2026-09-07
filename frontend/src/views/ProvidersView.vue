@@ -175,14 +175,59 @@
               placeholder="https://api.openai.com/v1"
             />
           </div>
-          <div v-if="form.provider_type !== 'custom'" class="field-group">
+          <div v-if="form.provider_type !== 'custom' && !editing" class="field-group">
             <label class="field-label">{{ $t("providers.apiKey") }}</label>
             <input
               v-model="form.api_key"
               type="password"
               class="field-input"
-              :placeholder="editing ? $t('providers.leaveEmpty') : 'sk-...'"
+              placeholder="sk-..."
             />
+          </div>
+          <div v-if="form.provider_type !== 'custom' && editing" class="field-group">
+            <label class="field-label">{{ $t("providers.apiKeys") }}</label>
+            <div
+              v-for="key in editing.api_keys"
+              :key="key.id"
+              class="key-row"
+            >
+              <span class="key-prefix" :title="$t('providers.keyPrefix')">{{
+                key.key_prefix
+              }}</span>
+              <label class="checkbox-row key-active">
+                <input
+                  type="checkbox"
+                  class="checkbox"
+                  :checked="key.is_active"
+                  @click.prevent="handleSetKeyActive(key.id, !key.is_active)"
+                />
+                <span class="checkbox-label">{{ $t("providers.active") }}</span>
+              </label>
+              <button
+                type="button"
+                class="row-btn row-btn--danger"
+                :title="$t('common.delete')"
+                @click="handleRemoveKey(key.id)"
+              >
+                <v-icon size="15">mdi-delete-outline</v-icon>
+              </button>
+            </div>
+            <div class="endpoint-row">
+              <input
+                v-model="newKey"
+                type="password"
+                class="field-input"
+                placeholder="sk-..."
+              />
+              <button
+                type="button"
+                class="btn-secondary"
+                :disabled="!newKey"
+                @click="handleAddKey"
+              >
+                {{ $t("providers.addKey") }}
+              </button>
+            </div>
           </div>
           <div class="field-group">
             <label class="field-label">{{
@@ -301,7 +346,9 @@
           </label>
 
           <AppAlert v-if="syncResult" variant="success">{{ syncResult }}</AppAlert>
-          <AppAlert v-if="dialogError" variant="error">{{ dialogError }}</AppAlert>
+          <AppAlert v-if="dialogError || store.error" variant="error">{{
+            dialogError || store.error
+          }}</AppAlert>
         </div>
 
         <div class="dialog-footer">
@@ -348,6 +395,7 @@ const dialog = ref(false);
 const editing = ref<any>(null);
 const saving = ref(false);
 const dialogError = ref("");
+const newKey = ref("");
 const syncResult = ref("");
 const syncError = ref("");
 const syncingId = ref<number | null>(null);
@@ -397,6 +445,8 @@ function openDialog(provider?: any) {
   dialogError.value = "";
   syncResult.value = "";
   syncError.value = "";
+  newKey.value = "";
+  store.clearError();
   if (provider) {
     editing.value = provider;
     form.value = {
@@ -433,8 +483,8 @@ async function handleSave() {
       // For custom providers, include source_models so model selections persist.
       // For non-custom providers, omit it — models are managed via sync.
       const rest = form.value.provider_type === "custom"
-        ? (({ auto_sync: _s, ...r }) => r)(form.value)
-        : (({ source_models: _o, auto_sync: _s, ...r }) => r)(form.value);
+        ? (({ auto_sync: _s, api_key: _k, ...r }) => r)(form.value)
+        : (({ source_models: _o, auto_sync: _s, api_key: _k, ...r }) => r)(form.value);
       await store.update(editing.value.id, rest);
       if (form.value.auto_sync && form.value.provider_type !== "custom") {
         const { data } = await store.syncModels(editing.value.id);
@@ -488,6 +538,46 @@ async function handleSave() {
       testingId.value = null;
     }
   }
+
+function refreshEditing() {
+  if (!editing.value) return;
+  const p = store.providers.find((x) => x.id === editing.value.id);
+  if (p) editing.value = p;
+}
+
+async function handleAddKey() {
+  if (!editing.value || !newKey.value) return;
+  dialogError.value = "";
+  try {
+    await store.addKey(editing.value.id, newKey.value);
+    newKey.value = "";
+    refreshEditing();
+  } catch {
+    dialogError.value = store.error || t("providers.saveFailed");
+  }
+}
+
+async function handleSetKeyActive(keyId: number, is_active: boolean) {
+  if (!editing.value) return;
+  dialogError.value = "";
+  try {
+    await store.setKeyActive(editing.value.id, keyId, is_active);
+    refreshEditing();
+  } catch {
+    dialogError.value = store.error || t("providers.cannotDeleteLastKey");
+  }
+}
+
+async function handleRemoveKey(keyId: number) {
+  if (!editing.value) return;
+  dialogError.value = "";
+  try {
+    await store.removeKey(editing.value.id, keyId);
+    refreshEditing();
+  } catch {
+    dialogError.value = store.error || t("providers.cannotDeleteLastKey");
+  }
+}
 
 async function handleDelete(id: number) {
   if (!confirm(t("providers.deleteConfirm"))) return;
@@ -561,6 +651,22 @@ async function handleDelete(id: number) {
   align-items: center;
   gap: 6px;
   margin-bottom: 6px;
+}
+.key-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.key-prefix {
+  font-family: monospace;
+  font-size: 13px;
+  flex: 1;
+  min-width: 0;
+}
+.key-active {
+  margin: 0;
+  flex: 0 0 auto;
 }
 .endpoint-row .endpoint-select {
   flex: 0 0 120px;

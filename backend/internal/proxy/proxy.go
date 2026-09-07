@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"omnirelay/internal/apiresponse"
 	"omnirelay/internal/models"
+	"omnirelay/internal/service"
 	"strings"
 	"time"
 
@@ -53,12 +54,12 @@ func (e *Engine) HandleMessages(c *gin.Context) {
 
 	fullModelID := body["model"].(string)
 
-	dbModel, provider, adapter, apiKey, ok := e.resolveDispatch(c, fullModelID, userID, apiresponse.FormatAnthropic, apiFormatAnthropic)
+	dbModel, provider, adapter, _, ok := e.resolveDispatch(c, fullModelID, userID, apiresponse.FormatAnthropic, apiFormatAnthropic)
 	if !ok {
 		return
 	}
 
-	e.executeMessages(c, body, fullModelID, dbModel, provider, adapter, apiKey, usageContext{
+	e.executeMessages(c, body, fullModelID, dbModel, provider, adapter, usageContext{
 		apiKeyID:    apiKeyID,
 		providerID:  provider.ID,
 		userID:      userID,
@@ -221,12 +222,7 @@ func (e *Engine) HandlePathRouted(c *gin.Context) {
 	}
 
 	if isMessages && adapter != nil && dbModel != nil {
-		apiKey, err := e.providerService.DecryptAPIKey(provider.APIKeyEncrypted)
-		if err != nil {
-			apiresponse.AbortInternal(c, apiresponse.FormatAnthropic, "failed to decrypt provider key")
-			return
-		}
-		e.executeMessages(c, body, fullModelID, dbModel, provider, adapter, apiKey, u)
+		e.executeMessages(c, body, fullModelID, dbModel, provider, adapter, u)
 		return
 	}
 
@@ -268,13 +264,7 @@ func (e *Engine) resolveDispatch(c *gin.Context, fullModelID string, userID int6
 		return nil, nil, nil, "", false
 	}
 
-	apiKey, err := e.providerService.DecryptAPIKey(provider.APIKeyEncrypted)
-	if err != nil {
-		apiresponse.AbortInternal(c, errFmt, "failed to decrypt provider key")
-		return nil, nil, nil, "", false
-	}
-
-	return dbModel, provider, adapter, apiKey, true
+	return dbModel, provider, adapter, "", true
 }
 
 func readJSONBody(c *gin.Context) (map[string]interface{}, bool) {
@@ -292,7 +282,7 @@ func readJSONBody(c *gin.Context) (map[string]interface{}, bool) {
 	return body, true
 }
 
-func (e *Engine) executeMessages(c *gin.Context, body map[string]interface{}, fullModelID string, dbModel *models.Model, provider *models.Provider, adapter Adapter, apiKey string, u usageContext) {
+func (e *Engine) executeMessages(c *gin.Context, body map[string]interface{}, fullModelID string, dbModel *models.Model, provider *models.Provider, adapter Adapter, u usageContext) {
 	endpoint, adaptedBody, err := adapter.BuildMessagesRequest(body)
 	if err != nil {
 		apiresponse.AbortInvalidRequest(c, apiresponse.FormatAnthropic, err.Error(), "")
@@ -311,7 +301,7 @@ func (e *Engine) executeMessages(c *gin.Context, body map[string]interface{}, fu
 	endpoint = applyGeminiStreamingURL(provider.ProviderType, endpoint, isStream)
 	modelURL := joinUpstreamURL(provider.APiBaseURL, endpoint)
 
-	resp, startTime, ok := e.proxyJSONRequest(c, u, provider.ProviderType, apiKey, modelURL, adaptedBody, true)
+	resp, startTime, ok := e.proxyJSONRequest(c, u, provider, modelURL, adaptedBody, true)
 	if !ok {
 		return
 	}
@@ -427,12 +417,6 @@ func (e *Engine) executeMessages(c *gin.Context, body map[string]interface{}, fu
 func (e *Engine) handlePathRoutedProxy(c *gin.Context, provider *models.Provider, dbModel *models.Model, body map[string]interface{}, bodyBytes []byte, fullModelID string, endpoint string, apiPrefix string, hasRequestBody bool, contentType string, u usageContext) {
 	errFmt := apiresponse.FormatFromContext(c)
 
-	apiKey, err := e.providerService.DecryptAPIKey(provider.APIKeyEncrypted)
-	if err != nil {
-		apiresponse.AbortInternal(c, errFmt, "failed to decrypt provider key")
-		return
-	}
-
 	// Count input tokens locally from the request body
 	localInputTokens := countInputTokens(body, fullModelID)
 
@@ -455,22 +439,21 @@ func (e *Engine) handlePathRoutedProxy(c *gin.Context, provider *models.Provider
 	modelEndpoint := routedEndpoint(apiPrefix, modelBaseURL, endpoint)
 	modelURL := appendRawQuery(joinUpstreamURL(modelBaseURL, modelEndpoint), c.Request.URL.RawQuery)
 
-	req, err := buildUpstreamRequest(c, c.Request.Method, modelURL, reqBodyBytes, provider.ProviderType, apiKey)
-	if err != nil {
-		e.logUpstreamError(u, err.Error(), 0)
-		apiresponse.AbortInternal(c, errFmt, "failed to create the model request")
-		return
-	}
-	if hasRequestBody {
-		ct := contentType
-		if ct == "" {
-			ct = "application/json"
+	resp, startTime, err := e.tryKeys(provider, func(key service.UpstreamKey) (*http.Response, time.Time, error) {
+		req, err := buildUpstreamRequest(c, c.Request.Method, modelURL, reqBodyBytes, provider.ProviderType, key.Plaintext)
+		if err != nil {
+			return nil, time.Time{}, err
 		}
-		req.Header.Set("Content-Type", ct)
-	}
-
-	resp, startTime, err := e.doUpstream(req)
-	if err != nil {
+		if hasRequestBody {
+			ct := contentType
+			if ct == "" {
+				ct = "application/json"
+			}
+			req.Header.Set("Content-Type", ct)
+		}
+		return e.doUpstream(req)
+	})
+	if err != nil && resp == nil {
 		e.logUpstreamError(u, err.Error(), 0)
 		apiresponse.AbortBadGateway(c, errFmt, fmt.Sprintf("the model request failed: %v", err))
 		return

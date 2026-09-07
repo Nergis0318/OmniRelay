@@ -5,11 +5,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
 	"omnirelay/internal/config"
 	"omnirelay/internal/database"
+	"omnirelay/internal/models"
 	"omnirelay/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -261,3 +263,44 @@ func TestRegisterLoginFlow(t *testing.T) {
 		t.Errorf("duplicate register expected 409, got %d", w3.Code)
 	}
 }
+
+func TestProviderKeyRoutes(t *testing.T) {
+	_, ps, _, _, _, tokenStr := setupTest(t)
+	p, err := ps.Create(models.CreateProviderRequest{
+		ProviderKey: "oa", Name: "OA", APiBaseURL: "https://example/v1",
+		APIKey: "sk-one", ProviderType: "openai",
+	}, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	r := gin.New()
+	r.POST("/admin/providers/:id/keys", adminAuthMiddleware(tokenStr), AddProviderKey(ps))
+	r.PATCH("/admin/providers/:id/keys/:kid", adminAuthMiddleware(tokenStr), SetProviderKeyActive(ps))
+	r.DELETE("/admin/providers/:id/keys/:kid", adminAuthMiddleware(tokenStr), DeleteProviderKey(ps))
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/admin/providers/"+itoa(p.ID)+"/keys", strings.NewReader(`{"api_key":"sk-two"}`))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("add: %d %s", w.Code, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodDelete, "/admin/providers/"+itoa(p.ID)+"/keys/"+itoa(p.APIKeys[0].ID), nil)
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("delete first: %d %s", w.Code, w.Body.String())
+	}
+
+	got, _ := ps.GetByID(p.ID, 1)
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodDelete, "/admin/providers/"+itoa(p.ID)+"/keys/"+itoa(got.APIKeys[0].ID), nil)
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("delete last: %d %s", w.Code, w.Body.String())
+	}
+}
+
+func itoa(id int64) string { return strconv.FormatInt(id, 10) }
