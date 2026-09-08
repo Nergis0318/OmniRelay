@@ -324,28 +324,33 @@ var migrations = []migration{
 	},
 	{
 		version: 14,
-		up: func(tx *sql.Tx) error {
-			if _, err := tx.Exec(`CREATE TABLE IF NOT EXISTS provider_api_keys (
-				id INTEGER PRIMARY KEY AUTOINCREMENT,
-				provider_id INTEGER NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
-				api_key_encrypted TEXT NOT NULL,
-				key_prefix TEXT NOT NULL DEFAULT '',
-				is_active INTEGER NOT NULL DEFAULT 1,
-				created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-			)`); err != nil {
-				return err
-			}
-			if _, err := tx.Exec(`CREATE INDEX IF NOT EXISTS idx_provider_api_keys_provider_id ON provider_api_keys(provider_id)`); err != nil {
-				return err
-			}
-			if _, err := tx.Exec(`INSERT INTO provider_api_keys (provider_id, api_key_encrypted, key_prefix, is_active)
-				SELECT id, api_key_encrypted, '', 1 FROM providers
-				WHERE api_key_encrypted IS NOT NULL AND api_key_encrypted != ''`); err != nil {
-				return err
-			}
-			return nil
-		},
+		up:      ensureProviderAPIKeys,
 	},
+	{
+		version: 17,
+		up:      ensureProviderAPIKeys,
+	},
+}
+
+func ensureProviderAPIKeys(tx *sql.Tx) error {
+	if _, err := tx.Exec(`CREATE TABLE IF NOT EXISTS provider_api_keys (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		provider_id INTEGER NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
+		api_key_encrypted TEXT NOT NULL,
+		key_prefix TEXT NOT NULL DEFAULT '',
+		is_active INTEGER NOT NULL DEFAULT 1,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	)`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`CREATE INDEX IF NOT EXISTS idx_provider_api_keys_provider_id ON provider_api_keys(provider_id)`); err != nil {
+		return err
+	}
+	_, err := tx.Exec(`INSERT INTO provider_api_keys (provider_id, api_key_encrypted, key_prefix, is_active)
+		SELECT id, api_key_encrypted, '', 1 FROM providers
+		WHERE api_key_encrypted IS NOT NULL AND api_key_encrypted != ''
+		AND id NOT IN (SELECT provider_id FROM provider_api_keys)`)
+	return err
 }
 
 func hasColumn(tx *sql.Tx, tableName, columnName string) (bool, error) {
